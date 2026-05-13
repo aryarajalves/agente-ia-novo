@@ -15,3 +15,4 @@ O repositório oficial do projeto é:
 4. O branch principal é o `main` — nunca fazer force push no `main`.
 5. Toda mensagem de commit (título e corpo) deve obrigatoriamente estar em **português do Brasil**.
 6. Toda mensagem de commit deve obrigatoriamente informar que o **Aryaraj** criou a funcionalidade (Ex: "Aryaraj criou a funcionalidade de [descrição]" ou "[Descrição] - Criado por Aryaraj").
+7. **Proibição de `.env`:** É terminantemente proibido enviar (commitar/push) arquivos `.env` ou qualquer arquivo contendo credenciais reais para o repositório. O `.gitignore` deve ser sempre respeitado e caso tente fazer um push de um `.env` por acidente, a operação deve ser abortada. Apenas o `.env.example` pode ser commitado.
