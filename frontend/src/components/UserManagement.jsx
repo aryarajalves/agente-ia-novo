@@ -238,7 +238,7 @@ const UserManagement = () => {
             </div>
 
             {showModal && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                <div className="modal-overlay">
                     <div className="modal-content user-modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header-refined">
                             <div className="modal-title-with-icon">

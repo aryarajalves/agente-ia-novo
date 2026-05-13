@@ -14,7 +14,7 @@ const getEnv = (key, defaultValue = "") => {
     return import.meta.env[key] || defaultValue;
 };
 
-export const API_URL = getEnv("VITE_API_URL", "http://localhost:8002");
+export const API_URL = getEnv("VITE_API_URL", "https://backendagente.aryaraj.shop");
 export const AGENT_API_KEY = getEnv("VITE_AGENT_API_KEY", "");
 
 export default {

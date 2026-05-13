@@ -12,7 +12,7 @@ const getHeaders = (options = {}) => {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    if (!(options.body instanceof FormData)) {
+    if (options.body && !(options.body instanceof FormData)) {
         headers['Content-Type'] = headers['Content-Type'] || 'application/json';
     }
 
@@ -53,11 +53,49 @@ export const api = {
         return this.request(path, { ...options, method: 'PUT', body: body instanceof FormData ? body : JSON.stringify(body) });
     },
 
+    patch(path, body, options = {}) {
+        return this.request(path, { ...options, method: 'PATCH', body: body instanceof FormData ? body : JSON.stringify(body) });
+    },
+
     delete(path, body, options = {}) {
         const fetchOptions = { ...options, method: 'DELETE' };
         if (body) {
             fetchOptions.body = body instanceof FormData ? body : JSON.stringify(body);
         }
         return this.request(path, fetchOptions);
+    },
+
+    upload(path, formData, { onProgress } = {}) {
+        const url = path.startsWith('http') ? path : `${API_URL}${path}`;
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url);
+            
+            const headers = getHeaders({ body: formData });
+            Object.keys(headers).forEach(key => {
+                xhr.setRequestHeader(key, headers[key]);
+            });
+
+            if (onProgress) {
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        onProgress(percent);
+                    }
+                });
+            }
+
+            xhr.onload = () => {
+                const response = {
+                    ok: xhr.status >= 200 && xhr.status < 300,
+                    status: xhr.status,
+                    json: async () => JSON.parse(xhr.responseText)
+                };
+                resolve(response);
+            };
+
+            xhr.onerror = () => reject(new Error('A conexão falhou. Se o vídeo for grande, pode ser bloqueio de tamanho no seu Proxy ou Cloudflare (CORS error).'));
+            xhr.send(formData);
+        });
     }
 };

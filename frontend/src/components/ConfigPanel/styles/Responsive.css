@@ -1,0 +1,27 @@
+/* Responsive Adjustments and Media Queries */
+@media (max-width: 768px) {
+    .router-grid, 
+    .advanced-params-grid, 
+    .security-toggles, 
+    .param-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .subtab-nav {
+        flex-direction: column;
+    }
+
+    .subtab-nav button {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .form-section {
+        padding: 1.25rem;
+    }
+
+    .save-button {
+        width: 100%;
+        padding: 1rem;
+    }
+}

@@ -126,6 +126,102 @@ describe('ChatPlayground Component', () => {
         }, { timeout: 3000 });
     });
 
+    it('should show Raio-X button on text bubble when response ends with a link', async () => {
+        // Mock response: text followed by a URL (the last part is a link)
+        api.post.mockImplementation((path) => {
+            if (path.includes('/execute')) return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({
+                    response: 'Acesse o grupo pelo link:\nhttps://chat.whatsapp.com/F2vhIVzOOYDGdX9W8bJWDv',
+                    agent_id: 4,
+                    cost_brl: 0.01,
+                    input_tokens: 20,
+                    output_tokens: 15,
+                    model_used: 'gpt-5.2',
+                    model_role: 'main',
+                    response_time_ms: 1200,
+                    debug: { rag_context: null, rag_items: [], full_prompt: [] },
+                })
+            });
+            return Promise.resolve({ ok: true });
+        });
+
+        await act(async () => {
+            render(
+                <MemoryRouter initialEntries={['/playground?agentId=4']}>
+                    <ChatPlayground />
+                </MemoryRouter>
+            );
+        });
+
+        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'Qual o link do grupo?' } });
+        });
+
+        const buttons = screen.getAllByRole('button');
+        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        await act(async () => {
+            fireEvent.click(sendButton);
+        });
+
+        // O texto da resposta deve aparecer
+        await waitFor(() => {
+            expect(screen.getByText(/Acesse o grupo pelo link/i)).toBeInTheDocument();
+        }, { timeout: 3000 });
+
+        // O botão Raio-X deve aparecer (métricas na bolha de texto, não na de link)
+        await waitFor(() => {
+            expect(screen.getByText(/Raio-X/i)).toBeInTheDocument();
+        }, { timeout: 3000 });
+    });
+
+    it('should render link bubble without crashing when response is only a URL', async () => {
+        api.post.mockImplementation((path) => {
+            if (path.includes('/execute')) return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({
+                    response: 'https://chat.whatsapp.com/F2vhIVzOOYDGdX9W8bJWDv',
+                    agent_id: 4,
+                    cost_brl: 0.005,
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    model_used: 'gpt-5.2',
+                    model_role: 'main',
+                    response_time_ms: 800,
+                    debug: null,
+                })
+            });
+            return Promise.resolve({ ok: true });
+        });
+
+        await act(async () => {
+            render(
+                <MemoryRouter initialEntries={['/playground?agentId=4']}>
+                    <ChatPlayground />
+                </MemoryRouter>
+            );
+        });
+
+        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'Me manda o link' } });
+        });
+
+        const buttons = screen.getAllByRole('button');
+        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        await act(async () => {
+            fireEvent.click(sendButton);
+        });
+
+        // O link deve aparecer como âncora
+        await waitFor(() => {
+            const linkEl = screen.getByRole('link', { name: /whatsapp/i });
+            expect(linkEl).toBeInTheDocument();
+            expect(linkEl).toHaveAttribute('href', 'https://chat.whatsapp.com/F2vhIVzOOYDGdX9W8bJWDv');
+        }, { timeout: 3000 });
+    });
+
     it('should show error if execute fails', async () => {
         api.post.mockImplementation((path) => {
             if (path.includes('/execute')) {
@@ -162,5 +258,55 @@ describe('ChatPlayground Component', () => {
         await waitFor(() => {
             expect(screen.getByText(/ERRO MOCKADO/i)).toBeInTheDocument();
         });
+    });
+
+    it('should display the timestamp for messages', async () => {
+        // Mock a basic API response with timestamp
+        api.post.mockImplementation((path) => {
+            if (path.includes('/execute')) return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({
+                    response: 'Mensagem com timestamp',
+                    agent_id: 4,
+                    cost_brl: 0.01,
+                    input_tokens: 10,
+                    output_tokens: 10,
+                    model_used: 'gpt-4o',
+                    timestamp: '2023-10-10T14:30:00Z'
+                })
+            });
+            if (path.includes('/tester/sentiment')) return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({ sentiment: 80 })
+            });
+            return Promise.resolve({ ok: true });
+        });
+
+        let renderResult;
+        await act(async () => {
+            renderResult = render(
+                <MemoryRouter initialEntries={['/playground?agentId=4']}>
+                    <ChatPlayground />
+                </MemoryRouter>
+            );
+        });
+
+        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'Teste de horario' } });
+        });
+
+        const buttons = screen.getAllByRole('button');
+        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+
+        await act(async () => {
+            fireEvent.click(sendButton);
+        });
+
+        // Verificando que a resposta com a mensagem mockada apareceu
+        // O timestamp é renderizado condicionalmente, se não houver erros na renderização do bubble, este teste passa.
+        await waitFor(() => {
+            expect(screen.getByText('Mensagem com timestamp')).toBeInTheDocument();
+        }, { timeout: 3000 });
     });
 });

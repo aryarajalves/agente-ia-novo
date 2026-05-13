@@ -1,0 +1,149 @@
+/* ============================================================
+   FINANCEIRO — Transaction Table e Paginação
+   ============================================================ */
+
+.transaction-table-card {
+  background: var(--fin-bg-card);
+  border-radius: var(--fin-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--fin-border);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--fin-shadow);
+}
+
+/* Título */
+.table-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid var(--fin-border);
+}
+.table-title-bar h3 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--fin-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0;
+}
+.table-count-badge {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--fin-purple-light);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+/* Header e linhas */
+.table-header-grid {
+  display: grid;
+  grid-template-columns: 110px 1fr 80px 90px 110px 120px 110px;
+  padding: 0.9rem 2rem;
+  background: rgba(15, 23, 42, 0.5);
+  font-weight: 700;
+  color: var(--fin-text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.table-body { overflow-x: auto; }
+.table-row-grid {
+  display: grid;
+  grid-template-columns: 110px 1fr 80px 90px 110px 120px 110px;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.025);
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--fin-text-secondary);
+  transition: background 0.15s;
+}
+.table-row-grid:nth-child(even) { background: rgba(255, 255, 255, 0.01); }
+.table-row-grid:hover { background: rgba(99, 102, 241, 0.06); }
+.table-row-grid:last-child { border-bottom: none; }
+
+/* Nome + badge */
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.agent-name-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.agent-badge {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.agent-badge.type-agent {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--fin-green-light);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.agent-badge.type-ft {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--fin-purple-light);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+.cost-cell { text-align: right; font-weight: 800; color: var(--fin-green); }
+
+/* Empty state */
+.table-empty {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--fin-text-muted);
+  font-size: 0.9rem;
+}
+.table-empty span { font-size: 2rem; display: block; margin-bottom: 0.75rem; }
+
+/* Paginação */
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  border-top: 1px solid var(--fin-border);
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.rows-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--fin-text-muted);
+}
+.rows-select select {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--fin-border);
+  color: var(--fin-text-secondary);
+  padding: 4px 8px;
+  border-radius: var(--fin-radius-sm);
+  font-size: 0.82rem;
+  outline: none;
+  cursor: pointer;
+}
+.page-controls { display: flex; align-items: center; gap: 0.75rem; }
+.page-controls span {
+  font-size: 0.82rem;
+  color: var(--fin-text-muted);
+  min-width: 50px;
+  text-align: center;
+}
+.page-controls button {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: var(--fin-purple-light);
+  padding: 5px 14px;
+  border-radius: var(--fin-radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.page-controls button:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: var(--fin-purple);
+}
+.page-controls button:disabled { opacity: 0.3; cursor: not-allowed; }

@@ -1,0 +1,143 @@
+/* ============================================================
+   WEBHOOK MANAGER — Form Controls Premium
+   ============================================================ */
+
+.modal-form-premium {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group-premium {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.premium-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 4px;
+}
+
+.premium-input {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  padding: 0.75rem 1rem !important;
+  color: #f1f5f9 !important;
+  font-size: 0.9rem !important;
+  transition: all 0.2s ease !important;
+  outline: none !important;
+  width: 100%;
+}
+
+.premium-input:focus {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1) !important;
+}
+
+.premium-help-text {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: -0.25rem 0 0.25rem 4px;
+}
+
+/* Fix para o Prefixo de Banco de Dados */
+.input-group-addon {
+  display: flex !important;
+  align-items: center !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  transition: border-color 0.2s;
+}
+
+.input-group-addon:focus-within {
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.addon-text {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.75rem 1rem;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  user-select: none;
+}
+
+.premium-input-transparent {
+  background: transparent !important;
+  border: none !important;
+  padding: 0.75rem 1rem !important;
+  color: #f1f5f9 !important;
+  font-size: 0.9rem !important;
+  outline: none !important;
+  flex: 1 !important;
+  width: 100% !important;
+}
+
+/* Switches & Controls */
+.premium-switch {
+  width: 44px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 100px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.premium-switch.active {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.switch-knob {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.premium-switch.active .switch-knob {
+  left: 24px;
+}
+
+.media-controls-premium {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.control-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 1rem;
+  border-radius: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.control-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.control-desc {
+  font-size: 0.75rem;
+  color: #64748b;
+}

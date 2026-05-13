@@ -1,0 +1,166 @@
+/* KnowledgeBaseManager Modern Styles */
+.kb-manager {
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+}
+
+.kb-quick-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.kb-quick-action-btn {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.75rem 1.25rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kb-quick-action-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--accent-color);
+    color: white;
+}
+
+.kb-add-card {
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.form-row-kb {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.flex-1 { flex: 1; }
+.flex-2 { flex: 2; }
+
+.kb-table-container {
+    margin-top: 2rem;
+}
+
+.kb-search-input {
+    width: 100%;
+    max-width: 400px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    padding: 0.75rem 1.25rem;
+    border-radius: 10px;
+    color: white;
+    margin-bottom: 1rem;
+}
+
+.kb-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 8px;
+}
+
+.kb-table th {
+    text-align: left;
+    padding: 1rem;
+    color: #64748b;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.kb-table tr {
+    background: rgba(255, 255, 255, 0.02);
+    transition: transform 0.2s;
+}
+
+.kb-table tr:hover {
+    background: rgba(255, 255, 255, 0.04);
+    transform: scale(1.002);
+}
+
+.kb-table td {
+    padding: 1.25rem 1rem;
+    border-top: 1px solid transparent;
+    border-bottom: 1px solid transparent;
+    font-size: 0.9rem;
+    color: #cbd5e1;
+}
+
+.kb-table td:first-child { border-radius: 12px 0 0 12px; border-left: 1px solid transparent; }
+.kb-table td:last-child { border-radius: 0 12px 12px 0; border-right: 1px solid transparent; }
+
+.kb-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 2rem;
+    padding: 1rem;
+}
+
+.kb-pagination button {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.kb-pagination button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* Simulator Styles */
+.kb-item-modern {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 20px;
+    padding: 2rem;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+}
+
+.kb-search-input-premium {
+    background: #020617;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    color: white;
+    font-size: 1rem;
+}
+
+.kb-save-btn-modern {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0 2rem;
+    border-radius: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.kb-save-btn-modern:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 1.2rem;
+}

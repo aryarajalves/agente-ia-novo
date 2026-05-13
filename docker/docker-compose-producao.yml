@@ -17,7 +17,9 @@ services:
   # BACKEND — FastAPI + Gunicorn
   # ----------------------------------------------------------
   backend:
-    image: aryarajalves/configurar-agentes-ia:1.1.1-backend
+    image: aryarajalves/configurar-agentes-ia:1.6.0-backend
+
+
     hostname: "{{.Service.Name}}.{{.Task.Slot}}"
     networks:
       - network_swarm_public
@@ -29,6 +31,7 @@ services:
       # --- Integrações com IA ---
       - OPENAI_API_KEY=${OPENAI_API_KEY} # Chave para geração de texto (GPT) e embeddings (OpenAI)
       - GEMINI_API_KEY=${GEMINI_API_KEY} # Chave para modelos Google Gemini (Alternativo)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY} # Chave para modelos Anthropic Claude
 
       # --- Segurança Padrão (APIs Públicas) ---
       - AGENT_API_KEY=${AGENT_API_KEY} # Senha master da API. Usada pelo N8N, Chat e Webhooks para usar o endpoint /execute.
@@ -43,6 +46,13 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} # ID da credencial OAuth do painel Google Cloud
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET} # Secret da credencial OAuth
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI} # URL de retorno exata após o usuário fazer login no Google
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_REGION=${S3_REGION}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-5368709120}
 
     deploy:
       mode: replicated
@@ -64,20 +74,100 @@ services:
         - traefik.http.services.agentes_backend.loadbalancer.passhostheader=true
         - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https
         - traefik.http.routers.agentes_backend.middlewares=sslheader@docker
+ 
+  # ----------------------------------------------------------
+  # REDIS — Broker para o Celery
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    hostname: "{{.Service.Name}}"
+    networks:
+      - network_swarm_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 256M
+ 
+  # ----------------------------------------------------------
+  # WORKER — Processador de Transcrições
+  # ----------------------------------------------------------
+  worker:
+    image: aryarajalves/configurar-agentes-ia:1.6.0-backend
+
+
+    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
+    command: celery -A celery_app worker --loglevel=info --concurrency=1
+    networks:
+      - network_swarm_public
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_REGION=${S3_REGION}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PYTHONPATH=/app
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1024M
+
+  # ----------------------------------------------------------
+  # BEAT — Celery Beat (tarefas periódicas)
+  # ----------------------------------------------------------
+  beat:
+    image: aryarajalves/configurar-agentes-ia:1.6.0-backend
+
+
+    hostname: "{{.Service.Name}}"
+    command: celery -A celery_app beat --loglevel=info
+    networks:
+      - network_swarm_public
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PYTHONPATH=/app
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
 
   # ----------------------------------------------------------
   # FRONTEND — React (build estático) + Nginx
   # ----------------------------------------------------------
   frontend:
-    image: aryarajalves/configurar-agentes-ia:1.1.1-frontend
+    image: aryarajalves/configurar-agentes-ia:1.6.0-frontend
+
+
     hostname: "{{.Service.Name}}.{{.Task.Slot}}"
     networks:
       - network_swarm_public
-    secrets:
-      - source: VITE_API_URL
-        target: VITE_API_URL # Informa ao frontend estático onde o backend está hospedado
-      - source: VITE_AGENT_API_KEY
-        target: VITE_AGENT_API_KEY # Chave API injetada no código do site
+    environment:
+      - VITE_API_URL=${VITE_API_URL} # Informa ao frontend estático onde o backend está hospedado
+      - VITE_AGENT_API_KEY=${VITE_AGENT_API_KEY} # Chave API injetada no código do site
     deploy:
       mode: replicated
       replicas: 1
@@ -103,9 +193,3 @@ networks:
   network_swarm_public:
     external: true
     name: network_swarm_public
-
-secrets:
-  VITE_API_URL:
-    external: true
-  VITE_AGENT_API_KEY:
-    external: true

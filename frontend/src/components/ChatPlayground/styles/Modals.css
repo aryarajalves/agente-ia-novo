@@ -1,0 +1,77 @@
+/* Premium Analysis Modal Styles */
+.analysis-modal {
+    width: 700px!important; max-width: 90vw; background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    border-radius: 20px; display: flex; flex-direction: column; max-height: 85vh;
+    overflow: hidden; position: relative; animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(20px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+    padding: 1.5rem 2rem; background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex; justify-content: space-between; align-items: flex-start; backdrop-filter: blur(10px);
+}
+
+.header-title { display: flex; align-items: flex-start; gap: 18px; }
+.header-text h3 { margin: 0 0 6px 0; font-size: 1.4rem; font-weight: 700; color: #f8fafc; }
+.subtitle { margin: 0; font-size: 0.9rem; color: #94a3b8; line-height: 1.4; }
+
+.icon-badge {
+    width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); flex-shrink: 0;
+}
+.summary-badge { background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(167, 139, 250, 0.1)); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.25); }
+.questions-badge { background: linear-gradient(135deg, rgba(52, 211, 153, 0.2), rgba(52, 211, 153, 0.1)); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.25); }
+
+.modal-body-scroll { padding: 2rem; background: #0f172a; overflow-y: auto; flex: 1; min-height: 300px; }
+.summary-content { font-size: 1.05rem; line-height: 1.75; color: #e2e8f0; }
+
+.questions-list { display: grid; gap: 12px; }
+.question-card {
+    background: linear-gradient(to right, rgba(30, 41, 59, 0.4), rgba(30, 41, 59, 0.2));
+    border: 1px solid rgba(255, 255, 255, 0.05); padding: 16px 20px; border-radius: 12px;
+    display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;
+}
+.question-card:hover { transform: translateY(-2px) translateX(4px); border-color: rgba(99, 102, 241, 0.3); }
+
+.modal-footer {
+    padding: 1.5rem 2rem; background: rgba(15, 23, 42, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center;
+}
+
+.primary-close-btn {
+    padding: 0.75rem 2rem; background: linear-gradient(135deg, #4f46e5, #4338ca);
+    color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+
+/* Correction Modal Specifics */
+.correction-modal { max-width: 640px; }
+.cx-row { margin-bottom: 15px; }
+.cx-row label { font-size: 0.78rem; color: #64748b; text-transform: uppercase; margin-bottom: 6px; display: block; }
+.cx-value { padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.55; }
+.cx-value.user { background: rgba(99, 102, 241, 0.08); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.15); }
+.cx-value.original { background: rgba(244, 63, 94, 0.06); color: #fca5a5; border: 1px solid rgba(244, 63, 94, 0.12); }
+
+.close-btn-top-right {
+    position: absolute; top: 1.5rem; right: 1.5rem; width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #94a3b8; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 9999;
+}
+.close-btn-top-right:hover { transform: rotate(90deg) scale(1.1); color: #f87171; }
+
+.coverage-action-area { display: flex; justify-content: center; margin-bottom: 20px; }
+.check-coverage-btn {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: white; border: none; padding: 10px 24px; border-radius: 12px; font-weight: 600; cursor: pointer;
+}
+
+.status-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid; font-weight: bold; text-transform: uppercase; margin-left: 10px; }
+.status-badge.green { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
+.status-badge.yellow { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
+.status-badge.red { background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }

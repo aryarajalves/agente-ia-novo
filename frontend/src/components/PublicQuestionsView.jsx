@@ -223,7 +223,7 @@ const PublicQuestionsView = () => {
 
             {/* Answer Modal */}
             {activeModal === 'answer' && (
-                <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+                <div className="modal-overlay">
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <h3 className="modal-title">🧠 Ensinar Resposta</h3>
                         <label className="form-label">Pergunta (Pode ajustar para clareza)</label>
@@ -249,7 +249,7 @@ const PublicQuestionsView = () => {
 
             {/* Discard Modal */}
             {activeModal === 'discard' && (
-                <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+                <div className="modal-overlay">
                     <div className="modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
                         <h3 className="modal-title">🗑️ Descartar Pergunta?</h3>
                         <p style={{ color: '#94a3b8', lineHeight: 1.6 }}>Esta pergunta será removida do inbox e não será adicionada à IA.</p>

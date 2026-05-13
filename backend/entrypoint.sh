@@ -25,5 +25,12 @@ echo "🔄 Rodando migrações (alembic upgrade head)..."
 python -c "from alembic.config import main; main(argv=['upgrade', 'head'])"
 echo "✅ Migrações concluídas."
 
-echo "🚀 Iniciando aplicação..."
-exec python -m gunicorn main:app -w "${GUNICORN_WORKERS:-4}" -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 120
+echo "🚀 Iniciando aplicação ou worker..."
+
+if [ "$#" -gt 0 ]; then
+  # Se argumentos foram passados (ex: pelo docker-compose command), executa-os
+  exec "$@"
+else
+  # Comando padrão: Iniciar Gunicorn
+  exec python -m gunicorn api.main:app -w "${GUNICORN_WORKERS:-4}" -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 600
+fi

@@ -2,3 +2,13 @@
 
 - **Idioma de Resposta:** Sempre que o agente (IA) responder no chat, deve utilizar obrigatoriamente a linguagem **Português do Brasil**.
 - **Tom de Voz:** Profissional, prestativo e técnico, mantendo a clareza e precisão nas respostas.
+
+- **Refatoração Segura (ERS):** 
+  Esta regra é MANDATÓRIA para todas as atividades de refatoração no frontend e backend deste projeto.
+  1. **Preservação de Código:** Antes de qualquer alteração estrutural, preserve o código original (ex: `Arquivo.old.jsx`). O código antigo só sai após validação total.
+  2. **Integridade Visual:** Capture screenshots ANTES e DEPOIS da mudança. Qualquer diferença de 1 pixel deve ser corrigida imediatamente.
+  3. **Validação Funcional:** Teste todos os botões e interações individualmente, verificando erros silenciosos no console.
+  4. **Aprovação:** Apresente as evidências ao usuário antes de qualquer limpeza de backup.
+
+- **Tamanho de Código:** Backend < 1000 linhas, Frontend < 500 linhas. Se exceder, modularize imediatamente.
+- **Docker:** Reinicie os containers após mudanças significativas para garantir a integridade do ambiente.

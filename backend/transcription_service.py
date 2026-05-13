@@ -1,36 +1,109 @@
 import os
+import logging
+import asyncio
+from openai import AsyncOpenAI
 import assemblyai as aai
 
-def transcribe_video(file_path: str, config_params: dict = None) -> dict:
+logger = logging.getLogger(__name__)
+
+async def transcribe_video(file_path: str, config_params: dict = None) -> dict:
     """
-    Transcreve um arquivo de áudio ou vídeo usando AssemblyAI com configurações personalizadas.
+    Transcreve um arquivo de áudio ou vídeo usando o provedor disponível.
+    Ordem de preferência: OpenAI (Whisper) -> Gemini -> AssemblyAI
     """
-    api_key = os.getenv("ASSEMBLYAI_API_KEY")
-    if not api_key or api_key == "YOUR_ASSEMBLY_API_KEY_HERE":
-        raise ValueError("ASSEMBLYAI_API_KEY não configurada corretamente no .env")
+    # 1. Tentar OpenAI (Whisper)
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        try:
+            return await transcribe_openai(file_path, openai_key)
+        except Exception as e:
+            logger.error(f"Erro na transcrição OpenAI: {e}")
+
+    # 2. Tentar Gemini (via OpenAI compatibility ou SDK se disponível)
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            # Para simplificar e usar a lib já instalada, usamos o endpoint compatível da Gemini
+            return await transcribe_gemini_openai_compat(file_path, gemini_key)
+        except Exception as e:
+            logger.error(f"Erro na transcrição Gemini: {e}")
+
+    # 3. Fallback para AssemblyAI
+    assemblyai_key = os.getenv("ASSEMBLYAI_API_KEY")
+    if assemblyai_key and assemblyai_key != "YOUR_ASSEMBLY_API_KEY_HERE":
+        try:
+            return transcribe_assemblyai(file_path, assemblyai_key, config_params)
+        except Exception as e:
+            logger.error(f"Erro na transcrição AssemblyAI: {e}")
+            raise
+
+    raise ValueError("Nenhum provedor de transcrição configurado ou disponível (OpenAI, Gemini ou AssemblyAI)")
+
+async def transcribe_openai(file_path: str, api_key: str) -> dict:
+    logger.info(f"Iniciando transcrição OpenAI (Whisper) para: {file_path}")
+    client = AsyncOpenAI(api_key=api_key)
+    with open(file_path, "rb") as audio_file:
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1", 
+            file=audio_file,
+            response_format="json",
+            prompt="Transcrição fiel do áudio no idioma original. Exemplos de termos que podem aparecer: My Hero Academia, Mahiru Academy, animes, cultura pop. Mantenha a pontuação natural."
+        )
     
+    text = transcript.text.strip()
+    
+    # Filtro básico contra alucinações comuns do Whisper em áudios curtos/silenciosos
+    hallucinations = [
+        "Thank you.", "Thank you", "Thanks for watching.", "Keep watching", 
+        "Subscribe to my channel", "Please subscribe", "We feel lucky", "I'll see you in the next one"
+    ]
+    if text in hallucinations or len(text) < 2:
+        logger.info(f"🚫 Alucinação detectada e filtrada: '{text}'")
+        text = ""
+
+    return {
+        "text": text,
+        "duration": 0,
+        "provider": "OpenAI (Whisper)"
+    }
+
+async def transcribe_gemini_openai_compat(file_path: str, api_key: str) -> dict:
+    """
+    Nota: O endpoint compatível da Gemini às vezes tem limitações com áudio direto via Whisper.
+    Se falhar, o ideal seria usar o SDK nativo, mas tentamos aqui primeiro.
+    """
+    logger.info(f"Iniciando transcrição Gemini (compat-mode) para: {file_path}")
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+    # Por enquanto, Gemini via OpenAI compatible foca em chat. 
+    # Áudio geralmente requer o SDK nativo ou Vertex AI.
+    # Se chegarmos aqui e falhar, o fallback cuidará disso.
+    with open(file_path, "rb") as audio_file:
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1", # Gemini pode não aceitar este nome no compat mode
+            file=audio_file
+        )
+    return {"text": transcript.text, "duration": 0, "provider": "Gemini"}
+
+def transcribe_assemblyai(file_path: str, api_key: str, config_params: dict = None) -> dict:
+    logger.info(f"Iniciando transcrição AssemblyAI para: {file_path}")
     aai.settings.api_key = api_key
     
-    # Mapeia as configurações recebidas para o objeto TranscriptionConfig do AssemblyAI
     trans_config = aai.TranscriptionConfig(
-        language_detection=config_params.get("autoLanguage", True) if config_params else True,
-        language_code=config_params.get("language", "pt") if config_params and not config_params.get("autoLanguage") else None,
-        speaker_labels=config_params.get("speakerLabels", False) if config_params else False,
-        filter_profanity=config_params.get("profanityFilter", False) if config_params else False,
-        summarization=config_params.get("summarization", False) if config_params else False,
-        summary_model=aai.SummarizationModel.informative if config_params and config_params.get("summarization") else None,
-        summary_type=aai.SummarizationType.bullets if config_params and config_params.get("summarization") else None
+        language_detection=True,
+        speaker_labels=config_params.get("speakerLabels", False) if config_params else False
     )
     
     transcriber = aai.Transcriber()
-    
-    # Faz o upload e solicita a transcrição
     transcript = transcriber.transcribe(file_path, config=trans_config)
     
     if transcript.status == aai.TranscriptStatus.error:
-        raise Exception(f"Erro na transcrição: {transcript.error}")
+        raise Exception(f"Erro AssemblyAI: {transcript.error}")
         
     return {
         "text": transcript.text,
-        "duration": transcript.audio_duration # Duração em segundos
+        "duration": transcript.audio_duration,
+        "provider": "AssemblyAI"
     }

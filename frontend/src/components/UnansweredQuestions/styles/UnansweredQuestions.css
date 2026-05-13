@@ -1,0 +1,50 @@
+/* UnansweredQuestions Modern Styles */
+.inbox-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.header-left { display: flex; align-items: center; gap: 1rem; }
+.header-icon {
+    font-size: 1.5rem; background: rgba(239, 68, 68, 0.1);
+    width: 44px; height: 44px; display: flex; align-items: center;
+    justify-content: center; border-radius: 12px;
+}
+
+.uq-card {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 18px; padding: 1.5rem;
+    position: relative; overflow: hidden;
+}
+
+.uq-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, #ef4444, #f97316);
+}
+
+.uq-badge {
+    background: rgba(239, 68, 68, 0.1); color: #f87171;
+    font-size: 0.7rem; font-weight: 800; padding: 4px 10px; border-radius: 20px;
+}
+
+.uq-question-text {
+    font-size: 1.1rem; font-weight: 700; color: #f1f5f9;
+    padding: 1rem; background: rgba(255, 255, 255, 0.03);
+    border-left: 4px solid #ef4444; border-radius: 0 12px 12px 0;
+    margin: 1rem 0;
+}
+
+.uq-actions { display: flex; gap: 1rem; align-items: center; }
+
+.uq-btn-teach {
+    background: #6366f1; color: white; border: none;
+    padding: 0.6rem 1.2rem; border-radius: 10px; font-weight: 700;
+}
+
+.uq-btn-discard {
+    background: transparent; border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171; padding: 0.6rem 1rem; border-radius: 10px;
+}

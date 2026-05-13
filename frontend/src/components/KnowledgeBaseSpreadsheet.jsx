@@ -19,10 +19,15 @@ const KnowledgeBaseSpreadsheet = ({ items, onSave, onCancel }) => {
         setData(data.filter((_, i) => i !== index));
     };
 
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
+    
     const handleClearAll = () => {
-        if (window.confirm('Tem certeza que deseja limpar todas as linhas?')) {
-            setData([{ question: '', answer: '', category: 'Geral' }]);
-        }
+        setShowClearConfirm(true);
+    };
+
+    const confirmClear = () => {
+        setData([{ question: '', answer: '', category: 'Geral' }]);
+        setShowClearConfirm(false);
     };
 
     const handleTogglePairs = () => {
@@ -165,6 +170,22 @@ const KnowledgeBaseSpreadsheet = ({ items, onSave, onCancel }) => {
                 </table>
             </div>
 
+            {showClearConfirm && (
+                <div className="confirm-modal-overlay">
+                    <div className="confirm-modal-card fade-in">
+                        <div className="confirm-modal-icon">🗑️</div>
+                        <h3 style={{ color: '#fff', margin: '0 0 0.5rem' }}>Limpar Tudo?</h3>
+                        <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: '0 0 1.5rem', lineHeight: '1.5' }}>
+                            Esta ação irá remover todas as perguntas e respostas digitadas. Você não poderá desfazer isso.
+                        </p>
+                        <div className="confirm-modal-actions">
+                            <button onClick={() => setShowClearConfirm(false)} className="confirm-cancel">Cancelar</button>
+                            <button onClick={confirmClear} className="confirm-delete">Sim, Limpar Tudo</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style>{`
                 .spreadsheet-view {
                     background: #0f172a;
@@ -176,6 +197,59 @@ const KnowledgeBaseSpreadsheet = ({ items, onSave, onCancel }) => {
                     overflow: hidden;
                     position: relative;
                 }
+                
+                /* Modal Estilizado Interno */
+                .confirm-modal-overlay {
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.8);
+                    backdrop-filter: blur(4px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                }
+                .confirm-modal-card {
+                    background: #1e293b;
+                    padding: 2.5rem;
+                    border-radius: 20px;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    max-width: 400px;
+                    width: 90%;
+                    text-align: center;
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                }
+                .confirm-modal-icon {
+                    font-size: 3rem;
+                    margin-bottom: 1rem;
+                    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.3));
+                }
+                .confirm-modal-actions {
+                    display: flex;
+                    gap: 1rem;
+                }
+                .confirm-cancel {
+                    flex: 1;
+                    padding: 0.8rem;
+                    border-radius: 12px;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    background: rgba(255,255,255,0.05);
+                    color: #94a3b8;
+                    cursor: pointer;
+                    font-weight: 600;
+                }
+                .confirm-delete {
+                    flex: 1;
+                    padding: 0.8rem;
+                    border-radius: 12px;
+                    border: none;
+                    background: #ef4444;
+                    color: white;
+                    cursor: pointer;
+                    font-weight: 700;
+                    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+                }
+                
                 .spreadsheet-toolbar {
                     padding: 1rem;
                     background: rgba(30, 41, 59, 0.8);

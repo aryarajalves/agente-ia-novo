@@ -1,0 +1,82 @@
+/* Footer Actions and Status Alerts */
+.config-footer {
+    margin-top: 2rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 2rem;
+}
+
+.validation-alert {
+    background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.alert-title {
+    color: #f43f5e;
+    font-weight: 800;
+    font-size: 0.9rem;
+}
+
+.alert-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+}
+
+.alert-list li {
+    color: #fda4af;
+    font-size: 0.82rem;
+    margin-bottom: 4px;
+}
+
+.footer-actions {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0;
+}
+
+.save-button {
+    background: var(--accent-gradient);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    padding: 1rem 3rem;
+    min-width: 250px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.save-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 30px -5px rgba(99, 102, 241, 0.5);
+}
+
+.save-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.status-message {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 12px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.status-message.success {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.status-message.error {
+    background: rgba(244, 63, 94, 0.1);
+    color: #f43f5e;
+}

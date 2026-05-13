@@ -1,0 +1,81 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { api } from '../../api/client';
+
+const KBContext = createContext();
+
+export const KBProvider = ({ children, initialKB, kbId, kbType, onAdd, onDelete, onUpdate, onChange }) => {
+    // Basic State
+    const [knowledgeBase, setKnowledgeBase] = useState(initialKB || []);
+    const [kbLabels, setKbLabels] = useState({ question: 'Pergunta', answer: 'Resposta', metadata: 'Metadado' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const [kbFilterTerm, setKbFilterTerm] = useState('');
+    const [selectedItems, setSelectedItems] = useState(new Set());
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    // Modals & UI State
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState(null);
+    const [showImporter, setShowImporter] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    
+    // Feature States (Simulador, Transcrição, etc.)
+    const [simQuery, setSimQuery] = useState('');
+    const [simResults, setSimResults] = useState(null);
+    const [simLoading, setSimLoading] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    
+    useEffect(() => {
+        setKnowledgeBase(initialKB || []);
+    }, [initialKB]);
+
+    useEffect(() => {
+        const fetchKbData = async () => {
+            if (!kbId) return;
+            try {
+                const res = await api.get(`/knowledge-bases/${kbId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setKbLabels({
+                        question: data.question_label || 'Pergunta',
+                        answer: data.answer_label || 'Resposta',
+                        metadata: data.metadata_label || 'Metadado'
+                    });
+                }
+            } catch (e) {
+                console.error("Erro ao buscar labels da KB:", e);
+            }
+        };
+        fetchKbData();
+    }, [kbId]);
+
+    const value = {
+        kbId,
+        kbType,
+        knowledgeBase, setKnowledgeBase,
+        kbLabels, setKbLabels,
+        currentPage, setCurrentPage,
+        kbFilterTerm, setKbFilterTerm,
+        selectedItems, setSelectedItems,
+        isExpanded, setIsExpanded,
+        isConfirmOpen, setIsConfirmOpen,
+        isDeleting, setIsDeleting,
+        itemToDelete, setItemToDelete,
+        showImporter, setShowImporter,
+        showSuccessModal, setShowSuccessModal,
+        simQuery, setSimQuery,
+        simResults, setSimResults,
+        simLoading, setSimLoading,
+        isTranscribing, setIsTranscribing,
+        // Callbacks
+        onAdd, onDelete, onUpdate, onChange
+    };
+
+    return <KBContext.Provider value={value}>{children}</KBContext.Provider>;
+};
+
+export const useKB = () => {
+    const context = useContext(KBContext);
+    if (!context) throw new Error('useKB must be used within a KBProvider');
+    return context;
+};

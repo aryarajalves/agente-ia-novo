@@ -2,17 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import ConfirmModal from './ConfirmModal';
-import UnansweredQuestions from './UnansweredQuestions';
+import UnansweredQuestions from './UnansweredQuestions/index';
+import TranscriptionHistory from './TranscriptionHistory/index';
+import { useSearchParams } from 'react-router-dom';
 
 function KnowledgeBaseList() {
     const [bases, setBases] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isDeleting, setIsDeleting] = useState(false);
     const [modalConfig, setModalConfig] = useState({ isOpen: false, baseId: null, baseName: '' });
-    const [activeTab, setActiveTab] = useState('bases');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'bases');
     const [filterType, setFilterType] = useState('all'); // 'all', 'qa', 'product'
+    const [selectedBases, setSelectedBases] = useState(new Set());
+    const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
 
+    // Sincroniza a aba ativa quando a URL muda (ex: via navigate de outro componente)
     useEffect(() => {
+        const tab = searchParams.get('tab');
+        if (tab && tab !== activeTab) {
+            setActiveTab(tab);
+        }
+    }, [searchParams, activeTab]);
+
+    const fetchBases = () => {
+        setLoading(bases.length === 0);
         api.get('/knowledge-bases')
             .then(res => res.json())
             .then(data => {
@@ -23,6 +37,10 @@ function KnowledgeBaseList() {
                 console.error("Erro ao buscar bases:", err);
                 setLoading(false);
             });
+    };
+
+    useEffect(() => {
+        fetchBases();
     }, []);
 
     const handleDeleteClick = (e, id, name) => {
@@ -55,6 +73,42 @@ function KnowledgeBaseList() {
         return true;
     });
 
+    const toggleSelectBase = (id) => {
+        const newSelected = new Set(selectedBases);
+        if (newSelected.has(id)) newSelected.delete(id);
+        else newSelected.add(id);
+        setSelectedBases(newSelected);
+    };
+
+    const toggleSelectAllBases = () => {
+        if (selectedBases.size === filteredBases.length && filteredBases.length > 0) {
+            setSelectedBases(new Set());
+        } else {
+            setSelectedBases(new Set(filteredBases.map(b => b.id)));
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        setIsDeleting(true);
+        try {
+            const response = await api.post('/knowledge-bases/batch-delete', {
+                item_ids: Array.from(selectedBases).map(Number)
+            });
+            if (response.ok) {
+                const idsToRemove = Array.from(selectedBases);
+                setBases(prev => prev.filter(b => !idsToRemove.includes(b.id)));
+                setSelectedBases(new Set());
+            } else {
+                alert('Erro ao excluir bases em massa');
+            }
+        } catch (err) {
+            alert('Erro de conexão');
+        } finally {
+            setIsDeleting(false);
+            setIsBulkDeleteConfirmOpen(false);
+        }
+    };
+
     return (
         <div className="dashboard-container">
             <div className="dashboard-header">
@@ -79,7 +133,7 @@ function KnowledgeBaseList() {
                     paddingBottom: '0.5rem'
                 }}>
                     <button
-                        onClick={() => setActiveTab('bases')}
+                        onClick={() => setSearchParams({ tab: 'bases' })}
                         style={{
                             background: 'none',
                             border: 'none',
@@ -95,7 +149,7 @@ function KnowledgeBaseList() {
                         📚 Minhas Bases
                     </button>
                     <button
-                        onClick={() => setActiveTab('inbox')}
+                        onClick={() => setSearchParams({ tab: 'inbox' })}
                         style={{
                             background: 'none',
                             border: 'none',
@@ -110,48 +164,144 @@ function KnowledgeBaseList() {
                     >
                         📥 Inbox de Dúvidas
                     </button>
+                    <button
+                        onClick={() => setSearchParams({ tab: 'history' })}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: activeTab === 'history' ? 'white' : 'var(--text-secondary)',
+                            fontWeight: activeTab === 'history' ? 800 : 500,
+                            fontSize: '1rem',
+                            cursor: 'pointer',
+                            borderBottom: activeTab === 'history' ? '2px solid #6366f1' : 'none',
+                            paddingBottom: '0.5rem',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        📜 Histórico
+                    </button>
                 </div>
 
                 {activeTab === 'bases' && (
-                    <div className="filter-controls" style={{
-                        display: 'flex',
-                        gap: '8px',
-                        background: 'rgba(255, 255, 255, 0.02)',
-                        padding: '4px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)'
-                    }}>
-                        {[
-                            { id: 'all', label: 'Tudo', icon: '🌈' },
-                            { id: 'qa', label: 'FAQ', icon: '💬' },
-                            { id: 'product', label: 'Produtos', icon: '📦' }
-                        ].map(f => (
-                            <button
-                                key={f.id}
-                                onClick={() => setFilterType(f.id)}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '8px',
-                                    border: 'none',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 700,
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                        <div className="filter-controls" style={{
+                            display: 'flex',
+                            gap: '8px',
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            padding: '4px',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(255, 255, 255, 0.05)'
+                        }}>
+                            {[
+                                { id: 'all', label: 'Tudo', icon: '🌈' },
+                                { id: 'qa', label: 'FAQ', icon: '💬' },
+                                { id: 'product', label: 'Produtos', icon: '📦' }
+                            ].map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => setFilterType(f.id)}
+                                    style={{
+                                        padding: '6px 14px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        background: filterType === f.id ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                                        color: filterType === f.id ? '#818cf8' : '#64748b',
+                                        boxShadow: filterType === f.id ? '0 4px 12px rgba(99, 102, 241, 0.1)' : 'none'
+                                    }}
+                                >
+                                    <span style={{ opacity: filterType === f.id ? 1 : 0.6 }}>{f.icon}</span>
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {filteredBases.length > 0 && (
+                            <button 
+                                onClick={toggleSelectAllBases}
+                                style={{ 
+                                    background: 'rgba(255, 255, 255, 0.05)', 
+                                    border: '1px solid rgba(255, 255, 255, 0.1)', 
+                                    color: '#94a3b8', 
+                                    padding: '8px 14px', 
+                                    borderRadius: '10px', 
+                                    fontSize: '0.8rem', 
+                                    fontWeight: 700, 
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '6px',
-                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    background: filterType === f.id ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                                    color: filterType === f.id ? '#818cf8' : '#64748b',
-                                    boxShadow: filterType === f.id ? '0 4px 12px rgba(99, 102, 241, 0.1)' : 'none'
+                                    gap: '10px',
+                                    transition: 'all 0.2s'
                                 }}
+                                onMouseOver={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; e.currentTarget.style.color = '#fff'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.color = '#94a3b8'; }}
                             >
-                                <span style={{ opacity: filterType === f.id ? 1 : 0.6 }}>{f.icon}</span>
-                                {f.label}
+                                <div style={{ 
+                                    width: '18px', height: '18px', borderRadius: '4px', border: '2px solid currentColor',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s',
+                                    background: selectedBases.size === filteredBases.length ? '#6366f1' : 'transparent',
+                                    borderColor: selectedBases.size === filteredBases.length ? '#6366f1' : 'currentColor'
+                                }}>
+                                    {selectedBases.size === filteredBases.length && (
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    )}
+                                </div>
+                                Selecionar Todas
                             </button>
-                        ))}
+                        )}
                     </div>
                 )}
             </div>
+
+            {selectedBases.size > 0 && activeTab === 'bases' && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '2rem',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 1000,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    background: 'linear-gradient(90deg, #4f46e5 0%, #6366f1 100%)',
+                    padding: '0.75rem 1.5rem',
+                    borderRadius: '16px',
+                    boxShadow: '0 12px 30px rgba(79, 70, 229, 0.4)',
+                    animation: 'slideUpCentered 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    fontWeight: 600
+                }}>
+                    <span>{selectedBases.size} base{selectedBases.size !== 1 ? 's' : ''} selecionada{selectedBases.size !== 1 ? 's' : ''}</span>
+                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.2)' }} />
+                    <button 
+                        onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                        style={{ 
+                            background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', 
+                            color: '#fff', borderRadius: '10px', padding: '8px 16px', cursor: 'pointer', 
+                            display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', 
+                            fontWeight: 700, transition: 'all 0.2s' 
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        Excluir Selecionadas
+                    </button>
+                    <button 
+                        onClick={() => setSelectedBases(new Set())}
+                        style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            )}
 
             {activeTab === 'bases' ? (
                 loading ? (
@@ -182,8 +332,36 @@ function KnowledgeBaseList() {
                             </div>
                         ) : (
                             filteredBases.map(base => (
-                                <div key={base.id} className="agent-card">
-                                    <div className="agent-card-header">
+                                <div key={base.id} className="agent-card" style={{ position: 'relative' }}>
+                                    <div 
+                                        onClick={() => toggleSelectBase(base.id)}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '1rem',
+                                            left: '1rem',
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '6px',
+                                            background: selectedBases.has(base.id) ? '#6366f1' : 'rgba(255, 255, 255, 0.05)',
+                                            border: '2px solid',
+                                            borderColor: selectedBases.has(base.id) ? '#6366f1' : 'rgba(255, 255, 255, 0.1)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            zIndex: 10,
+                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                            boxShadow: selectedBases.has(base.id) ? '0 4px 12px rgba(99, 102, 241, 0.3)' : 'none'
+                                        }}
+                                        onMouseEnter={e => !selectedBases.has(base.id) && (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)')}
+                                        onMouseLeave={e => !selectedBases.has(base.id) && (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)')}
+                                    >
+                                        {selectedBases.has(base.id) && (
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                        )}
+                                    </div>
+
+                                    <div className="agent-card-header" style={{ paddingLeft: '2.5rem' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                             <span style={{ fontSize: '1.2rem' }}>{base.kb_type === 'product' ? '📦' : '💬'}</span>
                                             <h3>{base.name}</h3>
@@ -240,8 +418,10 @@ function KnowledgeBaseList() {
                         )}
                     </div>
                 )
-            ) : (
+            ) : activeTab === 'inbox' ? (
                 <UnansweredQuestions />
+            ) : (
+                <TranscriptionHistory onKnowledgeBaseUpdate={fetchBases} />
             )}
 
             <ConfirmModal
@@ -251,6 +431,18 @@ function KnowledgeBaseList() {
                 onConfirm={handleConfirmDelete}
                 onCancel={() => setModalConfig({ isOpen: false, baseId: null, baseName: '' })}
                 confirmText="Excluir"
+                cancelText="Cancelar"
+                type="danger"
+                isLoading={isDeleting}
+            />
+
+            <ConfirmModal
+                isOpen={isBulkDeleteConfirmOpen}
+                title="Excluir em Massa"
+                message={`Você está prestes a excluir ${selectedBases.size} bases de conhecimento. Esta ação é irreversível e afetará todos os agentes vinculados. Deseja continuar?`}
+                onConfirm={handleBulkDelete}
+                onCancel={() => setIsBulkDeleteConfirmOpen(false)}
+                confirmText={`Excluir ${selectedBases.size} Bases`}
                 cancelText="Cancelar"
                 type="danger"
                 isLoading={isDeleting}

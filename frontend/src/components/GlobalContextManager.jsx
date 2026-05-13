@@ -345,13 +345,15 @@ const GlobalContextManager = () => {
                     background: transparent;
                     border: none;
                     cursor: pointer;
-                    opacity: 0.2;
+                    opacity: 0.5;
                     transition: all 0.2s;
                     font-size: 1.1rem;
+                    filter: grayscale(1);
                 }
                 .var-del-btn:hover {
                     opacity: 1;
-                    transform: scale(1.1);
+                    transform: scale(1.2);
+                    filter: grayscale(0);
                 }
                 .saving-indicator {
                     font-size: 0.7rem;

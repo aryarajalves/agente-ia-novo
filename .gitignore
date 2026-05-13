@@ -37,6 +37,21 @@ Thumbs.db
 
 # Project specific
 *.txt
+!backend/requirements.txt
+!**/README.md
 *.pdf
 tmp/
 debug/
+
+# Outputs e logs de teste (nunca commitar)
+backend/output*.json
+backend/output*.txt
+backend/test_results*.txt
+backend/test_auto_primary*.txt
+backend/*_log.txt
+backend/out_tests.txt
+backend/*.log
+backend/tmp_*.py
+backend/tmp_*.txt
+backend/celerybeat-schedule
+backend/database.db

@@ -1,0 +1,86 @@
+.ft-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.ft-stat-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 1.25rem;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  transition: transform 0.2s;
+}
+.ft-stat-card:hover {
+  transform: translateY(-2px);
+}
+.ft-stat-card.positive { border-color: rgba(16, 185, 129, 0.15); }
+.ft-stat-card.negative { border-color: rgba(244, 63, 94, 0.15); }
+.ft-stat-card.ready { border-color: rgba(99, 102, 241, 0.15); }
+.ft-stat-card.pending { border-color: rgba(245, 158, 11, 0.15); }
+
+.ft-stat-value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #f8fafc;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.ft-stat-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ft-progress-bar-section {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.ft-progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+  color: #94a3b8;
+}
+.ft-ready-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+.ft-not-ready-badge {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+.ft-progress-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.ft-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #10b981);
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ft-progress-hint {
+  font-size: 0.75rem;
+  color: #475569;
+}

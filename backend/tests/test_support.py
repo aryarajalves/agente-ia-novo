@@ -18,7 +18,8 @@ async def test_list_support_requests(client: AsyncClient, db_session):
         user_name="User Test",
         status="OPEN",
         summary="Preciso de ajuda humana",
-        reason="Acionou ferramenta de suporte"
+        reason="Acionou ferramenta de suporte",
+        extracted_data={"telefone": "(11) 99999-9999", "email": "teste@exemplo.com"}
     )
     db_session.add(req)
     await db_session.commit()
@@ -30,6 +31,7 @@ async def test_list_support_requests(client: AsyncClient, db_session):
     assert len(data) >= 1
     assert data[0]["session_id"] == "SESS_SUPPORT_1"
     assert data[0]["agent_name"] == "Suporte Agent"
+    assert data[0]["extracted_data"]["telefone"] == "(11) 99999-9999"
 
 @pytest.mark.asyncio
 async def test_resolve_support_request(client: AsyncClient, db_session):
@@ -95,3 +97,50 @@ async def test_generate_support_summary(client: AsyncClient, db_session):
     if response.status_code == 200:
         assert "summary" in response.json()
         assert "reason" in response.json()
+
+@pytest.mark.asyncio
+async def test_delete_support_request(client: AsyncClient, db_session):
+    # Setup
+    agent = AgentConfigModel(name="Delete Agent", model="gpt-4o-mini")
+    db_session.add(agent)
+    await db_session.commit()
+    await db_session.refresh(agent)
+    
+    req = SupportRequestModel(agent_id=agent.id, session_id="SESS_DEL", status="OPEN")
+    db_session.add(req)
+    await db_session.commit()
+    await db_session.refresh(req)
+    
+    # Delete
+    response = await client.delete(f"/support-requests/{req.id}")
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    
+    # Verify removal in list
+    response_list = await client.get("/support-requests")
+    assert not any(r["id"] == req.id for r in response_list.json())
+
+@pytest.mark.asyncio
+async def test_bulk_delete_support_requests(client: AsyncClient, db_session):
+    # Setup
+    agent = AgentConfigModel(name="Bulk Delete Agent", model="gpt-4o-mini")
+    db_session.add(agent)
+    await db_session.commit()
+    await db_session.refresh(agent)
+    
+    req1 = SupportRequestModel(agent_id=agent.id, session_id="SESS_BULK_1", status="OPEN")
+    req2 = SupportRequestModel(agent_id=agent.id, session_id="SESS_BULK_2", status="OPEN")
+    db_session.add_all([req1, req2])
+    await db_session.commit()
+    await db_session.refresh(req1)
+    await db_session.refresh(req2)
+    
+    # Bulk Delete
+    payload = {"ids": [req1.id, req2.id]}
+    response = await client.post("/support-requests/bulk-delete", json=payload)
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    
+    # Verify removal in list
+    response_list = await client.get("/support-requests")
+    assert not any(r["id"] in [req1.id, req2.id] for r in response_list.json())

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, ForeignKey, Table, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from database import Base
 
 # Tabela de associação para Muitos-para-Muitos entre Agentes e Ferramentas
@@ -34,7 +34,7 @@ class InteractionLog(Base):
     cost_brl = Column(Float)
     handoff_to = Column(String, nullable=True) # Ex: "suporte", "vendas", "humano"
     debug_info = Column(Text, nullable=True) # JSON stored as string
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class SessionSummary(Base):
     __tablename__ = "session_summaries"
@@ -49,8 +49,8 @@ class SessionSummary(Base):
     cost_brl = Column(Float, default=0.0)
     is_test_session = Column(Boolean, default=False)
     test_report = Column(JSON, nullable=True) # Armazena o JSON do relatório do tester
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class KnowledgeBaseModel(Base):
     __tablename__ = "knowledge_bases"
@@ -62,7 +62,7 @@ class KnowledgeBaseModel(Base):
     question_label = Column(String, default="Pergunta")
     answer_label = Column(String, default="Resposta")
     metadata_label = Column(String, default="Metadado")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     items = relationship("KnowledgeItemModel", back_populates="knowledge_base", cascade="all, delete-orphan")
     
@@ -138,6 +138,11 @@ class AgentConfigModel(Base):
     ui_header_color = Column(String, default="#0f172a")
     ui_chat_title = Column(String, default="Suporte Inteligente")
     ui_welcome_message = Column(Text, default="Olá! Como posso te ajudar hoje?")
+    initial_message = Column(Text, nullable=True)
+    initial_question_message = Column(Text, nullable=True)
+    initial_ignore_message = Column(Text, nullable=True) # Mensagem de anúncio para ignorar como pergunta
+    inbox_capture_enabled = Column(Boolean, default=True)
+
     
     # Cost Router
     router_enabled = Column(Boolean, default=False)
@@ -145,7 +150,6 @@ class AgentConfigModel(Base):
     router_simple_fallback_model = Column(String, nullable=True)
     router_complex_model = Column(String, default="gpt-4o")
     router_complex_fallback_model = Column(String, nullable=True)
-    inbox_capture_enabled = Column(Boolean, default=True)
 
     # Response Translation
     response_translation_enabled = Column(Boolean, default=False)
@@ -167,7 +171,7 @@ class AgentConfigModel(Base):
     handoff_enabled = Column(Boolean, default=False) # Permite que este agente use a ferramenta de handoff
     model_settings = Column(Text, default="{}") # JSON store for per-slot configurations (temperature, top_p, etc)
 
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class ToolModel(Base):
     __tablename__ = "tools"
@@ -177,7 +181,10 @@ class ToolModel(Base):
     description = Column(Text)
     parameters_schema = Column(Text) # Stored as JSON string
     webhook_url = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    labels_to_add = Column(Text, nullable=True) # JSON list of labels to add
+    labels_to_remove = Column(Text, nullable=True) # JSON list of labels to remove
+    confirmation_message = Column(Text, nullable=True) # Mensagem enviada ao acionar a ferramenta
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Relacionamento reverso com agentes
     agents = relationship("AgentConfigModel", secondary=agent_tools, back_populates="tools")
@@ -189,9 +196,10 @@ class PromptDraftModel(Base):
     agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="CASCADE"), nullable=False)
     prompt_text = Column(Text, nullable=False)
     version_name = Column(String, nullable=True) # Ex: "Rascunho de Segunda"
+    description = Column(Text, nullable=True) # Descrição da versão
     character_count = Column(Integer, default=0)
     token_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     agent = relationship("AgentConfigModel", back_populates="prompt_drafts")
 
@@ -204,7 +212,7 @@ class UserMemoryModel(Base):
     value = Column(Text) # Valor do fato extraído
     confidence = Column(Float, default=1.0) # Nível de certeza da IA
     source_message = Column(Text, nullable=True) # Trecho original para referência
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class FeedbackLog(Base):
     """Armazena pares de treinamento para o pipeline de fine-tuning.
@@ -230,7 +238,7 @@ class FeedbackLog(Base):
     exported_to_finetune = Column(Boolean, default=False)
     finetune_job_id = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class GoogleTokensModel(Base):
     """Armazena tokens de autenticação do Google Calendar para cada agente."""
@@ -245,9 +253,9 @@ class GoogleTokensModel(Base):
     client_id = Column(String, nullable=True)
     client_secret = Column(String, nullable=True)
     scopes = Column(Text, nullable=True)
-    expiry = Column(DateTime, nullable=True)
+    expiry = Column(DateTime(timezone=True), nullable=True)
     
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     agent = relationship("AgentConfigModel")
 
@@ -260,8 +268,8 @@ class GlobalContextVariableModel(Base):
     type = Column(String, default="string") # Novo campo: string, number, boolean
     description = Column(Text, nullable=True)
     is_default = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -272,8 +280,8 @@ class UserModel(Base):
     password = Column(String, nullable=False) # Nota: Em produção usar hashbcryt. Aqui mantemos simples conforme solicitado.
     role = Column(String, default="Usuário") # "Super Admin", "Admin", "Usuário"
     status = Column(String, default="ATIVO") # "ATIVO", "INATIVO"
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class UnansweredQuestionModel(Base):
     __tablename__ = "unanswered_questions"
@@ -284,19 +292,148 @@ class UnansweredQuestionModel(Base):
     question = Column(Text, nullable=False)
     context = Column(Text, nullable=True)
     status = Column(String, default="PENDENTE") # PENDENTE, RESPONDIDA, DESCARTADA
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class SupportRequestModel(Base):
     __tablename__ = "support_requests"
     id = Column(Integer, primary_key=True)
     agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="SET NULL"))
+    webhook_config_id = Column(Integer, ForeignKey("webhook_configs.id", ondelete="SET NULL"), nullable=True)
     session_id = Column(String, nullable=False)
     user_name = Column(String)
     user_email = Column(String)
     status = Column(String, default="OPEN")
     summary = Column(Text)
     reason = Column(Text)
+    account_id = Column(String, nullable=True)
+    conversation_id = Column(String, nullable=True)
     extracted_data = Column(JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class WebhookConfigModel(Base):
+    __tablename__ = "webhook_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False, index=True)
+    memory_token = Column(String, unique=True, nullable=True, index=True)
+    leads_table = Column(String, nullable=False, default="leads")
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    delay_seconds = Column(Integer, default=30)
+    agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="SET NULL"), nullable=True)
+    blocked_messages = Column(Text, nullable=True)  # JSON array of strings
+    allowed_contacts = Column(Text, nullable=True)  # JSON array of phone numbers; empty = all allowed
+    chatwoot_url = Column(String, nullable=True)        # Ex: https://app.chatwoot.com
+    chatwoot_api_token = Column(String, nullable=True)  # User access token
+    labels_on_message = Column(Text, nullable=True)     # JSON array: etiquetas adicionadas em toda msg
+    delete_keywords = Column(Text, nullable=True)       # JSON array: palavras que disparam deleção
+    delete_message = Column(Text, nullable=True)        # Mensagem enviada antes de deletar o contato
+    response_delay_seconds = Column(Integer, default=0) # Delay em segundos antes de enviar resposta ao usuário
+    window_close_label = Column(String, nullable=True)   # Etiqueta a remover no Chatwoot quando janela 24h expirar
+    followup_enabled = Column(Boolean, default=False)    # Ativar follow-up automático
+    followup_steps = Column(Text, nullable=True)         # JSON: [{delay_hours}, ...]
+    followup_business_hours = Column(Text, nullable=True) # JSON: {enabled, start, end, weekdays, saturday, sunday}
+    ignore_by_label = Column(String, nullable=True)     # Se o contato tiver essa etiqueta, a automação para
+    
+    # Automação de Suporte Humano (Handoff)
+    handoff_labels_to_add = Column(Text, nullable=True)     # JSON: ["etiqueta1", ...]
+    handoff_labels_to_remove = Column(Text, nullable=True)  # JSON: ["etiqueta2", ...]
+    handoff_keyword = Column(String, nullable=True)         # Palavra-chave para acionar suporte humano
+    handoff_message = Column(Text, nullable=True)           # Mensagem enviada ao usuário ao acionar
+    
+    # Automação de Retorno ao Agente (Robô Handoff)
+    ai_handoff_labels_to_add = Column(Text, nullable=True)     # JSON: ["etiqueta1", ...]
+    ai_handoff_labels_to_remove = Column(Text, nullable=True)  # JSON: ["etiqueta2", ...]
+    ai_handoff_keyword = Column(String, nullable=True)         # Palavra-chave para retornar ao robô
+    ai_handoff_message = Column(Text, nullable=True)           # Mensagem enviada ao retornar
+    
+    # Media Processing Controls
+    process_audio = Column(Boolean, default=True)
+    process_image = Column(Boolean, default=True)
+    
+    # Multi-Agent Support
+    secondary_agent_ids = Column(Text, nullable=True) # JSON array of IDs
+    
+    # Memory Sync Configuration
+    memory_sync_enabled = Column(Boolean, default=False)
+    memory_phone_path = Column(String, default="phone")
+    memory_name_path = Column(String, nullable=True)
+    memory_mappings = Column(Text, nullable=True) # JSON array: [{"path": "json.field", "key": "memory_key"}]
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    events = relationship("WebhookEventModel", back_populates="webhook_config", cascade="all, delete-orphan")
+    agent = relationship("AgentConfigModel", foreign_keys=[agent_id])
+
+
+class WebhookEventModel(Base):
+    __tablename__ = "webhook_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    webhook_config_id = Column(Integer, ForeignKey("webhook_configs.id", ondelete="CASCADE"), nullable=False)
+    event_type = Column(String, nullable=True)
+    message_type = Column(String, nullable=True, default="text")
+    conta_id = Column(String, nullable=True, index=True)
+    inbox_id = Column(String, nullable=True)
+    inbox_nome = Column(String, nullable=True)
+    conversa_id = Column(String, nullable=True, index=True)
+    mensagem_id = Column(String, nullable=True)
+    contato_id = Column(String, nullable=True)
+    telefone = Column(String, nullable=True, index=True)
+    labels = Column(Text, nullable=True)
+    contato_nome = Column(String, nullable=True)
+    mensagem = Column(Text, nullable=True)
+    link = Column(Text, nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    status = Column(String, default="received")
+    task_id = Column(String, nullable=True)
+    processing_steps = Column(Text, nullable=True)
+    agent_response = Column(Text, nullable=True)
+    legenda = Column(Text, nullable=True)
+    dono = Column(String, nullable=True) # agente | usuario
+    scheduled_at = Column(DateTime(timezone=True), nullable=True) # Data/Hora para execução após debounce
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    webhook_config = relationship("WebhookConfigModel", back_populates="events")
+
+
+class TranscriptionFolder(Base):
+    """Pastas para organizar as transcrições."""
+    __tablename__ = "transcription_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+ 
+class TranscriptionTaskModel(Base):
+    """Armazena o histórico e status das transcrições de áudio/vídeo."""
+    __tablename__ = "transcription_tasks"
+ 
+    id = Column(Integer, primary_key=True, index=True)
+    knowledge_base_id = Column(Integer, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=True)
+    filename = Column(String, nullable=False)
+    s3_key = Column(String, nullable=True) # Nome do arquivo no bucket
+    status = Column(String, default="PENDING") # PENDING, PROCESSING, SUCCESS, FAILURE
+    task_id = Column(String, nullable=True) # ID do Celery
+    
+    # Resultados
+    result_text = Column(Text, nullable=True)
+    duration = Column(Float, nullable=True)
+    tokens = Column(Integer, nullable=True)
+    cost_usd = Column(Float, nullable=True)
+    
+    # Organização
+    folder_id = Column(Integer, ForeignKey("transcription_folders.id", ondelete="SET NULL"), nullable=True)
+    
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    knowledge_base = relationship("KnowledgeBaseModel")
+    folder = relationship("TranscriptionFolder")

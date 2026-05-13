@@ -1,0 +1,394 @@
+from typing import List, Optional, Dict, Any
+import json
+import logging
+import os
+import io
+import uuid
+import shutil
+import time
+import asyncio
+import boto3
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks, Response, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete, func
+from sqlalchemy.orm import selectinload
+
+from models import KnowledgeBaseModel, KnowledgeItemModel, TranscriptionTaskModel, TranscriptionFolder
+from database import async_session
+from api.schemas import (
+    KnowledgeBase, KnowledgeItem, BatchDeleteRequest, 
+    BatchUpdateRequest, BulkSummarizeRequest, MergeItemsRequest, 
+    RAGSimulationRequest, CoverageCheckRequest, TranscriptionProcessRequest,
+    BulkDeleteTranscriptionRequest, TranscriptionRenameRequest, 
+    TranscriptionFolderRequest, TranscriptionMoveRequest, 
+    ManualTranscriptionRequest, TranscriptionContentUpdateRequest,
+    GenerateUploadUrlRequest, ConfirmUploadRequest
+)
+from api.deps import get_db, verify_api_key
+from rag_service import (
+    get_embedding, get_batch_embeddings, calculate_coverage, 
+    call_rag_llm, search_knowledge_base
+)
+from smart_importer import chunk_text, generate_global_qa
+from s3_service import s3_service
+from agent import get_openai_client
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["Knowledge Base"])
+
+# --- HELPERS PARA EXTRAÇÃO ---
+async def extract_text_from_pdf(content: bytes):
+    import pdfplumber
+    text = ""
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() or ""
+    return text
+
+async def extract_text_from_docx(content: bytes):
+    from docx import Document
+    doc = Document(io.BytesIO(content))
+    return "\n".join([p.text for p in doc.paragraphs])
+
+async def background_s3_upload(local_path: str, s3_key: str, task_id: int, config_dict: dict):
+    try:
+        from tasks import process_transcription_task
+        logger.info(f"BACKGROUND: Iniciando upload para S3 de {local_path} -> {s3_key}")
+        
+        loop = asyncio.get_running_loop()
+        def do_upload():
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=s3_service.endpoint_url,
+                aws_access_key_id=s3_service.access_key,
+                aws_secret_access_key=s3_service.secret_key,
+                region_name=s3_service.region
+            )
+            s3_client.upload_file(local_path, s3_service.bucket_name, s3_key)
+            
+        await loop.run_in_executor(None, do_upload)
+        logger.info(f"BACKGROUND: Upload S3 concluído. Disparando Celery para task_id={task_id}")
+        process_transcription_task.delay(task_id, s3_key, config_dict)
+        
+    except Exception as e:
+        logger.error(f"Erro no background S3 upload: {e}", exc_info=True)
+        async with async_session() as db:
+            task = await db.get(TranscriptionTaskModel, task_id)
+            if task:
+                task.status = "FAILURE"
+                task.error_message = f"Falha no upload para storage: {str(e)}"
+                await db.commit()
+    finally:
+        if os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception as rme:
+                logger.error(f"Não conseguiu excluir temp local {local_path}: {rme}")
+
+# --- KNOWLEDGE BASE ENDPOINTS ---
+
+@router.get("/knowledge-bases", response_model=List[KnowledgeBase])
+async def list_knowledge_bases(db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeBaseModel).options(selectinload(KnowledgeBaseModel.items)))
+    return result.scalars().all()
+
+@router.post("/knowledge-bases", response_model=KnowledgeBase)
+async def create_knowledge_base(kb: KnowledgeBase, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeBaseModel).where(KnowledgeBaseModel.name == kb.name))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="Já existe uma base de conhecimento com este nome.")
+
+    db_kb = KnowledgeBaseModel(name=kb.name, description=kb.description, kb_type=kb.kb_type)
+    db.add(db_kb)
+    await db.commit()
+    await db.refresh(db_kb)
+    return db_kb
+
+@router.get("/knowledge-bases/{kb_id}", response_model=KnowledgeBase)
+async def get_knowledge_base(kb_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(
+        select(KnowledgeBaseModel)
+        .where(KnowledgeBaseModel.id == kb_id)
+        .options(selectinload(KnowledgeBaseModel.items))
+    )
+    kb = result.scalars().first()
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+    return kb
+
+@router.put("/knowledge-bases/{kb_id}", response_model=KnowledgeBase)
+async def update_knowledge_base(kb_id: int, kb: KnowledgeBase, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeBaseModel).where(KnowledgeBaseModel.id == kb_id))
+    db_kb = result.scalars().first()
+    if not db_kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+    
+    if db_kb.name != kb.name:
+        res_name = await db.execute(select(KnowledgeBaseModel).where(KnowledgeBaseModel.name == kb.name))
+        if res_name.scalars().first():
+            raise HTTPException(status_code=400, detail="Já existe uma base de conhecimento com este nome.")
+
+    db_kb.name = kb.name
+    db_kb.description = kb.description
+    db_kb.kb_type = kb.kb_type
+    db_kb.question_label = kb.question_label
+    db_kb.answer_label = kb.answer_label
+    db_kb.metadata_label = kb.metadata_label
+    await db.commit()
+    await db.refresh(db_kb)
+    
+    result = await db.execute(
+        select(KnowledgeBaseModel)
+        .where(KnowledgeBaseModel.id == kb_id)
+        .options(selectinload(KnowledgeBaseModel.items))
+    )
+    return result.scalars().first()
+
+@router.delete("/knowledge-bases/{kb_id}")
+async def delete_knowledge_base(kb_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeBaseModel).where(KnowledgeBaseModel.id == kb_id))
+    kb = result.scalars().first()
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+    await db.delete(kb)
+    await db.commit()
+    return {"message": "Knowledge Base deleted"}
+
+@router.post("/knowledge-bases/batch-delete")
+async def batch_delete_knowledge_bases(request: BatchDeleteRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    if not request.item_ids:
+        return {"message": "No bases to delete"}
+    await db.execute(delete(KnowledgeBaseModel).where(KnowledgeBaseModel.id.in_(request.item_ids)))
+    await db.commit()
+    return {"message": f"Deleted {len(request.item_ids)} knowledge bases"}
+
+@router.post("/knowledge-bases/{kb_id}/propose-merge")
+async def propose_kb_merge(kb_id: int, request: MergeItemsRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    if len(request.item_ids) < 2:
+        raise HTTPException(status_code=400, detail="Selecione ao menos 2 itens para mesclar.")
+    try:
+        res = await db.execute(select(KnowledgeItemModel).where(KnowledgeItemModel.id.in_(request.item_ids)))
+        items = res.scalars().all()
+        if not items: raise HTTPException(status_code=404, detail="Itens não encontrados.")
+        
+        context = "".join([f"VARIANTE {idx+1}:\nPergunta: {i.question}\nResposta: {i.answer}\n\n" for idx, i in enumerate(items)])
+        prompt = f"Sintetize estas VARIANTES em 1 Pergunta e 1 Resposta JSON:\n{context}"
+        
+        response = await call_rag_llm(messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"})
+        return {"proposed": json.loads(response.choices[0].message.content), "original_ids": request.item_ids}
+    except Exception as e:
+        logger.error(f"Erro ao propor mesclagem: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/knowledge-bases/{kb_id}/simulate-rag")
+async def simulate_rag(kb_id: int, request: RAGSimulationRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    items, usage = await search_knowledge_base(
+        db=db, query=request.query, kb_id=kb_id, limit=request.limit,
+        model="gpt-4o-mini", fallback_model="gpt-4o-mini",
+        force_translation=request.translation_enabled,
+        force_multi_query=request.multi_query_enabled,
+        force_rerank=request.rerank_enabled,
+        force_agentic_eval=request.agentic_eval_enabled,
+        force_parent_expansion=request.parent_expansion_enabled
+    )
+    return {"items": items, "usage": {"prompt_tokens": usage.prompt_tokens if usage else 0, "completion_tokens": usage.completion_tokens if usage else 0}}
+
+@router.post("/knowledge-bases/{kb_id}/coverage")
+async def check_coverage(kb_id: int, payload: CoverageCheckRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    results = await calculate_coverage(db, payload.questions, kb_id)
+    return {"results": results}
+
+@router.post("/knowledge-bases/{kb_id}/upload")
+async def upload_kb_file(kb_id: int, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    content = await file.read()
+    filename = file.filename.lower()
+    text = ""
+    if filename.endswith(".pdf"): text = await extract_text_from_pdf(content)
+    elif filename.endswith(".docx"): text = await extract_text_from_docx(content)
+    else: text = content.decode("utf-8", errors="ignore")
+
+    lines = [l.strip() for l in text.split("\n") if len(l.strip()) > 20]
+    for line in lines:
+        db.add(KnowledgeItemModel(knowledge_base_id=kb_id, question=f"Informação de {file.filename}", answer=line, category="Upload"))
+    await db.commit()
+    return {"message": f"Extraído {len(lines)} itens do arquivo {file.filename}"}
+
+# --- KNOWLEDGE ITEM ENDPOINTS ---
+
+@router.post("/knowledge-bases/{kb_id}/items", response_model=KnowledgeItem)
+async def add_knowledge_item(kb_id: int, item: KnowledgeItem, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    emb, _ = await get_embedding(item.question)
+    db_item = KnowledgeItemModel(knowledge_base_id=kb_id, question=item.question, answer=item.answer, metadata_val=item.metadata_val, category=item.category, embedding=emb)
+    db.add(db_item)
+    await db.commit()
+    await db.refresh(db_item)
+    return db_item
+
+@router.delete("/knowledge-items/{item_id}")
+async def delete_knowledge_item(item_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeItemModel).where(KnowledgeItemModel.id == item_id))
+    item = result.scalars().first()
+    if item:
+        await db.delete(item)
+        await db.commit()
+    return {"message": "Item deleted"}
+
+@router.put("/knowledge-items/{item_id}", response_model=KnowledgeItem)
+async def update_knowledge_item(item_id: int, item: KnowledgeItem, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeItemModel).where(KnowledgeItemModel.id == item_id))
+    db_item = result.scalars().first()
+    if not db_item: raise HTTPException(status_code=404, detail="Item not found")
+    
+    if db_item.question != item.question:
+        emb, _ = await get_embedding(item.question)
+        db_item.embedding = emb
+
+    db_item.question = item.question
+    db_item.answer = item.answer
+    db_item.metadata_val = item.metadata_val
+    db_item.category = item.category
+    await db.commit()
+    await db.refresh(db_item)
+    return db_item
+
+@router.post("/knowledge-bases/{kb_id}/items/bulk")
+async def bulk_knowledge_items(kb_id: int, items: List[KnowledgeItem], db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeItemModel).where(KnowledgeItemModel.id.in_([i.id for i in items if i.id])))
+    existing_items = {i.id: i for i in result.scalars().all()}
+    for item in items:
+        if item.id in existing_items:
+            db_item = existing_items[item.id]
+            db_item.question = item.question; db_item.answer = item.answer
+            db_item.metadata_val = item.metadata_val; db_item.category = item.category
+        else:
+            emb, _ = await get_embedding(item.question)
+            db.add(KnowledgeItemModel(knowledge_base_id=kb_id, question=item.question, answer=item.answer, metadata_val=item.metadata_val, category=item.category, embedding=emb))
+            
+    res_all = await db.execute(select(KnowledgeItemModel.id).where(KnowledgeItemModel.knowledge_base_id == kb_id))
+    all_db_ids = set(res_all.scalars().all())
+    ids_to_delete = all_db_ids - {i.id for i in items if i.id}
+    if ids_to_delete:
+        await db.execute(delete(KnowledgeItemModel).where(KnowledgeItemModel.id.in_(list(ids_to_delete))))
+    await db.commit()
+    return {"message": "Bulk sync completed"}
+
+# --- TRANSCRIPTION ENDPOINTS ---
+
+@router.post("/knowledge-bases/generate-upload-url")
+async def generate_upload_url(request: GenerateUploadUrlRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    try:
+        s3_key = f"transcriptions/{int(time.time())}_{request.filename}"
+        put_url = s3_service.generate_presigned_put_url(s3_key, content_type=request.content_type, expiration=3600)
+        if not put_url: raise HTTPException(status_code=500, detail="Erro ao gerar URL S3.")
+        new_task = TranscriptionTaskModel(knowledge_base_id=request.kb_id, filename=request.filename, s3_key=s3_key, status="PENDING")
+        db.add(new_task); await db.commit(); await db.refresh(new_task)
+        return {"url": put_url, "s3_key": s3_key, "task_id": new_task.id}
+    except Exception as e:
+        logger.error(f"Erro generate_upload_url: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/knowledge-bases/confirm-upload")
+async def confirm_upload_endpoint(request: ConfirmUploadRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    from tasks import process_transcription_task
+    task = await db.get(TranscriptionTaskModel, request.task_id)
+    if not task: raise HTTPException(status_code=404, detail="Task não encontrada")
+    process_transcription_task.delay(request.task_id, task.s3_key, request.config)
+    return {"message": "Processamento iniciado.", "status": "PENDING"}
+
+@router.post("/knowledge-bases/transcribe")
+async def transcribe_video_endpoint(request: Request, background_tasks: BackgroundTasks, file: UploadFile = File(...), config: str = Form("{}"), kb_id: Optional[int] = Form(None), _: None = Depends(verify_api_key)):
+    config_dict = json.loads(config)
+    s3_key = f"transcriptions/{int(time.time())}_{file.filename}"
+    temp_dir = os.path.join(os.getcwd(), "tmp_uploads"); os.makedirs(temp_dir, exist_ok=True)
+    local_path = os.path.join(temp_dir, f"{uuid.uuid4()}{os.path.splitext(file.filename)[1]}")
+    with open(local_path, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+    async with async_session() as db:
+        new_task = TranscriptionTaskModel(knowledge_base_id=kb_id, filename=file.filename, s3_key=s3_key, status="PENDING")
+        db.add(new_task); await db.commit(); await db.refresh(new_task)
+        task_id = new_task.id
+    background_tasks.add_task(background_s3_upload, local_path, s3_key, task_id, config_dict)
+    return {"message": "Transcrição iniciada.", "task_id": task_id, "status": "PENDING"}
+
+@router.get("/transcription-tasks")
+async def list_transcription_tasks(response: Response, db: AsyncSession = Depends(get_db), page: int = Query(1, ge=1), limit: int = Query(20, ge=1), folder_id: Optional[int] = Query(None), _: None = Depends(verify_api_key)):
+    offset = (page - 1) * limit
+    stmt = select(TranscriptionTaskModel).where(TranscriptionTaskModel.status != "PENDING")
+    if folder_id: stmt = stmt.where(TranscriptionTaskModel.folder_id == folder_id)
+    total_res = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total_count = total_res.scalar()
+    result = await db.execute(stmt.order_by(TranscriptionTaskModel.created_at.desc()).offset(offset).limit(limit))
+    return {"tasks": result.scalars().all(), "total": total_count, "page": page, "limit": limit}
+
+@router.get("/transcription-folders")
+async def list_transcription_folders(db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(TranscriptionFolder).order_by(TranscriptionFolder.name))
+    return result.scalars().all()
+
+@router.post("/transcription-folders")
+async def create_transcription_folder(request: TranscriptionFolderRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    new_folder = TranscriptionFolder(name=request.name)
+    db.add(new_folder); await db.commit(); await db.refresh(new_folder)
+    return new_folder
+
+@router.delete("/transcription-folders/{folder_id}")
+async def delete_transcription_folder(folder_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    folder = await db.get(TranscriptionFolder, folder_id)
+    if not folder: raise HTTPException(status_code=404, detail="Pasta não encontrada")
+    await db.delete(folder); await db.commit()
+    return {"message": "Pasta removida."}
+
+@router.post("/transcription-tasks/bulk-delete")
+async def bulk_delete_transcription_tasks(request: BulkDeleteTranscriptionRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    res = await db.execute(select(TranscriptionTaskModel).where(TranscriptionTaskModel.id.in_(request.task_ids)))
+    tasks = res.scalars().all()
+    for task in tasks:
+        if task.s3_key: s3_service.delete_file(task.s3_key)
+        await db.delete(task)
+    await db.commit()
+    return {"message": f"{len(tasks)} registros removidos."}
+
+# --- OUTROS ENDPOINTS KB ---
+
+@router.post("/knowledge-bases/analyze-file")
+async def analyze_kb_file(file: UploadFile = File(...), _: None = Depends(verify_api_key)):
+    content = await file.read(); filename = file.filename.lower()
+    try:
+        if filename.endswith(".csv"): df = pd.read_csv(io.BytesIO(content))
+        elif filename.endswith((".xls", ".xlsx")): df = pd.read_excel(io.BytesIO(content))
+        elif filename.endswith(".pdf"): return {"page_count": 0, "is_pdf": True, "is_image": False} # Simplified
+        elif filename.endswith((".png", ".jpg", ".jpeg", ".webp")): return {"page_count": 1, "is_pdf": False, "is_image": True}
+        else: return {"error": "Formato não suportado"}
+        return {"columns": df.columns.tolist(), "preview": df.head(5).to_dict(orient="records"), "total_rows": len(df)}
+    except Exception as e: return {"error": str(e)}
+
+@router.post("/knowledge-bases/analyze-text")
+async def analyze_kb_text(text: str = Form(...), _: None = Depends(verify_api_key)):
+    try:
+        # Simplified detection logic
+        df = pd.read_csv(io.StringIO(text), sep=',', nrows=5)
+        return {"columns": df.columns.tolist(), "preview": df.head(5).to_dict(orient="records"), "total_rows": 5}
+    except: return {"error": "Falha ao analisar texto"}
+
+@router.post("/knowledge-bases/{kb_id}/import-mapped")
+async def import_mapped_file(kb_id: int, question_col: str = Form(...), answer_col: str = Form(...), category_col: str = Form(None), fixed_category: str = Form(None), metadata_col: str = Form(None), fixed_metadata: str = Form(None), file: UploadFile = File(...), db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    content = await file.read(); filename = file.filename.lower()
+    df = pd.read_csv(io.BytesIO(content)) if filename.endswith(".csv") else pd.read_excel(io.BytesIO(content))
+    for _, row in df.iterrows():
+        q = str(row[question_col]); a = str(row[answer_col])
+        cat = str(row[category_col]) if category_col and category_col in row else fixed_category
+        meta = str(row[metadata_col]) if metadata_col and metadata_col in row else fixed_metadata
+        emb, _ = await get_embedding(q)
+        db.add(KnowledgeItemModel(knowledge_base_id=kb_id, question=q, answer=a, category=cat, metadata_val=meta, embedding=emb))
+    await db.commit()
+    return {"message": "Importação concluída"}
+
+@router.post("/knowledge-bases/{kb_id}/process-transcription")
+async def process_transcription_endpoint(kb_id: int, request: TranscriptionProcessRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    from rag_service import get_batch_embeddings
+    from smart_importer import chunk_text
+    chunks = chunk_text(request.text, chunk_size=1200, overlap=150)
+    for c in chunks:
+        db.add(KnowledgeItemModel(knowledge_base_id=kb_id, question="Trecho", answer=c["text"], category="Transcrição"))
+    await db.commit()
+    return {"message": "Processado"}

@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --bg-color: #020617;
+  --sidebar-bg: #0b1120;
+  --card-bg: rgba(15, 23, 42, 0.6);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --primary-color: #6366f1;
+  --primary-hover: #4f46e5;
+  --accent-color: #3b82f6;
+  --accent-gradient: linear-gradient(135deg, #6366f1, #a855f7);
+  --danger-gradient: linear-gradient(135deg, #ef4444, #f43f5e);
+  --border-color: rgba(255, 255, 255, 0.06);
+  --input-bg: #0f172a;
+  --font-main: 'Outfit', sans-serif;
+  --success-color: #10b981;
+  --error-color: #ef4444;
+  --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.4);
+}

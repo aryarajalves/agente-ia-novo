@@ -111,14 +111,6 @@ const Sidebar = ({ onLogout }) => {
                                         <div className="active-indicator"></div>
                                     </NavLink>
                                     <NavLink
-                                        to="/tools"
-                                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                                    >
-                                        <span className="nav-icon">🛠️</span>
-                                        <span className="nav-label">Ferramentas (API)</span>
-                                        <div className="active-indicator"></div>
-                                    </NavLink>
-                                    <NavLink
                                         to="/financeiro"
                                         className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                                     >
@@ -139,19 +131,6 @@ const Sidebar = ({ onLogout }) => {
                         </div>
                     )}
 
-                    {(isSuperAdmin || isAdmin) && (
-                        <div className="nav-section">
-                            <span className="nav-section-title">LABORATÓRIO</span>
-                            <NavLink
-                                to="/fine-tuning"
-                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                            >
-                                <span className="nav-icon">🏭</span>
-                                <span className="nav-label">Fine-Tuning</span>
-                                <div className="active-indicator"></div>
-                            </NavLink>
-                        </div>
-                    )}
 
                     {isSuperAdmin && (
                         <div className="nav-section">
@@ -200,7 +179,7 @@ const Sidebar = ({ onLogout }) => {
             </aside>
 
             {showSettingsModal && (
-                <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
+                <div className="modal-overlay">
                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', maxHeight: '90vh', overflowY: 'auto' }}>
                         <span className="modal-icon">⚙️</span>
                         <h2 className="modal-title">Configurações de Perfil</h2>
@@ -275,7 +254,7 @@ const Sidebar = ({ onLogout }) => {
             )}
 
             {showLogoutModal && (
-                <div className="modal-overlay" onClick={() => setShowLogoutModal(false)}>
+                <div className="modal-overlay">
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <span className="modal-icon">👋</span>
                         <h2 className="modal-title">Até logo!</h2>

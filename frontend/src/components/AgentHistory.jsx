@@ -163,20 +163,7 @@ const AgentHistory = ({ agentId }) => {
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <button
                             onClick={extractBatchQuestions}
-                            style={{
-                                background: 'linear-gradient(135deg, #10b981, #059669)',
-                                color: 'white',
-                                border: 'none',
-                                padding: '6px 12px',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                fontWeight: '600',
-                                fontSize: '0.85rem',
-                                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.2)'
-                            }}
+                            className="batch-extract-premium"
                         >
                             💎 Extrair Perguntas ({selectedSessions.size})
                         </button>

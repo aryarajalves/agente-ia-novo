@@ -1,0 +1,191 @@
+/* ============================================================
+   WEBHOOK MANAGER — Modals Premium
+   ============================================================ */
+
+.premium-modal-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.85) !important;
+  backdrop-filter: blur(12px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 999999 !important;
+  padding: 20px !important;
+  animation: fadeIn 0.3s ease-out !important;
+}
+
+/* Esconde a barra lateral global quando o modal está aberto */
+body.global-modal-open .sidebar {
+  display: none !important;
+}
+
+/* Garante que o conteúdo principal ocupe a tela toda para centralizar o modal */
+body.global-modal-open .main-content {
+  margin-left: 0 !important;
+  width: 100% !important;
+  flex: 1 !important;
+}
+
+.premium-modal-content {
+  background: #0f172a !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 28px !important;
+  width: 100% !important;
+  max-width: 900px !important;
+  height: 85vh !important;
+  max-height: 750px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.8) !important;
+  position: relative !important;
+  animation: modalPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+.premium-modal-content.compact {
+  height: auto !important;
+  min-height: unset !important;
+  max-height: 90vh !important;
+  max-width: 450px !important;
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.95) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header-premium {
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  flex-shrink: 0;
+}
+
+.modal-header-premium .header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-header-premium .header-icon {
+  font-size: 1.5rem;
+  background: rgba(99, 102, 241, 0.1);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.modal-header-premium .header-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.modal-body-wrapper {
+  display: flex !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+}
+
+/* Sidebar interna do Modal */
+.modal-sidebar-premium {
+  width: 220px !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+  padding: 1.5rem 1rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.tab-switcher-premium {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #f8fafc;
+}
+
+.tab-btn.active {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.tab-btn .tab-icon {
+  font-size: 1.1rem;
+  opacity: 0.7;
+}
+
+.tab-btn.active .tab-icon {
+  opacity: 1;
+}
+
+/* Área de conteúdo principal do Modal */
+.modal-main-content {
+  flex: 1 !important;
+  padding: 2rem !important;
+  overflow-y: auto !important;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.4) 100%) !important;
+}
+
+.modal-footer-premium {
+  padding: 1.25rem 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: rgba(2, 6, 23, 0.3);
+  flex-shrink: 0;
+}
+
+.modal-close-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  color: #94a3b8;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}

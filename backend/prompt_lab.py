@@ -1,10 +1,28 @@
-
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import os
 import openai
+import logging
+from agent import resolve_conditional_blocks, get_openai_client
+from config_store import format_ai_params
+from agent_core.logic.pre_router import run_pre_router_ai
+from database import SessionLocal
+from models import AgentConfigModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+class PlaygroundRequest(BaseModel):
+    agent_id: Optional[int] = None
+    system_prompt: str
+    user_message: str
+    history: List[Dict[str, str]] = []
+    variables: Dict[str, Any] = {}
+    model: str = "gpt-4o-mini"
+    temperature: float = 0.7
+    initial_message: Optional[str] = None
 
 class PromptRequest(BaseModel):
     identity: str
@@ -12,6 +30,71 @@ class PromptRequest(BaseModel):
     tone: str
     audience: str
     restrictions: str
+
+class SearchOccurrence(BaseModel):
+    text_snippet: str
+    line_start: int
+    line_end: int
+    explanation: str
+
+class SearchRequest(BaseModel):
+    agent_id: Optional[int] = None
+    system_prompt: str
+    query: str
+    model: Optional[str] = None
+
+class SearchResponse(BaseModel):
+    found: bool
+    reasoning: str
+    corrected_query: Optional[str] = None
+    occurrences: List[SearchOccurrence] = []
+
+class ChatRequest(BaseModel):
+    agent_id: Optional[int] = None
+    current_prompt: str
+    messages: list[dict] # [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+    image_url: Optional[str] = None # Base64 ou URL pública
+
+async def get_best_model_for_agent(agent_id: Optional[int], default_model: str = "gpt-4o"):
+    """
+    Busca o melhor modelo configurado para o agente seguindo a hierarquia solicitada:
+    1. router_complex_model
+    2. router_complex_fallback_model
+    3. model
+    4. fallback_model
+    5. gpt-4o (default)
+    """
+    if not agent_id:
+        return default_model
+
+    from database import SessionLocal
+    from models import AgentConfigModel
+    from sqlalchemy import select
+
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(select(AgentConfigModel).where(AgentConfigModel.id == agent_id))
+            agent = result.scalars().first()
+            if not agent:
+                return default_model
+            
+            models = [
+                agent.router_complex_model,
+                agent.router_complex_fallback_model,
+                agent.model,
+                agent.fallback_model
+            ]
+            
+            for m in models:
+                if m and m.strip():
+                    # Evita modelos de placeholder se existirem
+                    if m.lower() not in ["", "none", "null"]:
+                        return m
+                        
+            return default_model
+    except Exception as e:
+        logger.warning(f"⚠️ Erro ao buscar modelo do agente {agent_id}: {e}. Usando fallback {default_model}")
+        return default_model
 
 @router.post("/generate-prompt")
 async def generate_prompt(request: PromptRequest):
@@ -48,7 +131,7 @@ async def generate_prompt(request: PromptRequest):
     try:
         client = openai.Client(api_key=api_key)
         response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_input}
@@ -64,13 +147,10 @@ class PublishRequest(BaseModel):
 
 @router.patch("/agents/{agent_id}/publish")
 async def publish_prompt(agent_id: int, request: PublishRequest):
-    from database import get_db
+    from database import SessionLocal
     from models import AgentConfigModel
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import AsyncSession
     
-    # We need to get a DB session manually because we are inside a router but want to keep it simple
-    from database import SessionLocal
     async with SessionLocal() as db:
         result = await db.execute(select(AgentConfigModel).where(AgentConfigModel.id == agent_id))
         db_config = result.scalars().first()
@@ -83,41 +163,130 @@ async def publish_prompt(agent_id: int, request: PublishRequest):
         
         return {"message": f"Prompt publicado com sucesso no agente {db_config.name}!"}
 
-class ChatRequest(BaseModel):
-    current_prompt: str
-    messages: list[dict] # [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
-
 @router.post("/prompt-chat")
 async def prompt_chat(request: ChatRequest):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="API Key not configured")
 
+    # Se houver imagem, priorizamos modelos com Vision
+    model_to_use = await get_best_model_for_agent(request.agent_id, "gpt-4o")
+    if request.image_url and "vision" not in model_to_use and model_to_use != "gpt-4o":
+        model_to_use = "gpt-4o"
+
+    lines = request.current_prompt.split('\n')
+    numbered_prompt = "\n".join([f"{i+1}: {line}" for i, line in enumerate(lines)])
+
     system_instruction = f"""
-    Você é um Consultor Estratégico de Prompts. Seu objetivo é ajudar o usuário a planejar e ajustar o prompt do Agente de IA.
-    
-    PROMPT ATUAL DO AGENTE:
+    ### IDENTIDADE
+    Você é um Engenheiro de Prompts Sênior e Analista Visual. Sua função é analisar o System Prompt e as IMAGENS enviadas para otimizar as instruções do agente.
+
+    ### PROMPT ATUAL (NUMERADO PARA REFERÊNCIA)
     ---
-    {request.current_prompt}
+    {numbered_prompt}
     ---
+
+    ### CAPACIDADE VISUAL
+    Você PODE e DEVE visualizar as imagens enviadas pelo usuário para entender o contexto (ex: prints de telas, fluxogramas, erros de interface) e sugerir melhorias no prompt baseadas nessa análise visual.
+
+    ### REGRAS RÍGIDAS DE COMPORTAMENTO
+    1. **REFERÊNCIA DE LINHAS:** Toda vez que mencionar algo do prompt, você DEVE citar o número da linha.
+    2. **RESOLUÇÃO DE AMBIGUIDADE:** Se houver múltiplos assuntos parecidos, liste as linhas e PERGUNTAR qual deles alterar.
+
+    ### PADRÃO OBRIGATÓRIO PARA RESPOSTAS DE EDIÇÃO (APENAS PEDIDOS DE MUDANÇA)
+    Sempre que for propor uma alteração, você DEVE seguir este formato:
     
-    INSTRUÇÕES:
-    1. Não altere o prompt ainda. Apenas converse com o usuário sobre o que ele quer mudar ou melhorar.
-    2. Dê sugestões críticas: o que está faltando? Como deixar mais persuasivo ou técnico?
-    3. Seja breve e consultivo.
+    "Na linha **[X]**, o texto atual é:
+    '[Texto Original]'
+    
+    Vou alterar para:
+    '[Novo Texto]'
+    
+    Clique em **'✨ Aplicar ao Editor'** para efetivar a alteração."
+
+    ### DIRETRIZES DE COMPORTAMENTO
+    1. FOCO NO TEXTO: Analise a imagem para entender a dúvida, mas sua resposta final deve ser focada em como atualizar o texto do prompt.
+    2. TOM DE VOZ: Direto, técnico e profissional.
     """
 
-    messages = [{"role": "system", "content": system_instruction}] + request.messages
+    # Prepara as mensagens.
+    formatted_messages = []
+    for m in request.messages:
+        # Garantir que o conteúdo seja string pura inicialmente
+        msg_content = str(m.get("content") or "")
+        formatted_messages.append({"role": m["role"], "content": msg_content})
+
+    # Se houver uma imagem no request, injetamos na ÚLTIMA mensagem do usuário
+    if request.image_url:
+        # Encontra a última mensagem do usuário
+        last_user_msg = None
+        for m in reversed(formatted_messages):
+            if m["role"] == "user":
+                last_user_msg = m
+                break
+        
+        if last_user_msg:
+            last_user_msg["content"] = [
+                {"type": "text", "text": last_user_msg["content"] or "Analise esta imagem."},
+                {"type": "image_url", "image_url": {"url": request.image_url}}
+            ]
+        else:
+            formatted_messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Analise esta imagem em relação ao prompt."},
+                    {"type": "image_url", "image_url": {"url": request.image_url}}
+                ]
+            })
+
+    messages = [{"role": "system", "content": system_instruction}] + formatted_messages
 
     try:
-        client = openai.Client(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.7
-        )
-        return {"content": response.choices[0].message.content}
+        logger.info(f"🤖 Advisor: Processando chat (Modelo: {model_to_use})")
+        
+        from config_store import get_real_model_id, format_ai_params
+        real_model_id = get_real_model_id(model_to_use)
+        
+        client = get_openai_client(real_model_id)
+        
+        kwargs = format_ai_params(real_model_id, model_to_use, {
+            "messages": messages,
+            "temperature": 0.5
+        })
+
+        response = await client.chat.completions.create(**kwargs)
+        return {
+            "content": response.choices[0].message.content,
+            "model": response.model,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            }
+        }
     except Exception as e:
+        logger.error(f"❌ Erro no Advisor ({model_to_use}): {e}")
+        # Fallback final para gpt-4o se tudo falhar
+        if model_to_use != "gpt-4o":
+            logger.info("🔄 Tentando fallback final para gpt-4o...")
+            try:
+                client = get_openai_client("gpt-4o")
+                response = await client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    temperature=0.5
+                )
+                return {
+                    "content": response.choices[0].message.content,
+                    "model": response.model,
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                }
+            except Exception as e2:
+                raise HTTPException(status_code=500, detail=f"Erro crítico no Advisor: {str(e2)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/apply-suggestions")
@@ -126,15 +295,18 @@ async def apply_suggestions(request: ChatRequest):
     if not api_key:
         raise HTTPException(status_code=500, detail="API Key not configured")
 
+    model_to_use = await get_best_model_for_agent(request.agent_id, "gpt-4o")
     chat_summary = "\n".join([f"{m['role']}: {m['content']}" for m in request.messages])
 
     system_instruction = """
-    Você é um Engenheiro de Prompts Sênior. Sua missão é REESCREVER e MELHORAR o System Prompt do Agente com base em toda a conversa anterior.
+    Você é um Engenheiro de Prompts Sênior. Sua missão é aplicar as alterações decididas na conversa ao System Prompt atual.
     
-    REGRAS DE OURO:
-    1. Siga os 4 MACRO-BLOCOS: # PERSONA, # TOM DE VOZ, # REGRAS E LIMITAÇÕES, # CONTEXTO E INSTRUÇÕES GERAIS.
-    2. Incorpore todas as melhorias sugeridas e decididas na conversa.
-    3. O resultado deve ser o PROMPT COMPLETO E FINAL em Português do Brasil.
+    REGRAS CRÍTICAS DE INTEGRIDADE:
+    1. **PRESERVAÇÃO TOTAL:** Você deve manter ABSOLUTAMENTE TODAS as linhas e instruções originais que não foram objeto de alteração na conversa. 
+    2. **PROIBIDO RESUMIR:** Jamais resuma ou simplifique o prompt original. Se o prompt tem 200 linhas, ele deve continuar com aproximadamente 200 linhas após a edição.
+    3. **EDIÇÃO CIRÚRGICA:** Substitua apenas os trechos ou valores discutidos.
+    4. **MACRO-BLOCOS:** Mantenha a estrutura de # PERSONA, # TOM DE VOZ, # REGRAS E LIMITAÇÕES e # CONTEXTO E INSTRUÇÕES GERAIS se elas já existirem.
+    5. **INTEGRIDADE:** Se você omitir qualquer seção por "preguiça" ou economia de tokens, você estará falhando gravemente. Entregue o PROMPT COMPLETO.
     """
 
     user_input = f"""
@@ -152,15 +324,146 @@ async def apply_suggestions(request: ChatRequest):
     """
 
     try:
-        client = openai.Client(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
+        client = get_openai_client(model_to_use)
+        from config_store import format_ai_params
+        kwargs = format_ai_params(model_to_use, model_to_use, {
+            "messages": [
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_input}
             ],
-            temperature=0.5
-        )
+            "temperature": 0
+        })
+        response = await client.chat.completions.create(**kwargs)
         return {"prompt": response.choices[0].message.content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/playground/test")
+async def playground_test(request: PlaygroundRequest):
+    # ... logic stays the same but using get_openai_client properly
+    processed_prompt = resolve_conditional_blocks(request.system_prompt, request.variables)
+    all_vars = request.variables.copy()
+    for k, v in all_vars.items():
+        processed_prompt = processed_prompt.replace(f"{{{k}}}", str(v))
+        processed_prompt = processed_prompt.replace(f"{{ {k} }}", str(v))
+
+    # --- INTEGRAÇÃO COM O CORE (PROCESS_MESSAGE) ---
+    # Se temos um agent_id, usamos o fluxo real para garantir paridade total
+    if request.agent_id:
+        db = SessionLocal()
+        try:
+            from models import AgentConfigModel
+            db_agent = db.query(AgentConfigModel).filter(AgentConfigModel.id == request.agent_id).first()
+            if db_agent:
+                # Se o usuário editou o prompt na tela, fazemos override temporário
+                if request.system_prompt:
+                    db_agent.system_prompt = request.system_prompt
+                if request.model:
+                    db_agent.model = request.model
+                
+                from agent_core.core import process_message
+                result = await process_message(
+                    message=request.user_message,
+                    history=request.history,
+                    config=db_agent,
+                    tools=db_agent.tools,
+                    context_variables=request.variables,
+                    db=db
+                )
+                
+                return {
+                    "response": result["content"],
+                    "rendered_prompt": processed_prompt, # Mantém para debug na UI
+                    "usage": {
+                        "prompt_tokens": result["usage"].prompt_tokens,
+                        "completion_tokens": result["usage"].completion_tokens,
+                        "total_tokens": result["usage"].total_tokens
+                    },
+                    "debug": result.get("debug")
+                }
+        except Exception as e_core:
+            logger.error(f"Erro no core do playground: {e_core}")
+        finally:
+            db.close()
+
+    # Fallback para teste de prompt puro (sem agente salvo)
+    try:
+        model_name = request.model or "gpt-4o-mini"
+        client = get_openai_client(model_name)
+        messages = [{"role": "system", "content": processed_prompt}]
+        for msg in request.history:
+            messages.append(msg)
+        messages.append({"role": "user", "content": request.user_message})
+
+        from config_store import format_ai_params
+        kwargs = format_ai_params(model_name, model_name, {
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": 1000
+        })
+
+        response = await client.chat.completions.create(**kwargs)
+        return {
+            "response": response.choices[0].message.content,
+            "rendered_prompt": processed_prompt,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/search-prompt", response_model=SearchResponse)
+async def search_prompt(request: SearchRequest):
+    model_to_use = await get_best_model_for_agent(request.agent_id, "gpt-4o-mini")
+
+    system_instruction = """
+    Você é um Analista de Prompts super inteligente especializado em localização de conteúdo e intenção.
+    Sua missão é ler o SYSTEM PROMPT fornecido e identificar onde o assunto pesquisado é tratado.
+    
+    ETAPAS OBRIGATÓRIAS:
+    1. LIMPEZA E CORREÇÃO: Analise o 'ASSUNTO A PROCURAR'. Se houver erros de ortografia, gramática ou falta de clareza, corrija-o para um Português do Brasil limpo, seco e profissional.
+    2. BUSCA SEMÂNTICA: Use a versão CORRIGIDA para buscar no prompt. Não busque apenas ocorrências literais. Se o usuário buscar "preço", você pode retornar seções que falem de "valor", "investimento" ou "pagamento".
+    
+    REGRAS CRÍTICAS:
+    1. Se o assunto FOR encontrado, retorne found=true e uma lista de ocorrências.
+    2. Cada ocorrência deve ter o campo 'text_snippet' com o texto exato do prompt (sem os números de linha), a 'line_start', 'line_end' e o campo 'explanation' (breve motivo da escolha).
+    3. Retorne o campo 'corrected_query' com a versão limpa e corrigida do que o usuário digitou.
+    4. No campo 'reasoning', forneça uma breve explicação da busca.
+    5. Se o assunto NÃO for encontrado, retorne found=false.
+    6. Retorne APENAS o JSON válido.
+    """
+
+    lines = request.system_prompt.split('\n')
+    numbered_prompt = "\n".join([f"{i+1}: {line}" for i, line in enumerate(lines)])
+
+    user_input = f"""
+    ASSUNTO A PROCURAR: {request.query}
+    
+    SYSTEM PROMPT (numerado):
+    ---
+    {numbered_prompt}
+    ---
+    
+    Retorne o resultado no formato JSON.
+    """
+
+    try:
+        client = get_openai_client(model_to_use)
+        from config_store import format_ai_params
+        kwargs = format_ai_params(model_to_use, model_to_use, {
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_input}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0
+        })
+
+        response = await client.chat.completions.create(**kwargs)
+        import json as _json
+        return _json.loads(response.choices[0].message.content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,8 @@
+/* ============================================================
+   FINANCEIRO — Entry Point de Estilos
+   Importa os módulos CSS separados por responsabilidade
+   ============================================================ */
+@import './base.css';
+@import './header.css';
+@import './stats.css';
+@import './table.css';

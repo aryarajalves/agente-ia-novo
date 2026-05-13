@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import ConfigPanel from './components/ConfigPanel';
+import Dashboard from './components/Dashboard/index';
+import ConfigPanel from './components/ConfigPanel/index';
 import FAQ from './components/FAQ';
 import KnowledgeBaseList from './components/KnowledgeBaseList';
 import KnowledgeBaseEditor from './components/KnowledgeBaseEditor';
-import ToolsManager from './components/ToolsManager';
-import ChatPlayground from './components/ChatPlayground';
-import Financeiro from './components/Financeiro';
-import FineTuning from './components/FineTuning';
+import ToolsManager from './components/ToolsManager/index';
+import ChatPlayground from './components/ChatPlayground/index';
+import Financeiro from './components/Financeiro/index';
 import IntegrationsPanel from './components/IntegrationsPanel';
 import PublicChat from './components/PublicChat';
 import SharedHistory from './components/SharedHistory';
 import Login from './components/Login';
 import UserManagement from './components/UserManagement';
-import SupportDashboard from './components/SupportDashboard';
+import SupportDashboard from './components/SupportDashboard/index';
 import PublicSupportView from './components/PublicSupportView';
 import PublicQuestionsView from './components/PublicQuestionsView';
+import WebhookManager from './components/WebhookManager/index';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('admin_token'));
@@ -66,7 +66,6 @@ function App() {
                         <Route path="/knowledge-bases/:id" element={<KnowledgeBaseEditor />} />
                         <Route path="/tools" element={<ToolsManager standalone={true} />} />
                         <Route path="/financeiro" element={<Financeiro />} />
-                        <Route path="/fine-tuning" element={<FineTuning />} />
                         <Route path="/integrations" element={<IntegrationsPanel />} />
                       </>
                     )}

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import List, Dict, Any, Union, Optional
 import json
 import os
 import time
@@ -27,9 +28,17 @@ MODEL_INFO = {
     "gemini-3.1-flash": {"input": 0.0000005, "output": 0.000003, "supports_tools": True, "supports_temperature": True, "context_window": "1M", "provider": "gemini"},
     "gemini-2.5-pro": {"input": 0.00000125, "output": 0.00001, "supports_tools": True, "supports_temperature": True, "context_window": "2M", "provider": "gemini"},
     "gemini-2.5-flash": {"input": 0.0000003, "output": 0.0000025, "supports_tools": True, "supports_temperature": True, "context_window": "1M", "provider": "gemini"},
+    "gemini-1.5-pro": {"input": 0.00000125, "output": 0.00001, "supports_tools": True, "supports_temperature": True, "context_window": "2M", "provider": "gemini"},
+    "gemini-1.5-flash": {"input": 0.0000003, "output": 0.0000025, "supports_tools": True, "supports_temperature": True, "context_window": "1M", "provider": "gemini"},
+
+    # == Anthropic Models (Preços por token) ==
+    "claude-4.6-opus": {"input": 0.000005, "output": 0.000025, "supports_tools": True, "supports_temperature": True, "context_window": "1M", "provider": "anthropic"},
+    "claude-4.6-sonnet": {"input": 0.000003, "output": 0.000015, "supports_tools": True, "supports_temperature": True, "context_window": "200k", "provider": "anthropic"},
+    "claude-4.5-haiku": {"input": 0.000001, "output": 0.000005, "supports_tools": True, "supports_temperature": True, "context_window": "200k", "provider": "anthropic"},
 }
 
 USD_TO_BRL = 5.30
+WHATSAPP_TEMPLATE_COST_BRL = 0.30 # Valor fixo sugerido para cada disparo de template
 
 # =============================================================================
 # Descoberta Dinâmica de Modelos via APIs
@@ -40,6 +49,7 @@ _MODELS_CACHE_TTL = 3600  # 1 hora
 # Filtros para excluir modelos que não são de chat
 _OPENAI_EXCLUDE = ["audio", "realtime", "tts", "transcribe", "search", "image", "instruct", "embedding", "codex"]
 _GEMINI_EXCLUDE = ["embedding", "robotics", "audio", "tts", "customtools", "computer-use", "native-audio"]
+_ANTHROPIC_EXCLUDE = []
 
 
 def discover_models() -> list:
@@ -60,6 +70,7 @@ def discover_models() -> list:
 
     openai_ids = []
     gemini_ids = []
+    anthropic_ids = []
 
     # 1. Busca modelos OpenAI
     try:
@@ -94,11 +105,23 @@ def discover_models() -> list:
     except Exception as e:
         print(f"⚠️ Falha ao buscar modelos Gemini: {e}")
 
-    # 3. Cruza famílias do MODEL_INFO com modelos reais encontrados
+    # 3. Busca modelos Anthropic
+    try:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if api_key:
+            # IDs reais da API para suportar o mapeamento
+            anthropic_ids = ["claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"]
+            print(f"✅ Anthropic: {len(anthropic_ids)} modelos de chat configurados")
+    except Exception as e:
+        print(f"⚠️ Falha ao buscar modelos Anthropic: {e}")
+
+    # 4. Cruza famílias do MODEL_INFO com modelos reais encontrados
     result = []
     for family, info in MODEL_INFO.items():
         provider = info.get("provider", "openai")
-        pool = gemini_ids if provider == "gemini" else openai_ids
+        if provider == "gemini": pool = gemini_ids
+        elif provider == "anthropic": pool = anthropic_ids
+        else: pool = openai_ids
 
         # Encontra versões reais disponíveis para esta família
         versions = [m for m in pool if m.startswith(family)]
@@ -124,11 +147,46 @@ def discover_models() -> list:
                 else: real_id = openai_ids[-1]
                 
                 print(f"⚠️ Família '{family}' não encontrada. Usando melhor disponível OpenAI: {real_id}")
-            elif provider == "gemini" and gemini_ids:
-                # Pega o melhor Gemini disponível
-                gemini_pros = [m for m in gemini_ids if "pro" in m]
-                real_id = sorted(gemini_pros)[-1] if gemini_pros else gemini_ids[-1]
-                print(f"⚠️ Família '{family}' não encontrada. Usando melhor disponível Gemini: {real_id}")
+            elif provider == "gemini":
+                # Resolução direta para Gemini (mapeia famílias futurísticas para estáveis)
+                if "3.1" in family or "2.5" in family:
+                    is_pro = "pro" in family
+                    if gemini_ids:
+                        # Se temos modelos reais, tenta achar o melhor 'pro' ou 'flash'
+                        pros = [m for m in gemini_ids if "pro" in m]
+                        flashes = [m for m in gemini_ids if "flash" in m]
+                        if is_pro and pros: real_id = sorted(pros)[-1]
+                        elif not is_pro and flashes: real_id = sorted(flashes)[-1]
+                        else: real_id = gemini_ids[-1]
+                    else:
+                        # Fallback hardcoded se a descoberta falhar completamente
+                        real_id = "gemini-1.5-pro-002" if is_pro else "gemini-1.5-flash-002"
+                elif gemini_ids:
+                    # Pega o melhor Gemini disponível para outras famílias
+                    gemini_pros = [m for m in gemini_ids if "pro" in m]
+                    real_id = sorted(gemini_pros)[-1] if gemini_pros else gemini_ids[-1]
+                else:
+                    real_id = "gemini-1.5-pro-002"
+                print(f"⚠️ Família '{family}' não encontrada. Usando mapeamento Gemini: {real_id}")
+            elif provider == "anthropic":
+                # Resolução direta de IDs reais para chamadas de API (Hifenizado, sem pontos)
+                if "4.6-opus" in family:
+                    real_id = "claude-opus-4-6"
+                elif "4.6-sonnet" in family:
+                    real_id = "claude-sonnet-4-6"
+                elif "4.5-haiku" in family:
+                    real_id = "claude-haiku-4-5"
+                elif "3.5-sonnet" in family:
+                    real_id = "claude-3-5-sonnet-20241022"
+                elif "opus" in family:
+                    real_id = "claude-3-opus-20240229"
+                elif "sonnet" in family:
+                    real_id = "claude-3-7-sonnet-20250219"
+                elif "haiku" in family:
+                    real_id = "claude-3-5-haiku-20241022"
+                else:
+                    real_id = "claude-sonnet-4-6"
+                print(f"✅ Família '{family}' mapeada para identificador exato '{real_id}'")
             else:
                 # Nenhum modelo encontrado — usa o nome da família como último recurso
                 real_id = family
@@ -275,8 +333,10 @@ class AgentConfig(BaseModel):
     ui_header_color: str = "#0f172a"
     ui_chat_title: str = "Suporte Inteligente"
     ui_welcome_message: str = "Olá! Como posso te ajudar hoje?"
-
-    # Cost Router (Advanced Routing)
+    initial_message: Optional[str] = None
+    initial_question_message: Optional[str] = None
+    initial_ignore_message: Optional[str] = None
+    inbox_capture_enabled: bool = True
     router_enabled: bool = False
     router_simple_model: str = "gpt-5-mini"
     router_simple_fallback_model: str | None = None

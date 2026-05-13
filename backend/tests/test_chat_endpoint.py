@@ -67,6 +67,17 @@ async def test_execute_chat_success():
     mock_agent.handoff_enabled = False
     mock_agent.safety_settings = ""
     mock_agent.model_settings = "{}"
+    mock_agent.initial_message = ""
+    mock_agent.initial_question_message = ""
+    mock_agent.initial_ignore_message = ""
+    mock_agent.response_translation_fallback_lang = "portuguese"
+    mock_agent.inbox_capture_enabled = True
+    mock_agent.response_translation_enabled = False
+    mock_agent.rag_translation_enabled = False
+    mock_agent.rag_multi_query_enabled = False
+    mock_agent.rag_rerank_enabled = True
+    mock_agent.rag_agentic_eval_enabled = True
+    mock_agent.rag_parent_expansion_enabled = True
     
     mock_session = AsyncMock()
     mock_result = MagicMock()

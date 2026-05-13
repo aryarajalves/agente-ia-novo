@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { API_URL } from '../config';
 import { api } from '../api/client';
-import KnowledgeBaseManager from './KnowledgeBaseManager';
+import KnowledgeBaseManager from './KnowledgeBaseManager/index';
 import ExpandableField from './ExpandableField';
 
 function KnowledgeBaseEditor() {

@@ -1,0 +1,534 @@
+import logging
+import json
+import os
+from datetime import datetime, timezone
+from typing import List, Optional, Any, Dict
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete, func
+from sqlalchemy.orm import selectinload
+
+from models import AgentConfigModel, ToolModel, KnowledgeBaseModel, InteractionLog, PromptDraftModel
+from api.schemas import (
+    AgentConfig, PromptDraft, BulkAgentDeleteRequest, 
+    PromptAdvisorRequest, PromptRefineRequest, MessageRequest, MessageResponse
+)
+from api.deps import get_db, verify_api_key
+from api.services.cost_service import calculate_ai_cost
+from api.services.agent_service import db_to_pydantic_agent
+from agent import get_openai_client, process_message
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["Agents"])
+
+@router.get("/agents", response_model=List[AgentConfig])
+async def list_agents(db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(
+        select(AgentConfigModel)
+        .options(selectinload(AgentConfigModel.tools), selectinload(AgentConfigModel.knowledge_bases))
+        .order_by(AgentConfigModel.id)
+    )
+    db_agents = result.scalars().all()
+    
+    return [db_to_pydantic_agent(a) for a in db_agents]
+    return agents
+
+@router.post("/agents", response_model=AgentConfig)
+async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    db_config = AgentConfigModel(
+        name=config.name,
+        description=config.description,
+        model=config.model,
+        fallback_model=config.fallback_model,
+        temperature=config.temperature,
+        top_p=config.top_p,
+        top_k=config.top_k,
+        presence_penalty=config.presence_penalty,
+        frequency_penalty=config.frequency_penalty,
+        safety_settings=config.safety_settings,
+        model_settings=json.dumps(config.model_settings) if config.model_settings else "{}",
+        is_active=config.is_active,
+        date_awareness=config.date_awareness,
+        system_prompt=config.system_prompt,
+        context_window=config.context_window,
+        knowledge_base=json.dumps(config.knowledge_base),
+        rag_retrieval_count=config.rag_retrieval_count,
+        rag_translation_enabled=config.rag_translation_enabled,
+        rag_multi_query_enabled=config.rag_multi_query_enabled,
+        rag_rerank_enabled=config.rag_rerank_enabled,
+        rag_agentic_eval_enabled=config.rag_agentic_eval_enabled,
+        rag_parent_expansion_enabled=config.rag_parent_expansion_enabled,
+        security_competitor_blacklist=config.security_competitor_blacklist,
+        security_forbidden_topics=config.security_forbidden_topics,
+        security_discount_policy=config.security_discount_policy,
+        security_language_complexity=config.security_language_complexity,
+        security_pii_filter=config.security_pii_filter,
+        security_validator_ia=config.security_validator_ia,
+        security_bot_protection=config.security_bot_protection,
+        security_max_messages_per_session=config.security_max_messages_per_session,
+        security_semantic_threshold=config.security_semantic_threshold,
+        security_loop_count=config.security_loop_count,
+        ui_primary_color=config.ui_primary_color,
+        ui_header_color=config.ui_header_color,
+        ui_chat_title=config.ui_chat_title,
+        ui_welcome_message=config.ui_welcome_message,
+        initial_message=config.initial_message,
+        initial_question_message=config.initial_question_message,
+        initial_ignore_message=config.initial_ignore_message,
+        inbox_capture_enabled=config.inbox_capture_enabled,
+        router_enabled=config.router_enabled,
+        router_simple_model=config.router_simple_model,
+        router_complex_model=config.router_complex_model,
+        handoff_enabled=config.handoff_enabled,
+        response_translation_enabled=config.response_translation_enabled,
+        response_translation_fallback_lang=config.response_translation_fallback_lang or "portuguese"
+    )
+    
+    if config.tool_ids:
+        res_tools = await db.execute(select(ToolModel).where(ToolModel.id.in_(config.tool_ids)))
+        db_config.tools = res_tools.scalars().all()
+
+    if config.knowledge_base_ids:
+        res_kbs = await db.execute(select(KnowledgeBaseModel).where(KnowledgeBaseModel.id.in_(config.knowledge_base_ids)))
+        db_config.knowledge_bases = res_kbs.scalars().all()
+
+    db.add(db_config)
+    await db.commit()
+    await db.refresh(db_config)
+    return await get_agent(db_config.id, db)
+
+@router.get("/agents/{agent_id}", response_model=AgentConfig)
+async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(
+        select(AgentConfigModel)
+        .options(selectinload(AgentConfigModel.tools), selectinload(AgentConfigModel.knowledge_bases))
+        .where(AgentConfigModel.id == agent_id)
+    )
+    a = result.scalars().first()
+    if not a: raise HTTPException(status_code=404, detail="Agent not found")
+    
+    return AgentConfig(
+        id=a.id,
+        name=a.name,
+        description=a.description,
+        model=a.model,
+        fallback_model=a.fallback_model,
+        temperature=a.temperature,
+        top_p=a.top_p,
+        top_k=a.top_k,
+        presence_penalty=a.presence_penalty,
+        frequency_penalty=a.frequency_penalty,
+        safety_settings=a.safety_settings,
+        model_settings=json.loads(a.model_settings) if a.model_settings else {},
+        is_active=a.is_active,
+        date_awareness=a.date_awareness,
+        system_prompt=a.system_prompt,
+        context_window=a.context_window,
+        knowledge_base=json.loads(a.knowledge_base) if a.knowledge_base else [],
+        knowledge_base_id=a.knowledge_base_id,
+        knowledge_base_ids=[kb.id for kb in a.knowledge_bases],
+        rag_retrieval_count=a.rag_retrieval_count,
+        rag_translation_enabled=a.rag_translation_enabled,
+        rag_multi_query_enabled=a.rag_multi_query_enabled,
+        rag_rerank_enabled=a.rag_rerank_enabled,
+        rag_agentic_eval_enabled=a.rag_agentic_eval_enabled,
+        rag_parent_expansion_enabled=a.rag_parent_expansion_enabled,
+        tool_ids=[t.id for t in a.tools],
+        simulated_time=a.simulated_time,
+        security_competitor_blacklist=a.security_competitor_blacklist,
+        security_forbidden_topics=a.security_forbidden_topics,
+        security_discount_policy=a.security_discount_policy,
+        security_language_complexity=a.security_language_complexity,
+        security_pii_filter=a.security_pii_filter,
+        security_validator_ia=a.security_validator_ia,
+        security_bot_protection=a.security_bot_protection,
+        security_max_messages_per_session=a.security_max_messages_per_session,
+        security_semantic_threshold=a.security_semantic_threshold,
+        security_loop_count=a.security_loop_count,
+        ui_primary_color=a.ui_primary_color,
+        ui_header_color=a.ui_header_color,
+        ui_chat_title=a.ui_chat_title,
+        ui_welcome_message=a.ui_welcome_message,
+        initial_message=a.initial_message,
+        initial_question_message=a.initial_question_message,
+        initial_ignore_message=a.initial_ignore_message,
+        inbox_capture_enabled=a.inbox_capture_enabled,
+        router_enabled=a.router_enabled,
+        router_simple_model=a.router_simple_model,
+        router_complex_model=a.router_complex_model,
+        handoff_enabled=a.handoff_enabled,
+        response_translation_enabled=a.response_translation_enabled,
+        response_translation_fallback_lang=a.response_translation_fallback_lang or "portuguese"
+    )
+
+@router.put("/agents/{agent_id}", response_model=AgentConfig)
+async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(
+        select(AgentConfigModel)
+        .options(selectinload(AgentConfigModel.tools), selectinload(AgentConfigModel.knowledge_bases))
+        .where(AgentConfigModel.id == agent_id)
+    )
+    db_config = result.scalars().first()
+    if not db_config: raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Update fields
+    db_config.name = config.name
+    db_config.description = config.description
+    db_config.model = config.model
+    db_config.fallback_model = config.fallback_model
+    db_config.temperature = config.temperature
+    db_config.top_p = config.top_p
+    db_config.top_k = config.top_k
+    db_config.presence_penalty = config.presence_penalty
+    db_config.frequency_penalty = config.frequency_penalty
+    db_config.safety_settings = config.safety_settings
+    db_config.model_settings = json.dumps(config.model_settings) if config.model_settings else "{}"
+    db_config.is_active = config.is_active
+    db_config.date_awareness = config.date_awareness
+    db_config.system_prompt = config.system_prompt
+    db_config.context_window = config.context_window
+    db_config.knowledge_base = json.dumps(config.knowledge_base)
+    db_config.rag_retrieval_count = config.rag_retrieval_count
+    db_config.rag_translation_enabled = config.rag_translation_enabled
+    db_config.rag_multi_query_enabled = config.rag_multi_query_enabled
+    db_config.rag_rerank_enabled = config.rag_rerank_enabled
+    db_config.rag_agentic_eval_enabled = config.rag_agentic_eval_enabled
+    db_config.rag_parent_expansion_enabled = config.rag_parent_expansion_enabled
+    db_config.security_competitor_blacklist = config.security_competitor_blacklist
+    db_config.security_forbidden_topics = config.security_forbidden_topics
+    db_config.security_discount_policy = config.security_discount_policy
+    db_config.security_language_complexity = config.security_language_complexity
+    db_config.security_pii_filter = config.security_pii_filter
+    db_config.security_bot_protection = config.security_bot_protection
+    db_config.security_max_messages_per_session = config.security_max_messages_per_session
+    db_config.security_semantic_threshold = config.security_semantic_threshold
+    db_config.security_loop_count = config.security_loop_count
+    db_config.security_validator_ia = config.security_validator_ia
+    db_config.ui_primary_color = config.ui_primary_color
+    db_config.ui_header_color = config.ui_header_color
+    db_config.ui_chat_title = config.ui_chat_title
+    db_config.ui_welcome_message = config.ui_welcome_message
+    db_config.initial_message = config.initial_message
+    db_config.initial_question_message = config.initial_question_message
+    db_config.initial_ignore_message = config.initial_ignore_message
+    db_config.inbox_capture_enabled = config.inbox_capture_enabled
+    db_config.router_enabled = config.router_enabled
+    db_config.router_simple_model = config.router_simple_model
+    db_config.router_complex_model = config.router_complex_model
+    db_config.handoff_enabled = config.handoff_enabled
+    db_config.response_translation_enabled = config.response_translation_enabled
+    db_config.response_translation_fallback_lang = config.response_translation_fallback_lang or "portuguese"
+
+    # Sync Tools
+    if config.tool_ids is not None:
+        res_tools = await db.execute(select(ToolModel).where(ToolModel.id.in_(config.tool_ids)))
+        db_config.tools = res_tools.scalars().all()
+
+    # Sync Knowledge Bases
+    if config.knowledge_base_ids is not None:
+        res_kbs = await db.execute(select(KnowledgeBaseModel).where(KnowledgeBaseModel.id.in_(config.knowledge_base_ids)))
+        db_config.knowledge_bases = res_kbs.scalars().all()
+
+    await db.commit()
+    return await get_agent(agent_id, db)
+
+@router.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(AgentConfigModel).where(AgentConfigModel.id == agent_id))
+    agent = result.scalars().first()
+    if not agent: raise HTTPException(status_code=404, detail="Agent not found")
+    await db.delete(agent)
+    await db.commit()
+    return {"message": "Agent deleted"}
+
+@router.post("/agents/batch-delete")
+async def batch_delete_agents(request: BulkAgentDeleteRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    if not request.agent_ids: return {"message": "No agents to delete"}
+    await db.execute(delete(AgentConfigModel).where(AgentConfigModel.id.in_(request.agent_ids)))
+    await db.commit()
+    return {"message": f"Deleted {len(request.agent_ids)} agents"}
+
+@router.post("/agents/{agent_id}/toggle_status")
+async def toggle_agent_status(agent_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(AgentConfigModel).where(AgentConfigModel.id == agent_id))
+    agent = result.scalars().first()
+    if not agent: raise HTTPException(status_code=404, detail="Agent not found")
+    agent.is_active = not agent.is_active
+    await db.commit()
+    return {"message": f"Agent {'activated' if agent.is_active else 'paused'}", "is_active": agent.is_active}
+
+# --- PROMPT VERSIONING (DRAFTS) ---
+
+@router.get("/agents/{agent_id}/drafts", response_model=List[PromptDraft])
+async def list_agent_drafts(agent_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(PromptDraftModel).where(PromptDraftModel.agent_id == agent_id).order_by(PromptDraftModel.created_at.desc()))
+    return result.scalars().all()
+
+@router.post("/agents/{agent_id}/drafts", response_model=PromptDraft)
+async def create_agent_draft(agent_id: int, draft: PromptDraft, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    new_draft = PromptDraftModel(
+        agent_id=agent_id,
+        prompt_text=draft.prompt_text,
+        version_name=draft.version_name or f"v{int(datetime.now(timezone.utc).timestamp())}",
+        description=draft.description,
+        character_count=len(draft.prompt_text),
+        token_count=len(draft.prompt_text) // 4
+    )
+    db.add(new_draft)
+    await db.commit()
+    await db.refresh(new_draft)
+    return new_draft
+
+@router.put("/drafts/{draft_id}", response_model=PromptDraft)
+async def update_agent_draft(draft_id: int, draft: PromptDraft, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(PromptDraftModel).where(PromptDraftModel.id == draft_id))
+    db_draft = result.scalars().first()
+    if not db_draft: raise HTTPException(status_code=404, detail="Draft not found")
+    
+    db_draft.version_name = draft.version_name
+    db_draft.description = draft.description
+    db_draft.prompt_text = draft.prompt_text
+    db_draft.character_count = len(draft.prompt_text)
+    db_draft.token_count = len(draft.prompt_text) // 4
+    
+    await db.commit()
+    await db.refresh(db_draft)
+    return db_draft
+
+@router.delete("/drafts/{draft_id}")
+async def delete_agent_draft(draft_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(PromptDraftModel).where(PromptDraftModel.id == draft_id))
+    db_draft = result.scalars().first()
+    if not db_draft: raise HTTPException(status_code=404, detail="Draft not found")
+    
+    await db.delete(db_draft)
+    await db.commit()
+    return {"message": "Draft deleted"}
+
+@router.post("/agents/{agent_id}/drafts/{draft_id}/restore")
+async def restore_agent_draft(agent_id: int, draft_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    # Busca o rascunho
+    result = await db.execute(select(PromptDraftModel).where(PromptDraftModel.id == draft_id, PromptDraftModel.agent_id == agent_id))
+    db_draft = result.scalars().first()
+    if not db_draft: raise HTTPException(status_code=404, detail="Draft not found")
+    
+    # Busca o agente
+    agent_result = await db.execute(select(AgentConfigModel).where(AgentConfigModel.id == agent_id))
+    db_agent = agent_result.scalars().first()
+    if not db_agent: raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Restaura o prompt
+    db_agent.system_prompt = db_draft.prompt_text
+    await db.commit()
+    
+    return {"message": "Prompt restored successfully", "system_prompt": db_agent.system_prompt}
+
+# --- PROMPT ADVISOR (Consultor de Prompt) ---
+
+@router.post("/api/prompt/advisor")
+async def prompt_advisor(request: PromptAdvisorRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    """
+    Consultor especialista em engenharia de prompt.
+    Analisa o conteúdo do prompt e responde perguntas do usuário sobre melhorias.
+    """
+    try:
+        logger.info(f"🔮 Advisor: Iniciando análise para query: '{request.user_query[:50]}...'")
+
+        context = (
+            "Você é o Consultor Especialista em Engenharia de Prompt do 'Agente Jaime'.\n"
+            "Sua missão é ajudar o usuário a refinar o prompt do agente de IA dele.\n\n"
+            "CONTEÚDO ATUAL DO PROMPT:\n"
+            "---\n"
+            f"{request.prompt_content}\n"
+            "---\n\n"
+            "CONFIGURAÇÕES DE SAUDAÇÃO:\n"
+            f"- Saudação Padrão: {request.initial_message or 'Não configurada'}\n"
+            f"- Mensagem Pós-Pergunta: {request.initial_question_message or 'Não configurada'}\n"
+            f"- Whitelist de Anúncios: {json.dumps(request.ignore_messages) if request.ignore_messages else 'Vazia'}\n\n"
+            "HISTÓRICO DA CONVERSA:\n"
+            f"{json.dumps(request.history, indent=2)}\n\n"
+            "INSTRUÇÕES:\n"
+            "1. Se o usuário mandar apenas uma saudação (ex: 'oi', 'olá', 'oie'), responda apenas com algo educado como "
+            "'Olá! Sou seu Consultor de Prompt. Como posso ajudar você hoje?' e NÃO faça a análise do prompt ainda.\n"
+            "2. Seja direto e profissional.\n"
+            "3. Identifique ambiguidades, falta de instruções ou tom inadequado.\n"
+            "4. Sugira melhorias específicas de estrutura ou conteúdo.\n"
+            "5. Se o usuário solicitar uma alteração direta (ex: 'remova X', 'mude Y'), instrua-o a detalhar o que deseja "
+            "no chat e clicar no botão 'Refinar Prompt Automaticamente' para que a mudança seja aplicada ao editor."
+        )
+
+        client = get_openai_client("gpt-4o")
+        if not client:
+            raise HTTPException(status_code=500, detail="OpenAI client not configured.")
+
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": context},
+                {"role": "user", "content": request.user_query}
+            ],
+            temperature=0.3
+        )
+
+        content = response.choices[0].message.content
+        in_tokens = response.usage.prompt_tokens
+        out_tokens = response.usage.completion_tokens
+        cost_usd, cost_brl = calculate_ai_cost("gpt-4o", in_tokens, out_tokens)
+
+        # Log financeiro (não-crítico)
+        try:
+            db.add(InteractionLog(
+                agent_id=None,
+                session_id="advisor_chat",
+                user_message=request.user_query,
+                agent_response=content,
+                model_used="gpt-4o",
+                input_tokens=in_tokens,
+                output_tokens=out_tokens,
+                cost_usd=cost_usd,
+                cost_brl=cost_brl,
+            ))
+            await db.commit()
+            logger.info("📊 Advisor: Log financeiro salvo.")
+        except Exception as db_err:
+            logger.warning(f"⚠️ Advisor: Falha ao salvar log financeiro: {db_err}")
+
+        return {"content": content, "cost_brl": cost_brl}
+
+    except Exception as e:
+        logger.error(f"💥 Advisor: Erro crítico: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno no Consultor: {str(e)}")
+
+
+# --- PROMPT REFINE ---
+
+@router.post("/api/prompt/refine")
+async def refine_prompt(request: PromptRefineRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    """
+    Reescreve automaticamente o prompt aplicando as melhorias sugeridas no histórico
+    e as instruções adicionais do usuário.
+    """
+    try:
+        user_instr_clause = f"\nINSTRUÇÕES ADICIONAIS DO USUÁRIO:\n{request.user_instructions}\n" if request.user_instructions else ""
+
+        context = f"""
+        Você é o Engenheiro de Prompt Sênior do 'Agente Jaime'.
+        Sua tarefa é REESCREVER o prompt do usuário aplicando as melhorias sugeridas no histórico e seguindo as instruções extras.
+
+        PROMPT ATUAL:
+        ---
+        {request.prompt_content}
+        ---
+
+        HISTÓRICO DA DISCUSSÃO:
+        {json.dumps(request.history, indent=2)}
+        {user_instr_clause}
+        DIRETRIZES DE REESCRITA:
+        1. Mantenha o tom e a voz do agente original, mas corrija as falhas apontadas.
+        2. Melhore a clareza, remova contradições e otimize a estrutura.
+        3. Se houver 'INSTRUÇÕES ADICIONAIS DO USUÁRIO', elas têm PRIORIDADE MÁXIMA.
+
+        FORMATO DE RESPOSTA OBRIGATÓRIO (JSON):
+        Retorne um objeto JSON com exatamente estes dois campos:
+        - "new_prompt": O novo conteúdo completo do prompt.
+        - "summary": Um resumo curto em português das alterações realizadas.
+        """
+        client = get_openai_client("gpt-4o")
+
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": context},
+                {"role": "user", "content": "Reescreva o prompt agora e forneça o resumo das alterações em formato JSON."}
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"}
+        )
+
+        res_data = json.loads(response.choices[0].message.content)
+        content = res_data.get("new_prompt")
+        summary = res_data.get("summary")
+        in_tokens = response.usage.prompt_tokens
+        out_tokens = response.usage.completion_tokens
+        cost_usd, cost_brl = calculate_ai_cost("gpt-4o", in_tokens, out_tokens)
+
+        # Log financeiro
+        db.add(InteractionLog(
+            agent_id=None,
+            session_id="prompt_refine",
+            user_message="Refinamento automático de prompt",
+            agent_response=summary,
+            model_used="gpt-4o",
+            input_tokens=in_tokens,
+            output_tokens=out_tokens,
+            cost_usd=cost_usd,
+            cost_brl=cost_brl,
+        ))
+        await db.commit()
+
+        return {"new_prompt": content, "summary": summary, "cost_brl": cost_brl}
+
+    except Exception as e:
+        logger.error(f"Erro ao refinar prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- CHAT PLAYGROUND ---
+
+@router.post("/api/chat/playground")
+async def chat_playground(request: MessageRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    """Simula troca de mensagens com um agente (playground de teste)."""
+    return await process_message(
+        db=db,
+        message=request.message,
+        session_id=request.session_id or "playground",
+        agent_id=request.agent_id,
+        context_variables=request.context_variables or {},
+        model_override=request.model_override,
+        system_prompt_override=request.system_prompt_override
+    )
+
+# --- MODEL DISCOVERY ---
+
+@router.get("/models")
+async def list_models(_: None = Depends(verify_api_key)):
+    from config_store import discover_models
+    # Busca modelos reais das APIs (com cache de 1h)
+    discovered = discover_models()
+    return {
+        "openai_connected": bool(os.getenv("OPENAI_API_KEY")),
+        "gemini_connected": bool(os.getenv("GEMINI_API_KEY")),
+        "anthropic_connected": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "models": [
+            {
+                "id": m["id"],
+                "real_id": m["real_id"],
+                "supports_tools": m["supports_tools"],
+                "supports_temperature": m["supports_temperature"],
+                "input": m.get("input", 0),
+                "output": m.get("output", 0),
+                "context_window": m.get("context_window", "Unknown"),
+                "provider": m.get("provider", "openai"),
+                "available_versions": m.get("available_versions", [])
+            }
+            for m in discovered
+        ]
+    }
+
+@router.get("/fine-tuning/models")
+async def list_finetuned_models(_: None = Depends(verify_api_key)):
+    """Lista todos os modelos fine-tuned disponíveis na conta (para usar nos agentes)."""
+    import openai
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return []
+        
+    client = openai.AsyncOpenAI(api_key=api_key)
+    try:
+        models_page = await client.models.list()
+        # Filtra apenas modelos que começam com ft: (fine-tuned) e ignora checkpoints na listagem padrão para não poluir
+        ft_models = [m for m in models_page.data if m.id.startswith("ft:") and ":ckpt-" not in m.id]
+        return [{"id": m.id, "created": m.created} for m in ft_models]
+    except Exception as e:
+        logger.error(f"Erro ao buscar modelos fine-tuning: {e}")
+        return [] # Retorna lista vazia para não quebrar o frontend

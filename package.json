@@ -1,0 +1,13 @@
+{
+  "name": "ai-automation-agent-root",
+  "version": "1.0.0",
+  "description": "Root management for AI Automation Agent",
+  "scripts": {
+    "test": "powershell ./test_all.ps1",
+    "test:docker": "powershell ./test_docker.ps1",
+    "test:backend": "cd backend && pytest",
+    "test:frontend": "cd frontend && npm run test:e2e"
+  },
+  "author": "Aryaraj",
+  "license": "ISC"
+}

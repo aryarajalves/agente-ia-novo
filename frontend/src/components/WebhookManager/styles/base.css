@@ -1,0 +1,62 @@
+/* ============================================================
+   WEBHOOK MANAGER — Variáveis e Base
+   ============================================================ */
+
+:root {
+  --wh-bg-card: rgba(15, 23, 42, 0.55);
+  --wh-border: rgba(255, 255, 255, 0.07);
+  --wh-border-glow: rgba(99, 102, 241, 0.35);
+  
+  --wh-purple: #6366f1;
+  --wh-purple-dark: #4f46e5;
+  --wh-green: #10b981;
+  --wh-red: #ef4444;
+  --wh-blue: #3b82f6;
+  
+  --wh-text-primary: #e2e8f0;
+  --wh-text-secondary: #94a3b8;
+  --wh-text-muted: #64748b;
+  
+  --wh-radius-xl: 24px;
+  --wh-radius-lg: 16px;
+  --wh-radius-md: 12px;
+  --wh-radius-sm: 8px;
+  
+  --wh-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  --wh-shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.webhook-manager-container {
+  padding: 2rem 2.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: var(--wh-text-primary);
+  animation: fadeInUp 0.5s ease both;
+}
+
+.fade-in { animation: fadeInUp 0.4s ease both; }
+
+.empty-state-card {
+  background: var(--wh-bg-card);
+  border: 2px dashed var(--wh-border);
+  border-radius: var(--wh-radius-xl);
+  padding: 3rem;
+  text-align: center;
+  backdrop-filter: blur(10px);
+}

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 import { api } from '../api/client';
 import ConfirmModal from './ConfirmModal';
+import PromptVersionEditModal from './PromptVersionEditModal';
+import { showToast, formatDate } from './WebhookManager/utils/helpers';
 
 const PromptVersions = ({ agentId, onRestore }) => {
     const [drafts, setDrafts] = useState([]);
@@ -11,6 +13,7 @@ const PromptVersions = ({ agentId, onRestore }) => {
     const [viewId, setViewId] = useState(null);
     const [editDraft, setEditDraft] = useState(null);
     const [editName, setEditName] = useState('');
+    const [editDescription, setEditDescription] = useState('');
     const [editText, setEditText] = useState('');
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
@@ -22,7 +25,7 @@ const PromptVersions = ({ agentId, onRestore }) => {
         try {
             const res = await api.get(`/agents/${agentId}/drafts`);
             const data = await res.json();
-            setDrafts(data || []);
+            setDrafts(Array.isArray(data) ? data : []);
         } catch (e) {
             console.error("Erro ao buscar rascunhos:", e);
         } finally {
@@ -34,25 +37,45 @@ const PromptVersions = ({ agentId, onRestore }) => {
         fetchDrafts();
     }, [agentId]);
 
+    // Handle body blur when modal is open
+    useEffect(() => {
+        if (editDraft || deleteId || restoreData) {
+            document.body.classList.add('modal-open-blur');
+        } else {
+            document.body.classList.remove('modal-open-blur');
+        }
+        return () => document.body.classList.remove('modal-open-blur');
+    }, [editDraft, deleteId, restoreData]);
+
     const handleDelete = async () => {
         try {
-            await api.delete(`/drafts/${deleteId}`);
-            fetchDrafts();
+            const res = await api.delete(`/drafts/${deleteId}`);
+            if (res.ok) {
+                showToast("Versão excluída com sucesso");
+                fetchDrafts();
+            }
         } catch (e) {
             console.error("Erro ao excluir rascunho:", e);
+            showToast("Erro ao excluir versão", "error");
         } finally {
             setDeleteId(null);
         }
     };
 
     const confirmRestore = () => {
-        onRestore(restoreData.prompt_text);
-        setRestoreData(null);
+        try {
+            onRestore(restoreData.prompt_text);
+            showToast(`Versão "${restoreData.version_name}" restaurada no editor`);
+            setRestoreData(null);
+        } catch (e) {
+            showToast("Erro ao restaurar versão", "error");
+        }
     };
 
     const handleEditStart = (draft) => {
         setEditDraft(draft);
         setEditName(draft.version_name);
+        setEditDescription(draft.description || '');
         setEditText(draft.prompt_text);
     };
 
@@ -62,15 +85,18 @@ const PromptVersions = ({ agentId, onRestore }) => {
         try {
             const res = await api.put(`/drafts/${editDraft.id}`, {
                 version_name: editName,
+                description: editDescription,
                 prompt_text: editText,
                 agent_id: agentId // Required by model even if not changed
             });
             if (res.ok) {
+                showToast("Versão atualizada com sucesso");
                 setEditDraft(null);
                 fetchDrafts();
             }
         } catch (e) {
             console.error("Erro ao editar rascunho:", e);
+            showToast("Erro ao salvar alterações", "error");
         } finally {
             setIsSavingEdit(false);
         }
@@ -121,12 +147,15 @@ const PromptVersions = ({ agentId, onRestore }) => {
                                     <div>
                                         <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#fff', marginBottom: '2px' }}>{d.version_name}</div>
                                         <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span>🕒 {new Date(d.created_at).toLocaleString('pt-BR')}</span>
+                                            <span>🕒 {formatDate(d.created_at)}</span>
                                             <span style={{ opacity: 0.3 }}>•</span>
-                                            <span style={{ color: 'var(--success-color)', fontWeight: 600 }}>{d.token_count || Math.ceil(d.prompt_text.length / 4)} tokens</span>
-                                            <span style={{ opacity: 0.3 }}>•</span>
-                                            <span>{d.character_count || d.prompt_text.length} caracteres</span>
+                                            <span style={{ color: 'var(--success-color)', fontWeight: 600 }}>{d.token_count || Math.ceil((d.prompt_text?.length || 0) / 4)} tokens</span>
                                         </div>
+                                        {d.description && (
+                                            <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '4px', fontStyle: 'italic', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {d.description}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
@@ -201,7 +230,24 @@ const PromptVersions = ({ agentId, onRestore }) => {
                                     maxHeight: '400px',
                                     overflowY: 'auto'
                                 }}>
-                                    {d.prompt_text}
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        {d.prompt_text.split('\n').map((line, idx) => (
+                                            <div key={idx} style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.02)', padding: '2px 0' }}>
+                                                <span style={{ 
+                                                    minWidth: '35px', 
+                                                    textAlign: 'right', 
+                                                    color: '#6366f1', 
+                                                    opacity: 0.5, 
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.8rem',
+                                                    userSelect: 'none'
+                                                }}>
+                                                    {idx + 1}
+                                                </span>
+                                                <span style={{ flex: 1 }}>{line || ' '}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -232,70 +278,18 @@ const PromptVersions = ({ agentId, onRestore }) => {
             />
 
             {/* Modal de Edição de Rascunho */}
-            {editDraft && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    background: 'rgba(2, 6, 23, 0.85)', backdropFilter: 'blur(10px)',
-                    zIndex: 100000, display: 'flex', justifyContent: 'center', alignItems: 'center',
-                    padding: '20px'
-                }}>
-                    <div className="step-card fade-in" style={{
-                        width: '100%', maxWidth: '800px', padding: '2.5rem',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-                        maxHeight: '90vh', overflowY: 'auto'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                            <h3 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '1.5rem' }}>
-                                ✏️ Editar Rascunho
-                            </h3>
-                            <button onClick={() => setEditDraft(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
-                        </div>
-
-                        <div className="form-group">
-                            <label>Nome da Versão</label>
-                            <input
-                                type="text"
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                style={{ width: '100%', padding: '1rem', background: '#020617', border: '1px solid var(--border-color)', color: 'white', borderRadius: '12px' }}
-                            />
-                        </div>
-
-                        <div className="form-group" style={{ marginTop: '1.5rem' }}>
-                            <label>Texto do Prompt</label>
-                            <textarea
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                style={{
-                                    width: '100%', minHeight: '300px', padding: '1.2rem',
-                                    background: '#020617', border: '1px solid var(--border-color)',
-                                    color: 'white', borderRadius: '12px', fontFamily: 'monospace',
-                                    lineHeight: '1.6', fontSize: '0.9rem'
-                                }}
-                            />
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '2.5rem' }}>
-                            <button
-                                onClick={() => setEditDraft(null)}
-                                className="secondary-btn"
-                                style={{ flex: 1, padding: '1rem' }}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleEditSave}
-                                className="create-agent-btn"
-                                style={{ flex: 2, padding: '1rem' }}
-                                disabled={isSavingEdit || !editName.trim() || !editText.trim()}
-                            >
-                                {isSavingEdit ? 'Salvando...' : '💾 Salvar Alterações'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <PromptVersionEditModal 
+                editDraft={editDraft}
+                editName={editName}
+                setEditName={setEditName}
+                editDescription={editDescription}
+                setEditDescription={setEditDescription}
+                editText={editText}
+                setEditText={setEditText}
+                onCancel={() => setEditDraft(null)}
+                onSave={handleEditSave}
+                isSavingEdit={isSavingEdit}
+            />
 
             <style>{`
                 .draft-wrapper {

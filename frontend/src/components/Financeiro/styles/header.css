@@ -1,0 +1,100 @@
+/* ============================================================
+   FINANCEIRO — Header e KPI Cards
+   ============================================================ */
+
+.finance-header { margin-bottom: 2rem; }
+
+.header-top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.header-info h1 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--fin-text-primary);
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.5px;
+}
+.header-info .subtitle {
+  font-size: 0.875rem;
+  color: var(--fin-text-muted);
+  margin: 0 0 1.2rem;
+}
+
+/* --- Toggle de modo --- */
+.view-mode-toggle {
+  display: flex;
+  gap: 0.25rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  border-radius: 14px;
+  width: fit-content;
+  border: 1px solid var(--fin-border);
+}
+.view-mode-toggle button {
+  background: transparent;
+  border: none;
+  color: var(--fin-text-muted);
+  padding: 8px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.85rem;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+.view-mode-toggle button:hover:not(.active) {
+  color: var(--fin-text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+.view-mode-toggle button.active {
+  background: linear-gradient(135deg, var(--fin-purple), #4f46e5);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+/* --- KPI Cards Row --- */
+.kpi-cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 0;
+}
+.kpi-card {
+  background: var(--fin-bg-card);
+  border: 1px solid var(--fin-border);
+  border-radius: var(--fin-radius-lg);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  backdrop-filter: blur(10px);
+  transition: border-color 0.25s, box-shadow 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--kpi-accent, var(--fin-purple));
+  border-radius: 2px 2px 0 0;
+}
+.kpi-card:hover {
+  border-color: var(--fin-border-glow);
+  box-shadow: var(--fin-shadow-glow);
+}
+.kpi-icon  { font-size: 1.25rem; line-height: 1; }
+.kpi-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fin-text-muted); }
+.kpi-value { font-size: 1.65rem; font-weight: 800; color: var(--fin-text-primary); line-height: 1; }
+.kpi-sub   { font-size: 0.72rem; color: var(--fin-text-muted); }
+
+.kpi-card.green  { --kpi-accent: var(--fin-green); }
+.kpi-card.purple { --kpi-accent: var(--fin-purple); }
+.kpi-card.yellow { --kpi-accent: var(--fin-yellow); }
+.kpi-card.pink   { --kpi-accent: var(--fin-pink); }

@@ -15,6 +15,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+ 
+  redis:
+    image: redis:7-alpine
+    container_name: redis-agente-local
+    ports:
+      - "6379:6379"
 
   backend:
     build: ../backend
@@ -33,6 +39,42 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
+ 
+  beat:
+    build: ../backend
+    container_name: beat-agente-local
+    command: celery -A celery_app beat --loglevel=info
+    env_file:
+      - ../.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ai_agent_db}
+      - PYTHONPATH=/app
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build: ../backend
+    container_name: worker-agente-local
+    command: celery -A celery_app worker --loglevel=info --concurrency=1
+    env_file:
+      - ../.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ai_agent_db}
+      - PYTHONPATH=/app
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     build:
@@ -48,7 +90,17 @@ services:
       - ../frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8002
+      - NODE_ENV=development
+    depends_on:
+      - backend
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare-tunnel-agente
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - ../.env
     depends_on:
       - backend
 

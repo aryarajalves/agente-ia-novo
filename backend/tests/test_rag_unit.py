@@ -15,7 +15,7 @@ from rag_service import (
 
 @pytest.mark.asyncio
 async def test_detect_language_portuguese():
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.language.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content="portuguese"))]
         mock_response.usage = MagicMock(total_tokens=10)
@@ -27,7 +27,7 @@ async def test_detect_language_portuguese():
 
 @pytest.mark.asyncio
 async def test_detect_language_unknown_becomes_simple():
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.language.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=" Klingon "))]
         mock_response.usage = MagicMock(total_tokens=5)
@@ -42,7 +42,7 @@ async def test_detect_language_unknown_becomes_simple():
 
 @pytest.mark.asyncio
 async def test_translate_to_portuguese_success():
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.language.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content="Como vai você?"))]
         mock_call.return_value = mock_response
@@ -52,7 +52,7 @@ async def test_translate_to_portuguese_success():
 
 @pytest.mark.asyncio
 async def test_translate_to_portuguese_fallback_on_error():
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.language.call_rag_llm") as mock_call:
         mock_call.side_effect = Exception("LLM Error")
         translated, usage = await translate_to_portuguese("Error case")
         # Should fall back to the original text, not crash
@@ -70,7 +70,7 @@ async def test_rerank_results_reorders_by_llm():
     ]
     query = "Tell me about beta"
 
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps([1, 0])))]
         mock_response.usage = MagicMock()
@@ -89,7 +89,7 @@ async def test_rerank_results_handles_dict_format():
         {"id": 2, "question": "Q2", "answer": "A2"}
     ]
 
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"order": [1, 0]})))]
         mock_response.usage = MagicMock()
@@ -104,7 +104,7 @@ async def test_rerank_results_single_item_skipped():
     """Single-item lists should be returned immediately without calling LLM."""
     items = [{"id": 1, "question": "Q1", "answer": "A1"}]
 
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         result, _ = await rerank_results("query", items)
         mock_call.assert_not_called()
         assert len(result) == 1
@@ -120,7 +120,7 @@ async def test_evaluate_rag_relevance_returns_relevant_indices():
         {"id": 10, "question": "Tipos de dívidas", "answer": "Existem 3 tipos...", "distance": 0.55},
         {"id": 11, "question": "Como fazer login", "answer": "Basta clicar em...", "distance": 0.80},
     ]
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"useful_indices": [0]})))]
         mock_response.usage = MagicMock()
@@ -136,7 +136,7 @@ async def test_evaluate_rag_relevance_trust_threshold_bypasses_filter():
     items = [
         {"id": 42, "question": "Exato match", "answer": "Resposta exata", "distance": 0.40},
     ]
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         # LLM says nothing is relevant...
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"useful_indices": []})))]
@@ -157,7 +157,7 @@ async def test_evaluate_rag_relevance_fallback_when_all_filtered():
         {"id": 5, "question": "Melhor resultado", "answer": "...", "distance": 0.50},
         {"id": 6, "question": "Pior resultado", "answer": "...", "distance": 0.90},
     ]
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"useful_indices": []})))]
         mock_response.usage = MagicMock()
@@ -176,7 +176,7 @@ async def test_evaluate_rag_relevance_truly_irrelevant_filtered():
     items = [
         {"id": 7, "question": "Receita de bolo", "answer": "Coloque o açúcar...", "distance": 0.95},
     ]
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"useful_indices": []})))]
         mock_response.usage = MagicMock()
@@ -190,7 +190,7 @@ async def test_evaluate_rag_relevance_truly_irrelevant_filtered():
 @pytest.mark.asyncio
 async def test_evaluate_rag_relevance_empty_input():
     """Empty items should return empty without calling LLM."""
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         result, _ = await evaluate_rag_relevance("query", [])
         mock_call.assert_not_called()
         assert result == []
@@ -201,7 +201,7 @@ async def test_evaluate_rag_relevance_invalid_json_fallback():
     items = [
         {"id": 1, "question": "Q", "answer": "A", "distance": 0.80},
     ]
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         # Returns SIM instead of JSON
         mock_response.choices = [MagicMock(message=MagicMock(content="SIM"))]
@@ -220,7 +220,7 @@ async def test_evaluate_rag_relevance_invalid_json_fallback():
 async def test_generate_multi_queries_includes_original():
     query = "how to bake a cake"
 
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps(["cake recipe", "baking instructions"])))]
         mock_response.usage = MagicMock()
@@ -235,7 +235,7 @@ async def test_generate_multi_queries_includes_original():
 @pytest.mark.asyncio
 async def test_generate_multi_queries_fallback_on_error():
     """If LLM fails, should return the original query only."""
-    with patch("rag_service.call_rag_llm") as mock_call:
+    with patch("services.rag.agentic.call_rag_llm") as mock_call:
         mock_call.side_effect = Exception("API Error")
 
         queries, _ = await generate_multi_queries("original query", count=2)

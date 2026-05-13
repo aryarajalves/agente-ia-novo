@@ -1,0 +1,54 @@
+/* ============================================================
+   EXTRACTION TOOL STYLES (GLOBAL PREMIUM)
+   ============================================================ */
+
+.batch-extract-premium {
+    width: 100%;
+    margin: 1rem 0;
+    padding: 0.85rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1));
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    border-radius: 12px;
+    color: #e0e7ff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(5px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+}
+
+.batch-extract-premium:hover {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+    border-color: #a855f7;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(168, 85, 247, 0.2);
+    color: #fff;
+}
+
+.batch-extract-premium:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.batch-extract-premium::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(168, 85, 247, 0.2) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    border-radius: 12px;
+    pointer-events: none;
+}
+
+.batch-extract-premium:hover::before {
+    opacity: 1;
+}

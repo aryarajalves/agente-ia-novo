@@ -1,0 +1,164 @@
+import os
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+
+from models import UserModel
+from api.schemas import LoginRequest, UserCreate, UserUpdate
+from api.deps import get_db, verify_api_key, get_current_user
+from api.services.auth_service import (
+    get_password_hash, 
+    verify_password, 
+    create_access_token
+)
+from api.limiter import limiter
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["Authentication"])
+
+@router.get("/users/me", dependencies=[Depends(verify_api_key)])
+async def get_me(current_email: str = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).where(UserModel.email == current_email))
+    user = result.scalar_one_or_none()
+    if not user:
+        # Fallback para admin fixo do .env caso não esteja no banco
+        from dotenv import dotenv_values
+        env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+        env_vars = dotenv_values(env_path) if os.path.exists(env_path) else {}
+        admin_email = env_vars.get("ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL") or "admin@agente.com"
+        
+        if current_email == admin_email:
+            return {"id": 0, "name": "Admin Super", "email": admin_email, "role": "Super Admin"}
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return user
+
+@router.put("/users/me", dependencies=[Depends(verify_api_key)])
+async def update_me(user_update: UserUpdate, current_email: str = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).where(UserModel.email == current_email))
+    user = result.scalar_one_or_none()
+    
+    from dotenv import dotenv_values
+    env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    env_vars = dotenv_values(env_path) if os.path.exists(env_path) else {}
+    admin_email = env_vars.get("ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL") or "admin@agente.com"
+    is_env_admin = (current_email == admin_email)
+
+    if not user:
+        if is_env_admin:
+            admin_pass = env_vars.get("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD") or "admin123"
+            user = UserModel(
+                name=user_update.name or "Admin Super",
+                email=admin_email,
+                password=get_password_hash(admin_pass),
+                role="Super Admin",
+                status="ATIVO"
+            )
+            db.add(user)
+        else:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    
+    update_data = user_update.model_dump(exclude_unset=True)
+    if is_env_admin or (user and user.role == "Super Admin"):
+        if "name" in update_data:
+            user.name = update_data["name"]
+    else:
+        if "password" in update_data and update_data["password"]:
+            update_data["password"] = get_password_hash(update_data["password"])
+            
+        for key, value in update_data.items():
+            if value is not None:
+                setattr(user, key, value)
+    
+    await db.commit()
+    await db.refresh(user)
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "status": user.status
+    }
+
+@router.post("/login")
+@limiter.limit("5/minute")
+async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(get_db)):
+    from dotenv import dotenv_values
+    env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    env_vars = dotenv_values(env_path) if os.path.exists(env_path) else {}
+
+    admin_email = env_vars.get("ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL") or "admin@agente.com"
+    admin_password = env_vars.get("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD")
+    
+    if admin_email and admin_password:
+        if req.email == admin_email:
+            if req.password == admin_password:
+                access_token = create_access_token(data={"sub": admin_email})
+                return {"success": True, "token": access_token, "user": {"name": "Admin Super", "role": "Super Admin"}}
+
+    try:
+        result = await db.execute(select(UserModel).where(UserModel.email == req.email))
+        db_user = result.scalar_one_or_none()
+        if db_user:
+            is_valid = False
+            if db_user.password.startswith("$2b$") or db_user.password.startswith("$2a$"):
+                is_valid = verify_password(req.password, db_user.password)
+            else:
+                is_valid = (db_user.password == req.password)
+                if is_valid:
+                    db_user.password = get_password_hash(req.password)
+                    await db.commit()
+            
+            if is_valid:
+                access_token = create_access_token(data={"sub": db_user.email})
+                return {"success": True, "token": access_token, "user": {"name": db_user.name, "role": db_user.role, "id": db_user.id}}
+    except Exception as e:
+        logger.error(f"Erro no login ao acessar DB: {e}")
+
+    raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+
+@router.get("/users", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def get_users(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).order_by(UserModel.id.desc()))
+    users = result.scalars().all()
+    return users
+
+@router.post("/users", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    user_data = user.model_dump()
+    user_data["password"] = get_password_hash(user.password)
+    db_user = UserModel(**user_data)
+    db.add(db_user)
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user
+
+@router.put("/users/{user_id}", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def update_user(user_id: int, user: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    db_user = result.scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    
+    update_data = user.model_dump(exclude_unset=True)
+    if "password" in update_data:
+        update_data["password"] = get_password_hash(update_data["password"])
+        
+    for key, value in update_data.items():
+        setattr(db_user, key, value)
+    
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user
+
+@router.delete("/users/{user_id}", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    db_user = result.scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    
+    await db.delete(db_user)
+    await db.commit()
+    return {"success": True}
