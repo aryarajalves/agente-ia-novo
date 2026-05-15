@@ -17,7 +17,7 @@ services:
   # BACKEND — FastAPI + Gunicorn
   # ----------------------------------------------------------
   backend:
-    image: aryarajalves/configurar-agentes-ia:1.6.0-backend
+    image: aryarajalves/configurar-agentes-ia:1.6.4-backend
 
 
     hostname: "{{.Service.Name}}.{{.Task.Slot}}"
@@ -97,7 +97,7 @@ services:
   # WORKER — Processador de Transcrições
   # ----------------------------------------------------------
   worker:
-    image: aryarajalves/configurar-agentes-ia:1.6.0-backend
+    image: aryarajalves/configurar-agentes-ia:1.6.4-backend
 
 
     hostname: "{{.Service.Name}}.{{.Task.Slot}}"
@@ -132,7 +132,7 @@ services:
   # BEAT — Celery Beat (tarefas periódicas)
   # ----------------------------------------------------------
   beat:
-    image: aryarajalves/configurar-agentes-ia:1.6.0-backend
+    image: aryarajalves/configurar-agentes-ia:1.6.4-backend
 
 
     hostname: "{{.Service.Name}}"
@@ -159,7 +159,7 @@ services:
   # FRONTEND — React (build estático) + Nginx
   # ----------------------------------------------------------
   frontend:
-    image: aryarajalves/configurar-agentes-ia:1.6.0-frontend
+    image: aryarajalves/configurar-agentes-ia:1.6.4-frontend
 
 
     hostname: "{{.Service.Name}}.{{.Task.Slot}}"

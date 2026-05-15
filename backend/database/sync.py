@@ -39,7 +39,19 @@ async def sync_database_schema():
     """
     logger.info("🔍 Iniciando auto-sincronização de schema...")
     
-    # 1. Garantir que as tabelas básicas existam
+    # 1. Habilitar a extensão pgvector em uma transação independente e comitada
+    if "postgresql" in str(engine.url):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception as e:
+            logger.error(
+                f"❌ FALHA CRÍTICA: Não foi possível criar a extensão 'vector' no PostgreSQL. "
+                f"Verifique se o usuário tem permissão e se a imagem possui pgvector. Erro: {e}"
+            )
+            raise
+
+    # 2. Garantir que as tabelas básicas existam (agora o banco já reconhece a extensão)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
