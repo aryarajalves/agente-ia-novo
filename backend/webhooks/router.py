@@ -568,8 +568,16 @@ async def receive_memory_webhook(token: str, request: Request, db: AsyncSession 
     phone = normalize_phone(str(phone_raw or ""))
     if not phone: raise HTTPException(status_code=400, detail="Telefone não encontrado. O JSON deve conter 'phone', 'telefone' ou 'sender.phone'")
 
+    mensagem_text = get_value_by_path(body, "template_content") or get_value_by_path(body, "content") or ""
+    dono = get_value_by_path(body, "Dono") or get_value_by_path(body, "dono") or "cliente"
+
     await ensure_leads_table(config.leads_table)
-    await upsert_lead(config.leads_table, {"telefone": phone, "contato_nome": "Lead_" + phone[-4:], "dono": "cliente"}, config.id)
+    await upsert_lead(config.leads_table, {
+        "telefone": phone, 
+        "contato_nome": "Lead_" + phone[-4:], 
+        "dono": dono,
+        "mensagem": mensagem_text
+    }, config.id)
     
     # Criar o registro de evento para sincronização de memória
     from models import WebhookEventModel
@@ -582,7 +590,8 @@ async def receive_memory_webhook(token: str, request: Request, db: AsyncSession 
         raw_payload=json.dumps(body, ensure_ascii=False),
         telefone=phone,
         contato_nome="Lead_" + phone[-4:],
-        dono="cliente",
+        dono=dono,
+        mensagem=mensagem_text,
         created_at=now_br,
         processing_steps=json.dumps([{
             "step": "📥 Recebido Webhook de Memória",
