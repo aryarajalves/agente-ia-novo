@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../../../config';
 import PipelineCountdown from './Common/PipelineCountdown';
+import RaioXViewerModal from './RaioXViewerModal';
 
 const AutomationPipelineModal = ({ 
     event: initialEvent, 
@@ -29,25 +30,21 @@ const AutomationPipelineModal = ({
     };
 
     // Polling e WebSocket para atualizações em tempo real (Padrão Premium)
-    useEffect(() => {
-        let isMounted = true;
+    const pollEvent = React.useCallback(async () => {
+        if (!event || ['completed', 'error', 'canceled', 'grouped', 'ignored'].includes(event.status)) return;
         
-        const pollEvent = async () => {
-            if (!event || ['completed', 'error', 'canceled', 'grouped', 'ignored'].includes(event.status)) return;
-            
-            try {
-                const baseUrl = API_URL.replace(/\/$/, '');
-                const res = await fetch(`${baseUrl}/webhooks/${event.webhook_config_id}/events/${event.id}`);
-                if (!res.ok) return;
-                const data = await res.json();
-                if (isMounted) {
-                    setEvent(prev => ({ ...prev, ...data }));
-                }
-            } catch (e) {
-                console.error('Erro no polling do pipeline:', e);
-            }
-        };
+        try {
+            const baseUrl = API_URL.replace(/\/$/, '');
+            const res = await fetch(`${baseUrl}/webhooks/${event.webhook_config_id}/events/${event.id}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setEvent(prev => ({ ...prev, ...data }));
+        } catch (e) {
+            console.error('Erro no polling do pipeline:', e);
+        }
+    }, [event.id, event.status, event.webhook_config_id]);
 
+    useEffect(() => {
         // WebSocket para atualizações instantâneas
         const wsUrl = API_URL.replace('http', 'ws') + '/ws/events';
         let ws;
@@ -57,7 +54,6 @@ const AutomationPipelineModal = ({
                 try {
                     const data = JSON.parse(msg.data);
                     if (data.type === 'status_update' && data.event_id === event.id) {
-                        // Atualização imediata via WebSocket
                         pollEvent(); // Força um refresh dos dados completos
                     }
                 } catch (e) { console.error('Erro WS Pipeline:', e); }
@@ -66,11 +62,10 @@ const AutomationPipelineModal = ({
 
         const timer = setInterval(pollEvent, 3000);
         return () => {
-            isMounted = false;
             clearInterval(timer);
             if (ws) ws.close();
         };
-    }, [event.id, event.status, event.webhook_config_id]);
+    }, [event.id, pollEvent]);
 
     // Bloquear scroll
     useEffect(() => {
@@ -178,6 +173,7 @@ const AutomationPipelineModal = ({
                                     }}>
                                         <PipelineCountdown 
                                             isPending={true}
+                                            onFinished={pollEvent}
                                             serverNow={event.server_now}
                                             step={{ 
                                                 timestamp: event.created_at, 
@@ -269,7 +265,12 @@ const AutomationPipelineModal = ({
                 </div>
 
                 {/* Modal Maximizado (Overlay Secundário) */}
-                {maximizedStep && (
+                {maximizedStep && (maximizedStep.title.includes('Raio-X') ? (
+                    <RaioXViewerModal 
+                        data={maximizedStep.content} 
+                        onClose={() => setMaximizedStep(null)} 
+                    />
+                ) : (
                     <div 
                         className="premium-modal-overlay" 
                         style={{ zIndex: 1200, background: 'rgba(0,0,0,0.85)' }}
@@ -302,7 +303,7 @@ const AutomationPipelineModal = ({
                             </div>
                         </div>
                     </div>
-                )}
+                ))}
             </div>
         </div>
     );

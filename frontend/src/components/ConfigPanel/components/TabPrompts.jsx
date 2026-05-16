@@ -131,6 +131,7 @@ const TabPrompts = () => {
                                     id="new-ignore-msg"
                                     placeholder="Digite ou cole aqui o texto do anúncio..."
                                     onKeyPress={(e) => e.key === 'Enter' && handleAddIgnoreMsg()}
+                                    style={{ color: '#fff' }}
                                 />
                                 <button type="button" onClick={handleAddIgnoreMsg} className="add-btn">
                                     <span>➕</span> Adicionar

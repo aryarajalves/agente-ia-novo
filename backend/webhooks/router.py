@@ -494,7 +494,10 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
 
     # --- PROCESSAMENTO IMEDIATO DE MÍDIA ---
     if content_type in ["audio", "image"]:
-        is_enabled = (content_type == "audio" and config.process_audio) or (content_type == "image" and config.process_image)
+        process_a = config.process_audio if config.process_audio is not None else True
+        process_i = config.process_image if config.process_image is not None else True
+        
+        is_enabled = (content_type == "audio" and process_a) or (content_type == "image" and process_i)
         if is_enabled:
             logger.info(f"🎙️ Disparando processamento imediato de {content_type} para evento {event.id}")
             process_media_content_task.delay(config.id, event.id)
@@ -705,11 +708,14 @@ async def list_webhook_leads(
         ORDER BY updated_at DESC 
         LIMIT :limit OFFSET :offset
     """)
+    logger.info(f"📊 Buscando leads para webhook {webhook_id} na tabela {config.leads_table} (Page: {page}, Size: {page_size}, Search: {q})")
     res = await db.execute(query, params)
     columns = res.keys()
     leads = [dict(zip(columns, row)) for row in res.fetchall()]
     
+    logger.info(f"✅ Encontrados {len(leads)} leads de um total de {total}.")
     return {"total": total, "leads": leads}
+
 
 @router.post("/{webhook_id}/leads/delete-batch", status_code=204)
 async def delete_leads_batch(webhook_id: int, req: LeadBulkDeleteRequest, db: AsyncSession = Depends(get_db)):
@@ -720,19 +726,23 @@ async def delete_leads_batch(webhook_id: int, req: LeadBulkDeleteRequest, db: As
     if not req.lead_ids:
         return
 
-    # Buscar telefones dos leads para limpeza em cascata
-    query = text(f"SELECT telefone FROM {config.leads_table} WHERE id = ANY(:ids) AND webhook_config_id = :wid")
-    res = await db.execute(query, {"ids": req.lead_ids, "wid": webhook_id})
-    phones = [r[0] for r in res.fetchall() if r[0]]
-    
     try:
+        # Busca telefones antes de deletar (para limpar logs/gatilhos)
+        query = text(f"SELECT telefone FROM {config.leads_table} WHERE id = ANY(:ids) AND webhook_config_id = :wid")
+        res = await db.execute(query, {"ids": req.lead_ids, "wid": webhook_id})
+        phones = [r[0] for r in res.fetchall() if r[0]]
+        
+        logger.info(f"🗑️ Deletando em lote {len(req.lead_ids)} leads e limpando dados para {len(phones)} telefones.")
+
+        # Remove dados vinculados
         await delete_contact_data(db, webhook_id, config.leads_table, phones, lead_ids=req.lead_ids)
+        
         await db.commit()
-        logger.info(f"✅ {len(req.lead_ids)} leads e dados associados removidos com sucesso.")
+        return Response(status_code=204)
     except Exception as e:
         await db.rollback()
-        logger.error(f"❌ Erro ao deletar leads: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ Erro ao deletar leads em lote: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno ao deletar leads: {str(e)}")
 
 @router.delete("/{webhook_id}/leads/all", status_code=204)
 async def delete_all_leads(webhook_id: int, db: AsyncSession = Depends(get_db)):
