@@ -96,7 +96,7 @@ const DashboardContent = () => {
                         </div>
                         <div style={{ marginBottom: '12px' }}>
                             <h4 style={{ color: '#10b981', marginBottom: '4px', fontSize: '0.9rem' }}>Contexto do Transbordo</h4>
-                            <p style={{ fontSize: '0.85rem', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px', margin: 0 }}>
+                            <p style={{ fontSize: '0.85rem', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px', margin: 0, wordBreak: 'break-word' }}>
                                 {errorLogsModal?.reason}
                             </p>
                         </div>
@@ -110,7 +110,10 @@ const DashboardContent = () => {
                                     borderRadius: '12px',
                                     border: '1px solid rgba(255,255,255,0.05)',
                                     color: '#94a3b8',
-                                    margin: 0
+                                    margin: 0,
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    overflowX: 'auto'
                                 }}>
                                     {JSON.stringify(errorLogsModal.extracted_data, null, 2)}
                                 </pre>

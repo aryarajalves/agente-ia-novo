@@ -85,7 +85,10 @@ NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que
 
 2. Se a mensagem contiver perguntas ou requisições, você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
 
-3. Se a mensagem do usuário for tão vaga ou confusa que você não consegue entender qual o problema dele ou para qual agente mandar, você deve definir 'precisa_esclarecimento' como true e gerar uma pergunta rápida em 'resposta_esclarecimento'.
+3. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true.
+   ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' como false e 'id_agente_alvo' como o Agente Principal.
+   
+4. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
 
 4. Baseado no que o usuário quer, escolha qual agente abaixo deve receber a mensagem:
 {agents_desc}
@@ -122,8 +125,10 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         )
         result = json.loads(response.choices[0].message.content.strip())
         
-        # Metadados
+        # Metadados para depuração (Raio-X)
         result["_model_used"] = model_to_use
+        result["_debug_prompt"] = f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
+        
         if response.usage:
             result["_usage"] = {
                 "prompt_tokens": response.usage.prompt_tokens,

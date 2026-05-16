@@ -102,8 +102,14 @@ async def create_knowledge_base(kb: KnowledgeBase, db: AsyncSession = Depends(ge
     db_kb = KnowledgeBaseModel(name=kb.name, description=kb.description, kb_type=kb.kb_type)
     db.add(db_kb)
     await db.commit()
-    await db.refresh(db_kb)
-    return db_kb
+    
+    # Recarrega usando selectinload para evitar erro de lazy loading na serialização
+    result = await db.execute(
+        select(KnowledgeBaseModel)
+        .where(KnowledgeBaseModel.id == db_kb.id)
+        .options(selectinload(KnowledgeBaseModel.items))
+    )
+    return result.scalars().one()
 
 @router.get("/knowledge-bases/{kb_id}", response_model=KnowledgeBase)
 async def get_knowledge_base(kb_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
@@ -136,8 +142,8 @@ async def update_knowledge_base(kb_id: int, kb: KnowledgeBase, db: AsyncSession 
     db_kb.answer_label = kb.answer_label
     db_kb.metadata_label = kb.metadata_label
     await db.commit()
-    await db.refresh(db_kb)
     
+    # Recarrega com items para evitar erro de lazy loading
     result = await db.execute(
         select(KnowledgeBaseModel)
         .where(KnowledgeBaseModel.id == kb_id)
@@ -347,6 +353,28 @@ async def bulk_delete_transcription_tasks(request: BulkDeleteTranscriptionReques
         await db.delete(task)
     await db.commit()
     return {"message": f"{len(tasks)} registros removidos."}
+
+@router.put("/transcription-tasks/{task_id}/rename")
+async def rename_transcription_task(task_id: int, request: TranscriptionRenameRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    task = await db.get(TranscriptionTaskModel, task_id)
+    if not task: raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    task.filename = request.filename
+    await db.commit()
+    return {"message": "Tarefa renomeada com sucesso"}
+
+@router.post("/transcription-tasks/{task_id}/retry")
+async def retry_transcription_task(task_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    from tasks import process_transcription_task
+    task = await db.get(TranscriptionTaskModel, task_id)
+    if not task: raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    task.status = "PENDING"
+    task.error_message = None
+    await db.commit()
+    
+    # Dispara novamente o Celery
+    process_transcription_task.delay(task.id, task.s3_key, {})
+    return {"message": "Processamento reiniciado."}
 
 # --- OUTROS ENDPOINTS KB ---
 

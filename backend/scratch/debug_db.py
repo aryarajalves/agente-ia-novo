@@ -1,42 +1,25 @@
-import asyncio
+import sqlite3
 import os
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text
-from dotenv import load_dotenv
 
-load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
+db_path = 'backend/database.db'
+if not os.path.exists(db_path):
+    print(f"File {db_path} not found")
+    exit(1)
 
-async def check_db():
-    engine = create_async_engine(DATABASE_URL)
-    async with engine.connect() as conn:
-        print("--- Checking Extensions ---")
-        res = await conn.execute(text("SELECT extname FROM pg_extension;"))
-        extensions = [r[0] for r in res.fetchall()]
-        print(f"Extensions: {extensions}")
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+tables = cursor.fetchall()
+print(f"Tables: {tables}")
 
-        print("\n--- Checking knowledge_items table ---")
-        try:
-            res = await conn.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'knowledge_items';"))
-            columns = res.fetchall()
-            for col in columns:
-                print(f"Column: {col[0]} | Type: {col[1]}")
-        except Exception as e:
-            print(f"Error checking knowledge_items: {e}")
+for table in tables:
+    table_name = table[0]
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = cursor.fetchall()
+    col_names = [c[1] for c in columns]
+    if 'initial_message' in col_names:
+        print(f"Found 'initial_message' in table: {table_name}")
+        cursor.execute(f"SELECT id, name, initial_message FROM {table_name}")
+        print(f"Rows: {cursor.fetchall()}")
 
-        print("\n--- Attempting to add embedding column manually ---")
-        try:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            await conn.commit()
-            print("Extension vector ensured.")
-            
-            await conn.execute(text("ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS embedding vector(1536)"))
-            await conn.commit()
-            print("Successfully added embedding column (or it already existed).")
-        except Exception as e:
-            print(f"FAILED to add embedding column: {e}")
-
-    await engine.dispose()
-
-if __name__ == "__main__":
-    asyncio.run(check_db())
+conn.close()

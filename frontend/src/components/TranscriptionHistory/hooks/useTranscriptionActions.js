@@ -67,10 +67,22 @@ export const useTranscriptionActions = () => {
 
     const handleSaveRename = async (id, newName) => {
         try {
-            const res = await api.patch(`/transcription-tasks/${id}`, { filename: newName });
+            const res = await api.put(`/transcription-tasks/${id}/rename`, { filename: newName });
             if (res.ok) {
-                const updatedTask = await res.json();
-                setTasks(prev => prev.map(t => t.id === id ? updatedTask : t));
+                setTasks(prev => prev.map(t => t.id === id ? { ...t, filename: newName } : t));
+                return true;
+            }
+        } catch (err) {
+            console.error(err);
+        }
+        return false;
+    };
+
+    const handleRetry = async (id) => {
+        try {
+            const res = await api.post(`/transcription-tasks/${id}/retry`);
+            if (res.ok) {
+                setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'PENDING', error_message: null } : t));
                 return true;
             }
         } catch (err) {
@@ -84,6 +96,7 @@ export const useTranscriptionActions = () => {
         toggleSelectAll,
         confirmDelete,
         confirmBulkDelete,
-        handleSaveRename
+        handleSaveRename,
+        handleRetry
     };
 };

@@ -36,7 +36,7 @@ export const useSupportData = () => {
     useEffect(() => {
         fetchRequests();
         fetchPublicToken();
-        const interval = setInterval(fetchRequests, 30000);
+        const interval = setInterval(fetchRequests, 5000); // Polling reduzido para 5s
         return () => clearInterval(interval);
     }, [fetchRequests, fetchPublicToken]);
 

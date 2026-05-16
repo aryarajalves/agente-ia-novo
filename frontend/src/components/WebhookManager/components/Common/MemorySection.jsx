@@ -1,5 +1,5 @@
 import React from 'react';
-import { getMemoryUrl } from '../../utils/helpers';
+import { getMemoryUrl, generateToken, showToast } from '../../utils/helpers';
 
 export const MemorySection = ({ config, setConfig, accentColor = '#818cf8' }) => {
     const memoryUrl = getMemoryUrl(config.token, config.memory_token);
@@ -8,6 +8,7 @@ export const MemorySection = ({ config, setConfig, accentColor = '#818cf8' }) =>
     const copyUrl = () => {
         navigator.clipboard.writeText(memoryUrl);
         setCopied(true);
+        showToast('URL copiada para a área de transferência!');
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -19,7 +20,11 @@ export const MemorySection = ({ config, setConfig, accentColor = '#818cf8' }) =>
                 <div style={{ marginLeft: 'auto' }}>
                     <button 
                         type="button"
-                        onClick={() => setConfig({ ...config, memory_sync_enabled: !config.memory_sync_enabled })}
+                        onClick={() => {
+                            const isEnabling = !config.memory_sync_enabled;
+                            const newToken = (isEnabling && !config.memory_token) ? generateToken() : config.memory_token;
+                            setConfig({ ...config, memory_sync_enabled: isEnabling, memory_token: newToken });
+                        }}
                         style={{ 
                             flexShrink: 0, width: '42px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer', 
                             background: config.memory_sync_enabled ? accentColor : '#334155', 

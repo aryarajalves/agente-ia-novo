@@ -65,6 +65,24 @@ async def ensure_leads_table(table_name: str):
 
 async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
     """Insere ou atualiza lead considerando o telefone e sufixos."""
+    # Garante todos os campos padrão para evitar erros de bind parameter no SQLAlchemy
+    default_fields = {
+        "conta_id": None,
+        "inbox_id": None,
+        "inbox_nome": None,
+        "conversa_id": None,
+        "mensagem_id": None,
+        "contato_id": None,
+        "telefone": None,
+        "labels": "[]",
+        "contato_nome": None,
+        "mensagem": None,
+        "message_type": "text",
+        "link": None,
+        "dono": "cliente"
+    }
+    data = {**default_fields, **data}
+
     is_agent = data.get("dono") == "agente"
     phone_raw = data.get("telefone")
     phone_clean = normalize_phone(phone_raw)
@@ -122,6 +140,7 @@ async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
                     WHERE id = :id
                 """), {**data, "id": row[0], "now_utc": now_utc})
         elif not is_agent:
+            logger.info(f"🆕 Inserindo NOVO lead na tabela {table_name}: {phone_raw}")
             await conn.execute(text(f"""
                 INSERT INTO {table_name}
                     (webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id,
@@ -132,6 +151,8 @@ async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
                      :mensagem_id, :contato_id, :telefone, :labels, :contato_nome, :mensagem, :message_type, :link,
                      TRUE, :now_utc, :now_utc, :now_utc)
             """), {"webhook_config_id": webhook_config_id, "now_utc": now_utc, **data})
+            logger.info(f"✅ Lead {phone_raw} inserido com sucesso em {table_name}.")
+
 
 async def delete_contact_data(db: AsyncSession, webhook_id: int, table_name: str, phones: list, lead_ids: list = None):
     """Remove todos os dados de um contato (Logs, Memória, Sumários, Gatilhos)."""
@@ -139,7 +160,9 @@ async def delete_contact_data(db: AsyncSession, webhook_id: int, table_name: str
         logger.info("Nenhum telefone ou lead_id fornecido para deleção.")
         return
         
-    suffixes = [p[-8:] for p in phones if len(p) >= 8]
+    logger.info(f"🗑️ Iniciando limpeza de dados para {len(phones)} telefones e {len(lead_ids or [])} IDs no webhook {webhook_id}")
+    
+    suffixes = [p[-8:] for p in phones if p and len(p) >= 8]
     
     # 1. Limpar eventos se houver telefones
     if phones:
@@ -149,13 +172,16 @@ async def delete_contact_data(db: AsyncSession, webhook_id: int, table_name: str
             where_events += " OR RIGHT(telefone, 8) = ANY(:suffixes)"
             params_events["suffixes"] = suffixes
         where_events += ")"
-        await db.execute(text(f"DELETE FROM webhook_events WHERE webhook_config_id = :wid AND {where_events}"), params_events)
+        
+        evt_res = await db.execute(text(f"DELETE FROM webhook_events WHERE webhook_config_id = :wid AND {where_events}"), params_events)
+        logger.info(f"✅ {evt_res.rowcount} eventos removidos.")
         
         # Limpar memórias e logs
         await db.execute(text("DELETE FROM user_memory WHERE session_id = ANY(:tels)"), {"tels": phones})
         await db.execute(text("DELETE FROM session_summaries WHERE session_id = ANY(:tels)"), {"tels": phones})
         await db.execute(text("DELETE FROM interaction_logs WHERE session_id = ANY(:tels)"), {"tels": phones})
         await db.execute(text("DELETE FROM knowledge_items WHERE metadata_val = ANY(:tels)"), {"tels": phones})
+        logger.info("✅ Memórias, sumários e logs limpos.")
         
         # Limpar triggers
         where_trig = "contact_phone = ANY(:tels)"
@@ -166,20 +192,27 @@ async def delete_contact_data(db: AsyncSession, webhook_id: int, table_name: str
             
         trig_res = await db.execute(text(f"SELECT id FROM scheduled_triggers WHERE {where_trig}"), params_trig)
         trig_ids = [r[0] for r in trig_res.fetchall()]
+        
         if trig_ids:
-            await db.execute(text("DELETE FROM message_status WHERE trigger_id = ANY(:ids)"), {"ids": trig_ids})
-            await db.execute(text("DELETE FROM scheduled_triggers WHERE id = ANY(:ids)"), {"ids": trig_ids})
+            # Garante que message_status seja limpo antes (embora haja CASCADE, ser explícito ajuda no log)
+            ms_res = await db.execute(text("DELETE FROM message_status WHERE trigger_id = ANY(:ids)"), {"ids": trig_ids})
+            st_res = await db.execute(text("DELETE FROM scheduled_triggers WHERE id = ANY(:ids)"), {"ids": trig_ids})
+            logger.info(f"✅ {st_res.rowcount} triggers agendados e {ms_res.rowcount} status de mensagem removidos.")
+        else:
+            logger.info("ℹ️ Nenhum trigger agendado encontrado para este contato.")
 
     # 2. Remover o lead propriamente dito
     if lead_ids:
-        await db.execute(text(f"DELETE FROM {table_name} WHERE id = ANY(:ids) AND webhook_config_id = :wid"), {"ids": lead_ids, "wid": webhook_id})
+        lead_res = await db.execute(text(f"DELETE FROM {table_name} WHERE id = ANY(:ids) AND webhook_config_id = :wid"), {"ids": lead_ids, "wid": webhook_id})
+        logger.info(f"✅ {lead_res.rowcount} leads removidos por ID da tabela {table_name}.")
     elif phones:
         # Se não temos IDs, mas temos telefones, deletamos por telefone (fallback)
         where_leads = "(telefone = ANY(:tels)"
         if suffixes:
             where_leads += " OR RIGHT(telefone, 8) = ANY(:suffixes)"
         where_leads += ")"
-        await db.execute(text(f"DELETE FROM {table_name} WHERE {where_leads} AND webhook_config_id = :wid"), {"tels": phones, "suffixes": suffixes, "wid": webhook_id})
+        lead_res = await db.execute(text(f"DELETE FROM {table_name} WHERE {where_leads} AND webhook_config_id = :wid"), {"tels": phones, "suffixes": suffixes, "wid": webhook_id})
+        logger.info(f"✅ {lead_res.rowcount} leads removidos por Telefone da tabela {table_name}.")
 
 async def handle_keyword_handoffs(db: AsyncSession, config, event, extracted: dict, cw_url_default: str, cw_token_default: str):
     """Lógica de transbordo por palavra-chave."""

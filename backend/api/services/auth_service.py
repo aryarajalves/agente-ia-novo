@@ -7,7 +7,7 @@ from typing import Optional
 # --- CONFIGURAÇÕES DE SEGURANÇA ---
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "727ff2d0094a40d08be33a6eda9e3751")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 dias (Estendido para estabilidade da interface)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

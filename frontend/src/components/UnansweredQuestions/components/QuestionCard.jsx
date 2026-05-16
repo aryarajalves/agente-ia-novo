@@ -25,12 +25,6 @@ const QuestionCard = ({ question, index }) => {
             <div className="uq-actions">
                 <button className="uq-btn-teach" onClick={() => openModal(question, 'answer')}>Ensinar Resposta</button>
                 <button className="uq-btn-discard" onClick={() => openModal(question, 'discard')}>Descartar</button>
-                {question.session_id && (
-                    <button 
-                        className="uq-btn-context"
-                        onClick={() => navigate(`/playground?session_id=${question.session_id}&agent_id=${question.agent_id || ''}&view_mode=true`)}
-                    >🔍 Ver Conversa</button>
-                )}
             </div>
         </div>
     );

@@ -17,6 +17,7 @@ from .security import verify_output_safety, validate_response_ai
 from .memory import fetch_user_memory, update_user_memory
 from .tools.handlers.chatwoot import handle_chatwoot_handoff
 from .tools.handlers.internal import handle_date_calculator, handle_unanswered_question
+from .tools.handlers.google import handle_google_calendar
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ async def process_message(
                         mp=usage.get("prompt_tokens", 0),
                         mc=usage.get("completion_tokens", 0)
                     ),
+                    "error": False,
                     "debug": {"pre_router": pre_router_result}
                 }
             
@@ -87,10 +89,8 @@ async def process_message(
             
         print(f"🚀 [ROTEAMENTO DE CUSTO] Complexidade: {complexity}. Modelo selecionado: {config.model} (Papel: {active_role})")
 
-    # 2. Context Window
-    settings = json.loads(config.model_settings) if isinstance(config.model_settings, str) else (config.model_settings or {})
-    role_config = settings.get(active_role, {})
-    target_window = role_config.get("context_window", config.context_window)
+    # 2. Context Window - Unificada globalmente para 5 mensagens por padrão (ou o configurado globalmente)
+    target_window = config.context_window or 5
     if history and len(history) > (target_window * 2):
         history = history[-(target_window * 2):]
 
@@ -100,6 +100,11 @@ async def process_message(
     # 3. System Prompt & Variable Injection
     system_prompt = config.system_prompt
     system_prompt += "\n\n⚠️ **REGRA DE OURO:** Não use 'IA', 'Robô', 'Suporte Humano'. Use 'especialista', 'equipe'."
+    system_prompt += "\n\n🚨 **PRIORIDADE DE RESPOSTA (SEGUIR À RISCA):**"
+    system_prompt += "\n1. Se o usuário fizer uma pergunta sobre algo que NÃO esteja no seu conhecimento (RAG) ou nas 'INSTRUÇÕES ADICIONAIS' (Inbox), use OBRIGATORIAMENTE a ferramenta 'registrar_duvida_sem_resposta' e diga que vai verificar com a equipe."
+    system_prompt += "\n2. Use 'transferir_suporte_humano' APENAS se o usuário pedir EXPLICITAMENTE ('quero falar com atendente', 'me passa pra um humano', 'quero suporte humano')."
+    system_prompt += "\n3. NUNCA use 'transferir_suporte_humano' apenas porque você não sabe a resposta. Para isso existe a regra 1."
+    system_prompt += "\n4. NUNCA invente nomes de membros da equipe ou clientes. Se a pessoa citada não estiver no seu conhecimento (RAG ou Inbox), trate como dúvida (Regra 1)."
     system_prompt = resolve_conditional_blocks(system_prompt, context_variables)
     for k, v in context_variables.items():
         system_prompt = system_prompt.replace("{" + k + "}", str(v) if v is not None else "")
@@ -113,9 +118,17 @@ async def process_message(
                 tech_context += f"- {key}: {context_variables[key]}\n"
                 has_tech_context = True
         
-        if has_tech_context:
-            system_prompt += tech_context
-    
+    # --- REGRAS RÍGIDAS DE INTEGRIDADE (CONTRA ALUCINAÇÃO) ---
+    strict_rules = (
+        "\n\n### REGRA DE OURO (COMPORTAMENTO OBRIGATÓRIO):\n"
+        "1. Seu 'CONHECIMENTO OFICIAL' é composto por: (a) CONTEXTO RAG e (b) INSTRUÇÕES ADICIONAIS (Inbox). Se a informação estiver em QUALQUER um desses lugares, você DEVE responder com confiança.\n"
+        "2. Se a informação necessária NÃO estiver em nenhum desses dois locais, você DEVE chamar a ferramenta 'registrar_duvida_sem_resposta' ANTES de responder.\n"
+        "3. É PROIBIDO inventar nomes, prazos ou políticas que não constem no seu contexto (RAG ou Inbox).\n"
+        "4. Após registrar a dúvida, diga ao usuário que está verificando com a equipe, mas NUNCA invente uma resposta.\n"
+    )
+    system_prompt += strict_rules
+
+
     messages = [{"role": "system", "content": system_prompt}]
 
     # 4. Memory & RAG & Dates (Simplified for brevity in core)
@@ -164,20 +177,46 @@ async def process_message(
                 }
             })
 
-    # Adicionar ferramenta de Handoff se habilitada
+    # Adicionar ferramenta de Handoff se habilitada (Renomeada para consistência com o Prompt)
     if getattr(config, 'handoff_enabled', False):
         openai_tools.append({
             "type": "function",
             "function": {
-                "name": "transferir_atendimento",
-                "description": "Transfere a conversa para um atendente humano ou outro setor.",
+                "name": "transferir_suporte_humano",
+                "description": (
+                    "Transfere a conversa para um atendente humano. "
+                    "REGRAS RÍGIDAS: 1. Use APENAS se o usuário pedir explicitamente ('quero falar com alguém', 'me passa pra um atendente'). "
+                    "2. NUNCA use se você simplesmente não souber uma resposta (para isso, use 'registrar_duvida_sem_resposta'). "
+                    "3. NUNCA assuma que nomes desconhecidos são de atendentes."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "destino": {"type": "string", "enum": ["humano", "financeiro", "suporte"], "description": "Para onde transferir"},
-                        "motivo": {"type": "string", "description": "Breve motivo da transferência"}
+                        "motivo": {"type": "string", "description": "Motivo real e específico solicitado pelo usuário"}
                     },
-                    "required": ["destino"]
+                    "required": ["motivo"]
+                }
+            }
+        })
+
+    # Garantir que registrar_duvida_sem_resposta esteja sempre disponível para evitar transbordos indevidos
+    has_unanswered = any(t.name == "registrar_duvida_sem_resposta" for t in tools) if tools else False
+    if not has_unanswered:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": "registrar_duvida_sem_resposta",
+                "description": (
+                    "Chame esta ferramenta APENAS quando o conhecimento (RAG) E o seu prompt de sistema não forem suficientes para responder. "
+                    "Se a informação (ex: nome de um funcionário ou política) estiver no seu prompt, use-a e NÃO chame esta ferramenta. "
+                    "Isso registra a dúvida para a equipe verificar depois."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pergunta": {"type": "string", "description": "A pergunta exata do usuário"}
+                    },
+                    "required": ["pergunta"]
                 }
             }
         })
@@ -191,6 +230,7 @@ async def process_message(
     last_response = ""
     iteration = 0
     tool_calls_log = []
+    is_handoff_terminal = False
     
     while iteration < 5:
         iteration += 1
@@ -209,7 +249,7 @@ async def process_message(
                     api_params = {
                         "model": m,
                         "messages": messages,
-                        "temperature": getattr(config, 'temperature', 0.7)
+                        "temperature": getattr(config, 'temperature', 0.1)
                     }
                     if openai_tools:
                         api_params["tools"] = openai_tools
@@ -233,23 +273,28 @@ async def process_message(
             messages.append(response_message)
             
             # Se houver tool_calls, processá-los
-            if response_message.tool_calls:
-                for tool_call in response_message.tool_calls:
+            t_calls = getattr(response_message, "tool_calls", None)
+            if t_calls and isinstance(t_calls, list):
+                for tool_call in t_calls:
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)
                     
                     if on_step:
                         on_step(f"🛠️ Acionando ferramenta: {tool_name}", f"Argumentos: {json.dumps(tool_args, ensure_ascii=False)}")
                     
-                    # Caso Especial: Handoff
-                    if tool_name == "transferir_atendimento":
-                        handoff_data = {"handoff": True, "destino": tool_args.get("destino"), "motivo": tool_args.get("motivo")}
-                        summary = await generate_handoff_summary(history + [messages[-2]]) # Inclui a última msg do user
+                    # Caso Especial: Handoff (Compatível com ambas as versões do nome por transição)
+                    if tool_name in ["transferir_atendimento", "transferir_suporte_humano"]:
+                        # Se for a ferramenta automática simplificada
+                        destino = tool_args.get("destino", "humano")
+                        motivo = tool_args.get("motivo", "Solicitado pelo usuário")
+                        
+                        handoff_data = {"handoff": True, "destino": destino, "motivo": motivo}
+                        summary = await generate_handoff_summary(history + [messages[-2]]) 
                         handoff_data["summary"] = summary
                         
-                        tool_result = f"Transferindo para {tool_args.get('destino')}..."
+                        tool_result = f"Transferindo para {destino}..."
                         messages.append({"tool_call_id": tool_call.id, "role": "tool", "name": tool_name, "content": tool_result})
-                        last_response = f"Entendi perfeitamente. Estou transferindo seu atendimento para nossa equipe especializada em **{tool_args.get('destino').capitalize()}** para que você receba o suporte adequado. Um momento, por favor! ✨"
+                        last_response = f"Entendi perfeitamente. Estou transferindo seu atendimento para nossa equipe especializada para que você receba o suporte adequado. Um momento, por favor! ✨"
                         
                         tool_calls_log.append({
                             "name": tool_name,
@@ -258,22 +303,28 @@ async def process_message(
                         })
                         
                         if on_step:
-                            on_step(f"🚑 Suporte Humano solicitado", f"Destino: {tool_args.get('destino')}. Motivo: {tool_args.get('motivo')}")
-                        continue
+                            on_step(f"🚑 Suporte Humano solicitado", f"Destino: {destino}. Motivo: {motivo}")
+
+                        # O handoff é terminal. Definimos o resultado e paramos o loop principal.
+                        is_handoff_terminal = True
+
+                        # Sincroniza etiquetas no Chatwoot imediatamente
+                        from chatwoot_utils import handle_chatwoot_handoff
+                        await handle_chatwoot_handoff(db, context_variables, None, True, tool_args, history, config.id)
+                        
+                        break 
 
                     # Execução de Webhooks/Internal Tools
                     tool_result = "Erro: Ferramenta não encontrada."
                     target_tool = next((t for t in tools if t.name == tool_name), None) if tools else None
                     
                     # --- MAPEAMENTO DE FERRAMENTAS NATIVAS ---
-                    if tool_name == "transferir_suporte_humano":
-                        tool_result = await handle_chatwoot_handoff(db, context_variables, target_tool, True, tool_args, history, config.id)
-                    elif tool_name == "transferir_robo":
-                        tool_result = await handle_chatwoot_handoff(db, context_variables, target_tool, False, tool_args, history, config.id)
-                    elif tool_name == "internal_date_calculator":
+                    if tool_name == "internal_date_calculator":
                         tool_result = await handle_date_calculator(json.dumps(tool_args))
                     elif tool_name == "registrar_duvida_sem_resposta":
                         tool_result = await handle_unanswered_question(db, context_variables, json.dumps(tool_args), history, config.id)
+                    elif tool_name == "google_calendar_manager":
+                        tool_result = await handle_google_calendar(db, context_variables, tool_args)
                     elif target_tool:
                         # Webhooks externos
                         try:
@@ -302,11 +353,18 @@ async def process_message(
                         "output": tool_result
                     })
                 
+                # Se foi um handoff, encerramos o loop agora
+                if is_handoff_terminal:
+                    break
+                
                 # Após processar ferramentas, o loop continua para que a IA gere a resposta final baseada nos resultados
                 continue
             
             # Resposta final da IA
-            last_response = response_message.content or ""
+            if response_message.content is not None:
+                last_response = str(response_message.content)
+            elif not last_response:
+                last_response = ""
             break
             
         except Exception as e:
@@ -314,6 +372,9 @@ async def process_message(
             return {"content": f"Erro interno: {str(e)}", "error": True, "usage": total_usage}
 
     # 7. Filtros de Saída e Auditoria
+    # Garantir que last_response seja string (importante para testes com mocks)
+    last_response = str(last_response) if last_response is not None else ""
+    
     # Remove tags residuais que a IA possa ter 'vazado' (Ex: {ferramenta}{...})
     last_response = re.sub(r'\{[a-zA-Z0-9_-]+\}\s*\{.*?\}', '', last_response).strip()
     last_response = re.sub(r'\{[a-zA-Z0-9_-]+\}', '', last_response).strip()
@@ -348,7 +409,8 @@ async def process_message(
         "debug": {
             "iterations": iteration,
             "rag_items": [i['id'] for i in relevant_items] if relevant_items else [],
-            "resolved_prompt": system_prompt,
-            "tool_calls": tool_calls_log
+            "resolved_prompt": messages[0]["content"], # Inclui RAG e Regras
+            "tool_calls": tool_calls_log,
+            "pre_router": pre_router_result if 'pre_router_result' in locals() else None
         }
     }

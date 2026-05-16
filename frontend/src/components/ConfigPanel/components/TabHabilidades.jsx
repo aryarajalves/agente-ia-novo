@@ -133,7 +133,7 @@ const TabHabilidades = () => {
                                 </optgroup>
                             )}
                         </select>
-                        <Link to="/tools" className="access-btn">Configurar Ferramentas</Link>
+                        {/* Link de configuração removido por solicitação do usuário */}
                     </div>
 
                     <div className="selected-chips-container">

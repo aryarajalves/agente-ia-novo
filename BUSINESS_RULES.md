@@ -1,4 +1,8 @@
-# Regras de Negócio do Sistema
+# Regras de Negócio - Sistema de Agentes Jaime
+
+> 🛠️ **Nota Técnica:** A URL `https://backendagente.aryaraj.shop` é um túnel Cloudflare para o ambiente de desenvolvimento local. Trate-a como localhost.
+
+## 📋 Status de Decisões
 
 ## 🌐 Conectividade e URLs
 - **Redirecionamento Global:** Todas as URLs geradas pelo sistema (Webhooks, Widgets de Chat, Callbacks de OAuth) devem obrigatoriamente utilizar o endereço do túnel (Cloudflare) configurado em `BACKEND_URL` / `VITE_API_URL` em vez de `localhost`.
@@ -32,3 +36,4 @@
 - [x] Deseja que ao expandir um contato, todos os outros se fechem automaticamente (comportamento de Accordion)?
   - Resposta: Sim, deve fechar os outros ao abrir um novo.
 - [ ] [NOVO] Deseja que a automação de retorno ao robô envie um log específico para o painel de histórico do agente informando que a IA reassumiu o controle?
+- [ ] [NOVO] Quem é o 'Mateus' mencionado nos testes? Ele é um membro da equipe de suporte, um vendedor ou outra função? Precisamos dessa informação para alimentar a base de conhecimento do agente e evitar alucinações.

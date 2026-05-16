@@ -83,7 +83,6 @@ const TabGeral = () => {
                             </p>
                         )}
                     </div>
-                    <div className="status-badge active">ATIVADO</div>
                 </div>
 
                 {!routerEnabled && (
@@ -151,6 +150,24 @@ const TabGeral = () => {
                 )}
             </div>
 
+            <div className="form-section" style={{ marginTop: '2rem' }}>
+                <span className="section-label">Configurações de Memória</span>
+                <div className="form-group">
+                    <label>Janela de Contexto <span className="label-value">{contextWindow} mensagens</span></label>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.8rem' }}>
+                        Define quantas mensagens recentes o robô deve "lembrar" durante a conversa.
+                    </p>
+                    <input 
+                        type="number" 
+                        min="1" max="100" 
+                        value={contextWindow} 
+                        onChange={(e) => setContextWindow(parseInt(e.target.value) || 1)} 
+                        className="premium-input"
+                        style={{ width: '100px' }}
+                    />
+                </div>
+            </div>
+
             {/* Advanced Model Config */}
             <div className="advanced-config-section">
                 <div className="advanced-header">
@@ -167,19 +184,17 @@ const TabGeral = () => {
                                         temperature, top_p: topP, top_k: topK,
                                         presence_penalty: presencePenalty,
                                         frequency_penalty: frequencyPenalty,
-                                        safety_settings: safetySettings,
-                                        context_window: parseInt(contextWindow)
+                                        safety_settings: safetySettings
                                     }
                                 }));
-                                const roleCfg = modelSettings[newRole] || {};
                                 setConfigRole(newRole);
+                                const roleCfg = modelSettings[newRole] || {};
                                 setTemperature(roleCfg.temperature ?? 1.0);
                                 setTopP(roleCfg.top_p ?? 1.0);
                                 setTopK(roleCfg.top_k ?? 40);
                                 setPresencePenalty(roleCfg.presence_penalty ?? 0.0);
                                 setFrequencyPenalty(roleCfg.frequency_penalty ?? 0.0);
                                 setSafetySettings(roleCfg.safety_settings ?? 'standard');
-                                setContextWindow(roleCfg.context_window ?? 5);
                             }}
                         >
                             {!routerEnabled ? (
@@ -217,10 +232,7 @@ const TabGeral = () => {
 
                     return (
                         <div className="advanced-params-grid">
-                            <div className="form-group" style={{ gridColumn: isReasoningModel && !hasReasoningEffort ? 'span 2' : undefined }}>
-                                <label>Janela de Contexto <span className="label-value">{contextWindow} msgs</span></label>
-                                <input type="number" min="1" max="100" value={contextWindow} onChange={(e) => setContextWindow(parseInt(e.target.value))} />
-                            </div>
+                            {/* Janela de contexto movida para seção global */}
 
                             {hasReasoningEffort && (
                                 <div className="form-group">

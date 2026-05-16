@@ -3,6 +3,9 @@ import { TranscriptionProvider } from './TranscriptionContext';
 import Header from './components/Header';
 import FolderManager from './components/FolderManager';
 import TasksTable from './components/TasksTable';
+import ManualTranscriptionModal from './components/ManualTranscriptionModal';
+import BulkDeleteModal from './components/BulkDeleteModal';
+import RagBatchModal from './components/RagBatchModal';
 import './styles/TranscriptionHistory.css';
 
 const HistoryContent = () => {
@@ -11,7 +14,11 @@ const HistoryContent = () => {
             <Header />
             <FolderManager />
             <TasksTable />
-            {/* Adicionar UploadStatus e Modals aqui */}
+            
+            {/* Modals */}
+            <ManualTranscriptionModal />
+            <BulkDeleteModal />
+            <RagBatchModal />
         </div>
     );
 };

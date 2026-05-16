@@ -303,6 +303,7 @@ class SupportRequestModel(Base):
     session_id = Column(String, nullable=False)
     user_name = Column(String)
     user_email = Column(String)
+    contact_phone = Column(String)
     status = Column(String, default="OPEN")
     summary = Column(Text)
     reason = Column(Text)
@@ -437,3 +438,40 @@ class TranscriptionTaskModel(Base):
     
     knowledge_base = relationship("KnowledgeBaseModel")
     folder = relationship("TranscriptionFolder")
+
+class ScheduledTrigger(Base):
+    """Gatilhos de automação agendados ou disparos em massa."""
+    __tablename__ = "scheduled_triggers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contact_phone = Column(String, index=True)
+    status = Column(String, default="pending")  # pending, processing, completed, cancelled, failed
+    
+    # Contexto da Integração
+    integration_id = Column(Integer, nullable=True)
+    event_type = Column(String, nullable=True)
+    product_name = Column(String, nullable=True)
+    
+    # Detalhes do Disparo
+    failure_reason = Column(Text, nullable=True)
+    conversation_id = Column(String, nullable=True)
+    client_id = Column(Integer, nullable=True)
+    template_name = Column(String, nullable=True)
+    chatwoot_label = Column(String, nullable=True)
+    skip_block_check = Column(Boolean, default=False)
+    
+    # Metadados
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class MessageStatus(Base):
+    """Status detalhado de cada mensagem enviada vinculada a um trigger."""
+    __tablename__ = "message_status"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trigger_id = Column(Integer, ForeignKey("scheduled_triggers.id", ondelete="CASCADE"))
+    status = Column(String) # sent, delivered, read, failed
+    error_message = Column(Text, nullable=True)
+    message_id = Column(String, nullable=True) # ID da mensagem na plataforma externa
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

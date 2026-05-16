@@ -48,3 +48,30 @@ async def update_user_memory(db: AsyncSession, session_id: str, new_message: str
         await db.commit()
     except Exception as e:
         print(f"⚠️ update_user_memory error: {e}")
+
+async def delete_all_user_memory(db: AsyncSession, session_id: str):
+    """Remove toda a memória do usuário (ex: após transbordo completo)."""
+    if not db or not session_id: return
+    try:
+        from sqlalchemy import delete
+        await db.execute(
+            delete(UserMemoryModel)
+            .where(UserMemoryModel.session_id == session_id)
+        )
+        await db.commit()
+    except Exception as e:
+        print(f"⚠️ delete_all_user_memory error: {e}")
+
+async def delete_user_memory_by_keys(db: AsyncSession, session_id: str, keys: list):
+    """Remove chaves específicas da memória do usuário."""
+    if not db or not session_id or not keys: return
+    try:
+        from sqlalchemy import delete
+        await db.execute(
+            delete(UserMemoryModel)
+            .where(UserMemoryModel.session_id == session_id)
+            .where(UserMemoryModel.key.in_(keys))
+        )
+        await db.commit()
+    except Exception as e:
+        print(f"⚠️ delete_user_memory_by_keys error: {e}")

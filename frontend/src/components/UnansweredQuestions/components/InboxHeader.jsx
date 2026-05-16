@@ -23,9 +23,8 @@ const InboxHeader = ({ onRefresh }) => {
                 </div>
             </div>
             <div className="header-actions">
-                <button onClick={onRefresh} className="btn-refresh">🔄 Atualizar</button>
-                <button onClick={handleCopyPublicLink} className={`btn-copy ${showCopySuccess ? 'success' : ''}`}>
-                    {showCopySuccess ? '✅ Copiado!' : '🔗 Link Público'}
+                <button onClick={onRefresh} className="btn-refresh-new">
+                    <span className="icon">🔄</span> Atualizar
                 </button>
             </div>
         </div>

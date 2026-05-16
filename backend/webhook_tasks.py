@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import time
 import re
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from celery_app import app
 from database import SessionLocal, async_session
 from models import WebhookEventModel, WebhookConfigModel, AgentConfigModel, KnowledgeItemModel, KnowledgeBaseModel, InteractionLog
@@ -22,7 +22,7 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 def broadcast_status(webhook_id, event_id, status, steps=None):
-    """Envia atualização de status e passos via WebSocket."""
+    """Envia atualização de status e passos via WebSocket de forma segura para workers."""
     try:
         from core.websocket import manager
         payload = {
@@ -33,18 +33,17 @@ def broadcast_status(webhook_id, event_id, status, steps=None):
             "steps": steps
         }
         
+        # Gerenciamento robusto de loop para ambiente multithreaded (Celery)
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
-        if loop.is_running():
-            asyncio.run_coroutine_threadsafe(manager.broadcast(payload), loop)
-        else:
             loop.run_until_complete(manager.broadcast(payload))
+            loop.close()
+        except Exception as e:
+            logger.error(f"Erro ao disparar broadcast: {e}")
+            
     except Exception as ws_err:
-        logger.error(f"Erro ao transmitir via WebSocket: {ws_err}")
+        logger.error(f"Erro fatal no broadcast_status: {ws_err}")
 
 def _add_step(db, event_id: int, step: str, detail: str = "", metadata: dict = None):
     event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
@@ -164,6 +163,7 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
         headers = {"api_access_token": token, "Content-Type": "application/json"}
         full_url = f"{url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"
 
+        success = True
         for i, part in enumerate(parts):
             # 1. Ativar 'Digitando'
             _toggle_typing_indicator(config, account_id, conversation_id, "on")
@@ -174,10 +174,16 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
             # 3. Enviar a parte da mensagem
             payload = {"content": part, "message_type": "outgoing"}
             
-            with httpx.Client(timeout=20.0) as client:
-                resp = client.post(full_url, json=payload, headers=headers)
-                if resp.status_code not in (200, 201):
-                    _add_step(db, event_id, f"❌ Erro no envio (Parte {i+1})", f"Status {resp.status_code}: {resp.text[:200]}")
+            try:
+                with httpx.Client(timeout=20.0) as client:
+                    resp = client.post(full_url, json=payload, headers=headers)
+                    if resp.status_code not in (200, 201):
+                        error_detail = f"Status {resp.status_code}: {resp.text[:200]}\nURL: {full_url}"
+                        _add_step(db, event_id, f"❌ Erro no envio (Parte {i+1})", error_detail)
+                        success = False
+            except Exception as http_err:
+                _add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Erro: {str(http_err)}")
+                success = False
             
             # 4. Desativar 'Digitando'
             _toggle_typing_indicator(config, account_id, conversation_id, "off")
@@ -186,12 +192,13 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
             if i < total_parts - 1 and delay > 0:
                 time.sleep(delay)
 
-        if total_parts > 1:
-            _add_step(db, event_id, "📤 Partes entregues", f"Todas as {total_parts} partes foram enviadas com sucesso.")
-        else:
-            _add_step(db, event_id, "📤 Resposta enviada ao Chatwoot", f"Mensagem única entregue com sucesso.")
-
-        return True
+        if success:
+            if total_parts > 1:
+                _add_step(db, event_id, "📤 Partes entregues", f"Todas as {total_parts} partes foram enviadas com sucesso.")
+            else:
+                _add_step(db, event_id, "📤 Resposta enviada ao Chatwoot", f"Mensagem única entregue com sucesso.")
+        
+        return success
     except Exception as e:
         _add_step(db, event_id, "❌ Erro crítico no envio", str(e))
         return False
@@ -512,6 +519,15 @@ def process_webhook_automation(self, event_id: int):
                         
                         logger.info(f"🗑️ Deleção em cascata concluída para {target_tel}")
                     
+                    # 3. Limpar cache de debounce no Redis (IMPORTANTE: evita que a próxima mensagem agrupe com esta)
+                    try:
+                        import redis as redis_lib
+                        _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
+                        _redis_local.delete(f"webhook:debounce:id:{config.id}:{target_tel}")
+                        _redis_local.delete(f"webhook:debounce:text:{config.id}:{target_tel}")
+                    except Exception as redis_err:
+                        logger.error(f"Erro ao limpar redis no reset: {redis_err}")
+
                     # Finalizamos o processo
                     return
             except Exception as e:
@@ -609,12 +625,13 @@ def process_webhook_automation(self, event_id: int):
                 
                 # --- Verificação da Janela de 24h ---
                 if last_msg:
-                    if last_msg.tzinfo:
-                        now = datetime.now(last_msg.tzinfo)
-                    else:
-                        now = get_now_utc()
+                    # Garantir que ambos sejam aware (UTC) para comparação segura
+                    msg_dt = last_msg
+                    if msg_dt.tzinfo is None:
+                        msg_dt = msg_dt.replace(tzinfo=timezone.utc)
                     
-                    diff_seconds = (now - last_msg).total_seconds()
+                    now = get_now_utc()
+                    diff_seconds = (now - msg_dt).total_seconds()
                     if diff_seconds > 86400: # 24 horas
                         _add_step(db, event_id, "🔒 Janela Fechada", f"A janela de 24h expirou. Resposta cancelada por segurança.")
                         event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
@@ -723,7 +740,7 @@ def process_webhook_automation(self, event_id: int):
                 # Exibir metadados transparentes do Pre-Router
                 pr_model = pre_router_result.get("_model_used", db_agent.model or "gpt-4o-mini")
                 pr_usage = pre_router_result.get("_usage", {})
-                pr_prompt = pre_router_result.get("_prompt", "Prompt indisponível")
+                pr_prompt = pre_router_result.get("_debug_prompt", "Prompt indisponível")
                 
                 # Cálculo de custo manual para o Pre-Router (exibição)
                 pr_cost = 0.0
@@ -746,7 +763,7 @@ def process_webhook_automation(self, event_id: int):
                     db, 
                     event_id, 
                     "✅ Decisão da IA (Pre-Router)", 
-                    f"**Decisão da IA:**\n```json\n{_json.dumps(decision_copy, ensure_ascii=False, indent=2)}\n```\n\n**Prompt Completo Analisado:**\n```text\n{pr_prompt[:1500]}...\n```", 
+                    f"**Decisão da IA:**\n```json\n{_json.dumps(decision_copy, ensure_ascii=False, indent=2)}\n```\n\n**Prompt Completo Analisado:**\n```text\n{pr_prompt}\n```", 
                     metadata={
                         "model": pr_model, 
                         "usage": {
@@ -807,7 +824,7 @@ def process_webhook_automation(self, event_id: int):
                         "contact_name": event.contato_nome,
                         "thread_id": event.conversa_id,
                         "session_id": session_id,
-                        "dias_desde_criacao": (get_now_utc() - lead_created_at).days if 'lead_created_at' in locals() and lead_created_at else 0
+                        "dias_desde_criacao": (get_now_utc() - (lead_created_at if lead_created_at.tzinfo else lead_created_at.replace(tzinfo=timezone.utc))).days if 'lead_created_at' in locals() and lead_created_at else 0
                     },
 
                     db=async_db,
@@ -864,6 +881,7 @@ def process_webhook_automation(self, event_id: int):
         debug_payload = {
             "modelo": result.get("model") if isinstance(result, dict) else db_agent.model,
             "prompt_sistema": resolved_prompt,
+            "prompt_pre_router": pre_router_result.get("_debug_prompt") if 'pre_router_result' in locals() and pre_router_result else None,
             "contexto_rag": rag_context,
             "memoria_contexto": display_history,
             "limite_janela": db_agent.context_window,

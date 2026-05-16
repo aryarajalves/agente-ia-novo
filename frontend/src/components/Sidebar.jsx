@@ -82,53 +82,83 @@ const Sidebar = ({ onLogout }) => {
 
                 <nav className="sidebar-nav">
                     {(isSuperAdmin || isAdmin || isUser) && (
-                        <div className="nav-section">
-                            <span className="nav-section-title">GERENCIAMENTO</span>
-                            <NavLink
-                                to="/"
-                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                            >
-                                <span className="nav-icon">🤖</span>
-                                <span className="nav-label">Meus Agentes</span>
-                                <div className="active-indicator"></div>
-                            </NavLink>
+                        <>
+                            <div className="nav-section">
+                                <span className="nav-section-title">PRINCIPAL</span>
+                                <NavLink
+                                    to="/"
+                                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                >
+                                    <span className="nav-icon">🤖</span>
+                                    <span className="nav-label">Meus Agentes</span>
+                                    <div className="active-indicator"></div>
+                                </NavLink>
+                            </div>
+
                             {(isSuperAdmin || isAdmin) && (
                                 <>
-                                    <NavLink
-                                        to="/support"
-                                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                                    >
-                                        <span className="nav-icon">🎧</span>
-                                        <span className="nav-label">Suporte Humano</span>
-                                        <div className="active-indicator"></div>
-                                    </NavLink>
-                                    <NavLink
-                                        to="/knowledge-bases"
-                                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                                    >
-                                        <span className="nav-icon">📚</span>
-                                        <span className="nav-label">Bases de Conhecimento</span>
-                                        <div className="active-indicator"></div>
-                                    </NavLink>
-                                    <NavLink
-                                        to="/financeiro"
-                                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                                    >
-                                        <span className="nav-icon">💰</span>
-                                        <span className="nav-label">Financeiro</span>
-                                        <div className="active-indicator"></div>
-                                    </NavLink>
-                                    <NavLink
-                                        to="/integrations"
-                                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                                    >
-                                        <span className="nav-icon">🔌</span>
-                                        <span className="nav-label">Integrações</span>
-                                        <div className="active-indicator"></div>
-                                    </NavLink>
+                                    <div className="nav-section">
+                                        <span className="nav-section-title">ATENDIMENTO</span>
+                                        <NavLink
+                                            to="/support"
+                                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                        >
+                                            <span className="nav-icon">🎧</span>
+                                            <span className="nav-label">Suporte Humano</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
+                                        <NavLink
+                                            to="/knowledge-bases?tab=inbox"
+                                            className={({ isActive }) => {
+                                                const search = window.location.search;
+                                                const isInbox = search.includes('tab=inbox');
+                                                return `nav-item ${isInbox ? 'active' : ''}`;
+                                            }}
+                                        >
+                                            <span className="nav-icon">📥</span>
+                                            <span className="nav-label">Inbox de Dúvidas</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
+                                    </div>
+
+                                    <div className="nav-section">
+                                        <span className="nav-section-title">CONHECIMENTO</span>
+                                        <NavLink
+                                            to="/knowledge-bases"
+                                            className={({ isActive }) => {
+                                                const search = window.location.search;
+                                                const isInbox = search.includes('tab=inbox');
+                                                return `nav-item ${isActive && !isInbox ? 'active' : ''}`;
+                                            }}
+                                        >
+                                            <span className="nav-icon">📚</span>
+                                            <span className="nav-label">Bases de Conhecimento</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
+                                    </div>
+
+                                    <div className="nav-section">
+                                        <span className="nav-section-title">SISTEMA</span>
+                                        <NavLink
+                                            to="/financeiro"
+                                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                        >
+                                            <span className="nav-icon">💰</span>
+                                            <span className="nav-label">Financeiro</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
+                                        <NavLink
+                                            to="/integrations"
+                                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                        >
+                                            <span className="nav-icon">🔌</span>
+                                            <span className="nav-label">Integrações</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
+                                    </div>
                                 </>
                             )}
-                        </div>
+                        </>
                     )}
 
 

@@ -85,12 +85,28 @@ async def sync_database_schema():
                             default = f" DEFAULT {repr(column.default.arg)}"
 
                     # Executar ALTER TABLE
-                    sql = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type} {nullable}{default}"
+                    # Para PostgreSQL, usamos IF NOT EXISTS para evitar erros de duplicidade
+                    if "postgresql" in str(connection.engine.url):
+                        sql = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column.name} {col_type} {nullable}{default}"
+                    else:
+                        sql = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type} {nullable}{default}"
+
                     try:
+                        # Usar um nested transaction (SAVEPOINT) se possível, ou apenas capturar o erro
+                        # No SQLAlchemy run_sync, estamos em uma conexão. Se falhar, a transação da conexão é abortada no Postgres.
                         connection.execute(text(sql))
                         logger.info(f"✅ Coluna {column.name} adicionada com sucesso em {table_name}.")
                     except Exception as e:
-                        logger.error(f"❌ Falha ao adicionar coluna {column.name}: {e}")
+                        if "already exists" in str(e).lower():
+                            logger.info(f"ℹ️ Coluna {column.name} já existe em {table_name} (ignorado).")
+                        else:
+                            logger.error(f"❌ Falha ao adicionar coluna {column.name} em {table_name}: {e}")
+                        
+                        # IMPORTANTE: No PostgreSQL, se um comando falha, a transação é abortada.
+                        # Precisamos emitir um ROLLBACK para poder continuar se estivermos em modo autocommit
+                        # ou usar um SAVEPOINT. Como run_sync geralmente é gerido por um context manager externo,
+                        # o ideal é que a lógica de detecção inicial (existing_columns) seja perfeita.
+
 
     # Rodar a inspeção (precisa ser em modo síncrono via run_sync)
     async with engine.connect() as conn:

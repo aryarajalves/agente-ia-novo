@@ -120,12 +120,14 @@ const WebhookManager = () => {
     }, [isCreating, confirmModal.isOpen, confirmRemoveFU, leadsModal, selectedWebhook, editingWebhook, leadHistoryModal, confirmLeadDelete.isOpen, confirmEventDelete.isOpen]);
 
     // Helpers
-    const copyToClipboard = (token) => {
+    const copyToClipboard = (token, id) => {
         const url = getReceiveUrl(token);
         navigator.clipboard.writeText(url);
-        setCopiedToken(token);
+        setCopiedToken(id || token);
+        showToast('URL copiada para a área de transferência!');
         setTimeout(() => setCopiedToken(null), 2000);
     };
+
 
     const handleDeleteWebhook = async () => {
         if (!confirmModal.webhookId && !confirmModal.isBulk) return;

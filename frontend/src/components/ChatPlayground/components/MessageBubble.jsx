@@ -215,6 +215,52 @@ const MessageBubble = ({
                                         <pre>{msg.debug.rag_context}</pre>
                                     </div>
                                 )}
+                                {msg.debug.pre_router && (
+                                    <div className="debug-section" style={{ borderLeft: '3px solid #fbbf24', paddingLeft: '10px' }}>
+                                        <strong style={{ color: '#fbbf24' }}>🧠 Decisão do Pre-Router</strong>
+                                        <div style={{ marginTop: '8px' }}>
+                                            <pre style={{ 
+                                                fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', padding: '10px', 
+                                                borderRadius: '8px', border: '1px solid rgba(251,191,36,0.2)' 
+                                            }}>
+                                                {JSON.stringify(
+                                                    Object.fromEntries(Object.entries(msg.debug.pre_router).filter(([k]) => !k.startsWith('_'))), 
+                                                    null, 2
+                                                )}
+                                            </pre>
+                                            {msg.debug.pre_router._debug_prompt && (
+                                                <details style={{ marginTop: '10px' }}>
+                                                    <summary style={{ fontSize: '0.75rem', color: '#fbbf24', cursor: 'pointer', fontWeight: 'bold' }}>
+                                                        📄 Ver Prompt do Pre-Router
+                                                    </summary>
+                                                    <pre style={{ 
+                                                        fontSize: '0.7rem', background: 'rgba(0,0,0,0.5)', padding: '10px', 
+                                                        borderRadius: '8px', marginTop: '5px', maxHeight: '200px', overflowY: 'auto'
+                                                    }}>
+                                                        {msg.debug.pre_router._debug_prompt}
+                                                    </pre>
+                                                </details>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {msg.debug.resolved_prompt && (
+                                    <div className="debug-section" style={{ borderLeft: '3px solid #4ade80', paddingLeft: '10px' }}>
+                                        <strong style={{ color: '#4ade80' }}>📝 Prompt Final do Sistema</strong>
+                                        <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '8px' }}>
+                                            Este é o texto exato enviado à IA (incluindo Regras, Contexto RAG e Memória).
+                                        </p>
+                                        <pre style={{ 
+                                            fontSize: '0.75rem', background: 'rgba(16,185,129,0.05)', padding: '12px', 
+                                            borderRadius: '10px', border: '1px solid rgba(16,185,129,0.1)',
+                                            maxHeight: '400px', overflowY: 'auto', color: '#94a3b8'
+                                        }}>
+                                            {msg.debug.resolved_prompt}
+                                        </pre>
+                                    </div>
+                                )}
+
                                 {msg.debug.translation && (
                                     <div className="debug-section" style={{ borderLeft: '3px solid #6366f1', paddingLeft: '10px' }}>
                                         <strong style={{ color: '#a5b4fc' }}>🌐 Tradução Automática</strong>

@@ -11,47 +11,38 @@ async def seed_native_tools():
     
     NATIVE_TOOLS = [
         {
-            "name": "google_calendar_criar_evento",
-            "description": "Cria um novo evento no Google Calendar do usuário. Use quando o usuário pedir para agendar, marcar ou criar um compromisso, reunião ou tarefa. Suporta cor personalizada, convidados por e-mail e recorrência (semanal, mensal, etc).",
+            "name": "google_calendar_manager",
+            "description": "Ferramenta centralizada para gerenciar o Google Calendar. Permite criar eventos (agendar), listar próximos eventos (ver agenda), atualizar detalhes e cancelar/deletar compromissos. SEMPRE peça o ID do evento para atualizar ou cancelar.",
             "parameters_schema": json.dumps({
                 "type": "object",
                 "properties": {
-                    "titulo": {"type": "string", "description": "Título do evento (Ex: Reunião de Alinhamento)"},
-                    "inicio": {"type": "string", "description": "Data/hora de início no formato ISO (Ex: 2024-10-25T09:00:00-03:00)"},
-                    "fim": {"type": "string", "description": "Data/hora de fim no formato ISO"},
-                    "descricao": {"type": "string", "description": "Descrição detalhada do evento"},
-                    "convidados": {"type": "string", "description": "Lista de e-mails separados por vírgula"},
-                    "cor": {"type": "string", "description": "Nome da cor (vermelho, azul, verde, etc)"}
+                    "acao": {
+                        "type": "string",
+                        "enum": ["criar", "listar", "atualizar", "cancelar"],
+                        "description": "Ação a ser realizada: 'criar' para novo agendamento, 'listar' para ver agenda, 'atualizar' para editar, 'cancelar' para excluir."
+                    },
+                    "titulo": {"type": "string", "description": "Título ou resumo do evento (ex: Reunião de Alinhamento)"},
+                    "inicio": {"type": "string", "description": "Data/hora de início no formato ISO 8601 (ex: 2024-10-25T14:30:00-03:00)"},
+                    "fim": {"type": "string", "description": "Data/hora de fim no formato ISO 8601 (opcional)"},
+                    "descricao": {"type": "string", "description": "Notas, pauta ou detalhes do evento (opcional)"},
+                    "local": {"type": "string", "description": "Localização ou link da reunião (opcional)"},
+                    "convidados": {"type": "string", "description": "Lista de e-mails separados por vírgula (opcional)"},
+                    "cor": {"type": "string", "description": "Cor: vermelho, azul, verde, amarelo, roxo, rosa, laranja (opcional)"},
+                    "event_id": {"type": "string", "description": "ID único do evento (OBRIGATÓRIO para atualizar ou cancelar)"},
+                    "max_resultados": {"type": "integer", "description": "Quantidade máxima de eventos ao listar (padrão 10)"},
+                    "busca": {"type": "string", "description": "Termo de busca para filtrar eventos ao listar (opcional)"}
                 },
-                "required": ["titulo", "inicio", "fim"]
-            })
-        },
-        {
-            "name": "google_calendar_listar_eventos",
-            "description": "Lista os próximos eventos ou busca compromissos passados no Google Calendar do usuário.",
-            "parameters_schema": json.dumps({
-                "type": "object",
-                "properties": {
-                    "max_resultados": {"type": "integer", "description": "Quantidade máxima de eventos (padrão 10)"},
-                    "data_inicio": {"type": "string", "description": "ISO format string para filtrar início"},
-                    "data_fim": {"type": "string", "description": "ISO format string para filtrar fim"}
-                }
-            })
-        },
-        {
-            "name": "google_calendar_cancelar_evento",
-            "description": "Remove um evento do Google Calendar usando o seu ID.",
-            "parameters_schema": json.dumps({
-                "type": "object",
-                "properties": {
-                    "event_id": {"type": "string", "description": "ID único do evento a ser removido"}
-                },
-                "required": ["event_id"]
+                "required": ["acao"]
             })
         },
         {
             "name": "transferir_suporte_humano",
-            "description": "Transfere o atendimento para um especialista humano. Use quando o usuário pedir para falar com um atendente, suporte, ou quando você não conseguir resolver o problema.",
+            "description": (
+                "Transfere o atendimento para um especialista humano. "
+                "REGRAS RÍGIDAS: 1. Use APENAS se o usuário pedir EXPLICITAMENTE para falar com atendente. "
+                "2. NUNCA use se você não souber a resposta (use 'registrar_duvida_sem_resposta'). "
+                "3. NUNCA assuma que nomes desconhecidos são de funcionários."
+            ),
             "parameters_schema": json.dumps({
                 "type": "object",
                 "properties": {
@@ -93,12 +84,23 @@ async def seed_native_tools():
 
     async with async_session() as session:
         for tool_data in NATIVE_TOOLS:
-            existing_result = await session.execute(select(ToolModel).where(ToolModel.name == tool_data["name"]))
-            existing = existing_result.scalars().first()
-            
-            if not existing:
-                logger.info(f"🌱 Semeando ferramenta nativa: {tool_data['name']}")
-                new_tool = ToolModel(**tool_data)
-                session.add(new_tool)
-        
-        await session.commit()
+            try:
+                # Busca exata ignorando case e espaços para evitar falsos negativos
+                q = select(ToolModel).where(ToolModel.name == tool_data["name"])
+                existing_result = await session.execute(q)
+                existing = existing_result.scalars().first()
+                
+                if not existing:
+                    logger.info(f"🌱 Semeando ferramenta nativa: {tool_data['name']}")
+                    new_tool = ToolModel(**tool_data)
+                    session.add(new_tool)
+                    await session.commit() # Commit individual para evitar que um erro trave todos
+                else:
+                    # Atualiza a descrição se já existir (garante que as mudanças de schema/descrição reflitam)
+                    existing.description = tool_data["description"]
+                    existing.parameters_schema = tool_data["parameters_schema"]
+                    await session.commit()
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"⚠️ Erro ao semear ferramenta {tool_data['name']}: {e}")
+

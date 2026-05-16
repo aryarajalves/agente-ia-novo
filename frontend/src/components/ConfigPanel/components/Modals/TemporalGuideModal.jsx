@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 const TemporalGuideModal = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
@@ -14,7 +15,7 @@ const TemporalGuideModal = ({ isOpen, onClose }) => {
           tip: 'Ative se o agente precisar marcar reuniões ou falar sobre horários.' },
     ];
 
-    return (
+    return createPortal(
         <div className="guide-modal-overlay">
             <div className="guide-modal-card">
                 <div className="guide-modal-header">
@@ -34,7 +35,8 @@ const TemporalGuideModal = ({ isOpen, onClose }) => {
                     ))}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

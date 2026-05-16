@@ -11,9 +11,13 @@ const SupportCard = ({ request }) => {
     useEffect(() => {
         const updateTimer = () => {
             if (!request.created_at) return;
+            
+            // Força a interpretação como UTC se não houver fuso, mas a maioria dos browsers lida bem com +00
             const start = new Date(request.created_at);
             const now = new Date();
-            const diffMs = now - start;
+            
+            // Se o diff for negativo (browser vs server clock), tratamos como 'agora mesmo'
+            const diffMs = Math.max(0, now - start);
             
             const diffMin = Math.floor(diffMs / 60000);
             const diffHrs = Math.floor(diffMin / 60);
@@ -65,9 +69,14 @@ const SupportCard = ({ request }) => {
                 <div className="user-meta">
                     <div className="title-row">
                         <h3>{request.user_name || 'Usuário Anônimo'}</h3>
-                        <span className="waiting-time">🕒 {timeAgo}</span>
+                        <span className="waiting-time" title={formatFullDate(request.created_at)}>🕒 {timeAgo}</span>
                     </div>
-                    <span>{request.user_email || 'E-mail não informado'}</span>
+                    <div className="user-details-row">
+                        <span>{request.user_email || 'E-mail não informado'}</span>
+                        {request.contact_phone && (
+                            <span className="phone-tag">📱 {request.contact_phone}</span>
+                        )}
+                    </div>
                 </div>
             </div>
             

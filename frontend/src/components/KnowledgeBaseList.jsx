@@ -19,8 +19,8 @@ function KnowledgeBaseList() {
 
     // Sincroniza a aba ativa quando a URL muda (ex: via navigate de outro componente)
     useEffect(() => {
-        const tab = searchParams.get('tab');
-        if (tab && tab !== activeTab) {
+        const tab = searchParams.get('tab') || 'bases';
+        if (tab !== activeTab) {
             setActiveTab(tab);
         }
     }, [searchParams, activeTab]);
@@ -113,74 +113,59 @@ function KnowledgeBaseList() {
         <div className="dashboard-container">
             <div className="dashboard-header">
                 <div>
-                    <h1>Centrais de Conhecimento</h1>
+                    <h1>{activeTab === 'inbox' ? 'Inbox de Dúvidas' : 'Centrais de Conhecimento'}</h1>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                        Gerencie bibliotecas de respostas e ensine seus agentes.
+                        {activeTab === 'inbox' 
+                            ? 'Responda perguntas pendentes e melhore a inteligência dos seus agentes.' 
+                            : 'Gerencie bibliotecas de respostas e ensine seus agentes.'}
                     </p>
                 </div>
-                {activeTab === 'bases' && (
-                    <Link to="/knowledge-bases/new" className="create-agent-btn">
-                        + Nova Base
-                    </Link>
-                )}
+                {/* Botão superior removido para centralizar foco no botão central da lista vazia */}
+
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div className="tab-control" style={{
-                    display: 'flex',
-                    gap: '1rem',
-                    borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    paddingBottom: '0.5rem'
-                }}>
-                    <button
-                        onClick={() => setSearchParams({ tab: 'bases' })}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: activeTab === 'bases' ? 'white' : 'var(--text-secondary)',
-                            fontWeight: activeTab === 'bases' ? 800 : 500,
-                            fontSize: '1rem',
-                            cursor: 'pointer',
-                            borderBottom: activeTab === 'bases' ? '2px solid #6366f1' : 'none',
-                            paddingBottom: '0.5rem',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        📚 Minhas Bases
-                    </button>
-                    <button
-                        onClick={() => setSearchParams({ tab: 'inbox' })}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: activeTab === 'inbox' ? 'white' : 'var(--text-secondary)',
-                            fontWeight: activeTab === 'inbox' ? 800 : 500,
-                            fontSize: '1rem',
-                            cursor: 'pointer',
-                            borderBottom: activeTab === 'inbox' ? '2px solid #6366f1' : 'none',
-                            paddingBottom: '0.5rem',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        📥 Inbox de Dúvidas
-                    </button>
-                    <button
-                        onClick={() => setSearchParams({ tab: 'history' })}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: activeTab === 'history' ? 'white' : 'var(--text-secondary)',
-                            fontWeight: activeTab === 'history' ? 800 : 500,
-                            fontSize: '1rem',
-                            cursor: 'pointer',
-                            borderBottom: activeTab === 'history' ? '2px solid #6366f1' : 'none',
-                            paddingBottom: '0.5rem',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        📜 Histórico
-                    </button>
-                </div>
+                {activeTab !== 'inbox' && (
+                    <div className="tab-control" style={{
+                        display: 'flex',
+                        gap: '1rem',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        paddingBottom: '0.5rem'
+                    }}>
+                        <button
+                            onClick={() => setSearchParams({ tab: 'bases' })}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: activeTab === 'bases' ? 'white' : 'var(--text-secondary)',
+                                fontWeight: activeTab === 'bases' ? 800 : 500,
+                                fontSize: '1rem',
+                                cursor: 'pointer',
+                                borderBottom: activeTab === 'bases' ? '2px solid #6366f1' : 'none',
+                                paddingBottom: '0.5rem',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            📚 Minhas Bases
+                        </button>
+                        <button
+                            onClick={() => setSearchParams({ tab: 'history' })}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: activeTab === 'history' ? 'white' : 'var(--text-secondary)',
+                                fontWeight: activeTab === 'history' ? 800 : 500,
+                                fontSize: '1rem',
+                                cursor: 'pointer',
+                                borderBottom: activeTab === 'history' ? '2px solid #6366f1' : 'none',
+                                paddingBottom: '0.5rem',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            📜 Histórico
+                        </button>
+                    </div>
+                )}
 
                 {activeTab === 'bases' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
@@ -311,24 +296,40 @@ function KnowledgeBaseList() {
                         {filteredBases.length === 0 ? (
                             <div className="empty-state" style={{
                                 gridColumn: '1/-1',
-                                padding: '6rem 2rem',
+                                padding: '4rem 2rem',
                                 textAlign: 'center',
-                                background: 'var(--card-bg)',
-                                borderRadius: '2rem',
-                                border: '1px dashed var(--border-color)'
+                                background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.4) 0%, rgba(15, 23, 42, 0.2) 100%)',
+                                borderRadius: '2.5rem',
+                                border: '1px solid rgba(255, 255, 255, 0.05)',
+                                backdropFilter: 'blur(20px)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '1.5rem'
                             }}>
-                                <span style={{ fontSize: '4rem', display: 'block', marginBottom: '1.5rem', opacity: 0.3 }}>📂</span>
-                                <h2 style={{ color: 'white', marginBottom: '0.5rem' }}>Nenhuma base encontrada</h2>
-                                <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto' }}>
-                                    {filterType === 'all'
-                                        ? "Crie sua primeira biblioteca de conhecimento para começar a treinar seus agentes de IA."
-                                        : `Você ainda não possui bases do tipo ${filterType === 'qa' ? 'FAQ' : 'Produtos'}.`}
-                                </p>
+                                <div>
+                                    <h2 style={{ color: 'white', marginBottom: '0.75rem', fontSize: '1.8rem', fontWeight: 800 }}>Nenhuma base encontrada</h2>
+                                    <p style={{ color: 'var(--text-secondary)', maxWidth: '450px', margin: '0 auto', fontSize: '1rem', lineHeight: '1.6' }}>
+                                        {filterType === 'all'
+                                            ? "Crie sua primeira biblioteca de conhecimento para começar a treinar seus agentes de IA com dados reais."
+                                            : `Você ainda não possui bases do tipo ${filterType === 'qa' ? 'FAQ' : 'Produtos'}.`}
+                                    </p>
+                                </div>
                                 {filterType === 'all' && (
-                                    <Link to="/knowledge-bases/new" className="create-agent-btn" style={{ marginTop: '2rem' }}>
-                                        + Criar Minha Primeira Base
+                                    <Link to="/knowledge-bases/new" className="create-agent-btn" style={{ 
+                                        marginTop: '1.5rem',
+                                        padding: '1.2rem 2.5rem',
+                                        fontSize: '1.1rem',
+                                        background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                                        border: 'none',
+                                        boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.5)',
+                                        transform: 'scale(1.05)',
+                                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                    }}>
+                                        🚀 Criar Minha Primeira Base
                                     </Link>
                                 )}
+
                             </div>
                         ) : (
                             filteredBases.map(base => (

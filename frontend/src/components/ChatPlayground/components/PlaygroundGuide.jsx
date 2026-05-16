@@ -45,17 +45,7 @@ const PlaygroundGuide = ({ showGuide, setShowGuide }) => {
                 display: 'flex',
                 flexDirection: 'column'
             }}>
-                <button
-                    onClick={() => setShowGuide(false)}
-                    style={{
-                        position: 'absolute', top: '20px', right: '20px',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                        color: 'white', fontSize: '1.1rem', cursor: 'pointer',
-                        width: '36px', height: '36px', borderRadius: '50%',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.2s', zIndex: 10
-                    }}
-                >✕</button>
+
 
                 <h2 style={{ color: 'white', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '1.6rem' }}>
                     <span style={{ fontSize: '2rem' }}>📖</span> Guia do Laboratório

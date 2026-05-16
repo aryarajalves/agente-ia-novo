@@ -63,7 +63,7 @@ const WebhookCard = ({
             <div className="url-display-premium">
                 <code className="url-text">{getReceiveUrl(webhook.token)}</code>
                 <button
-                    onClick={() => copyToClipboard(getReceiveUrl(webhook.token), webhook.id)}
+                    onClick={() => copyToClipboard(webhook.token, webhook.id)}
                     className={`copy-btn ${copiedToken === webhook.id ? 'success' : ''}`}
                     title="Copiar URL"
                 >

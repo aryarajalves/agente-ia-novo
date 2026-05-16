@@ -539,6 +539,18 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
     
     return {"ok": True, "event_id": event.id}
 
+@router.get("/memory/{token}", status_code=200)
+async def check_memory_webhook(token: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(WebhookConfigModel).where(WebhookConfigModel.memory_token == token, WebhookConfigModel.is_active == True))
+    config = result.scalar_one_or_none()
+    if not config or not config.memory_sync_enabled:
+        raise HTTPException(status_code=404, detail="Memória desativada ou token inválido")
+    
+    return {
+        "status": "online",
+        "message": "O endpoint de memória está ativo e aguardando requisições POST!"
+    }
+
 @router.post("/memory/{token}", status_code=200)
 async def receive_memory_webhook(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(WebhookConfigModel).where(WebhookConfigModel.memory_token == token, WebhookConfigModel.is_active == True))
@@ -548,13 +560,41 @@ async def receive_memory_webhook(token: str, request: Request, db: AsyncSession 
     try: body = await request.json()
     except: raise HTTPException(status_code=400, detail="JSON inválido")
 
-    phone = normalize_phone(str(get_value_by_path(body, config.memory_phone_path) or ""))
-    if not phone: raise HTTPException(status_code=400, detail="Telefone não encontrado")
+    phone_raw = get_value_by_path(body, config.memory_phone_path)
+    if not phone_raw:
+        # Fallback para Configuração Zero
+        phone_raw = get_value_by_path(body, "telefone") or get_value_by_path(body, "phone") or get_value_by_path(body, "sender.phone")
+        
+    phone = normalize_phone(str(phone_raw or ""))
+    if not phone: raise HTTPException(status_code=400, detail="Telefone não encontrado. O JSON deve conter 'phone', 'telefone' ou 'sender.phone'")
 
     await ensure_leads_table(config.leads_table)
     await upsert_lead(config.leads_table, {"telefone": phone, "contato_nome": "Lead_" + phone[-4:], "dono": "cliente"}, config.id)
     
-    sync_memory_to_vector.delay(config.id, phone, body)
+    # Criar o registro de evento para sincronização de memória
+    from models import WebhookEventModel
+    
+    now_br = get_now_br()
+    event = WebhookEventModel(
+        webhook_config_id=config.id,
+        event_type="memory",
+        status="waiting",
+        raw_payload=json.dumps(body, ensure_ascii=False),
+        telefone=phone,
+        contato_nome="Lead_" + phone[-4:],
+        dono="cliente",
+        created_at=now_br,
+        processing_steps=json.dumps([{
+            "step": "📥 Recebido Webhook de Memória",
+            "detail": "Os dados foram recebidos e estão aguardando o processamento da fila de vetorização.",
+            "timestamp": now_br.isoformat()
+        }], ensure_ascii=False)
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+
+    sync_memory_to_vector.delay(event.id)
     return {"ok": True, "phone": phone}
 
 @router.delete("/{webhook_id}/leads-by-phone/{phone}/full-purge", status_code=204)

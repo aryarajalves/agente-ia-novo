@@ -66,17 +66,25 @@ async def handle_chatwoot_handoff(db, context_variables, target_tool, is_human, 
                     support_reason = msg.get("content")
                     break
         
+        from agent_core.memory import delete_all_user_memory
+        
         new_support = SupportRequestModel(
             agent_id=config_id,
             webhook_config_id=wid,
             session_id=context_variables.get("session_id") or "desconhecida",
             user_name=context_variables.get("contact_name") or "Usuário Chatwoot",
+            contact_phone=context_variables.get("session_id"), # O session_id é o telefone no WhatsApp
             status="OPEN",
             reason=support_reason or "Transbordo automático",
             account_id=str(account_id) if account_id else None,
             conversation_id=str(conversation_id) if conversation_id else None,
             extracted_data=args_obj
         )
+        db.add(new_support)
+        await db.commit()
+
+        # Limpar memória de toda a sessão para evitar loops de transbordo indevidos ou contextos obsoletos
+        await delete_all_user_memory(db, context_variables.get("session_id"))
         default_msg = "Encaminhamento para especialista concluído." if is_human else "Retorno ao atendimento automático concluído."
         msg_base = handoff_custom_message or default_msg
         

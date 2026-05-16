@@ -51,7 +51,8 @@ export const useChat = ({
         setHasTesterReport(false);
         setTesterReport(null);
         if (selectedAgentId) localStorage.removeItem(`lastSession_agent_${selectedAgentId}`);
-    }, [selectedAgentId, setSessionId, setHasTesterReport, setTesterReport]);
+        showToast("Sessão resetada com sucesso!", "success");
+    }, [selectedAgentId, setSessionId, setHasTesterReport, setTesterReport, showToast]);
 
     const executeAgent = async (agentId, userMsg, isChallenger = false, imageUrl = null) => {
         try {

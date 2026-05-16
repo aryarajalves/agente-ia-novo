@@ -17,10 +17,19 @@ export const useQuestionsActions = () => {
 
     const handleAnswerSubmit = async () => {
         if (!answerText.trim() || !selectedQuestion) return;
+        
+        const agentId = teachMode === 'agent' ? parseInt(selectedAgentId) : null;
+        
+        if (teachMode === 'agent' && (!agentId || isNaN(agentId))) {
+            alert("Por favor, selecione um agente válido.");
+            return;
+        }
+
         setSaving(true);
         try {
             const payload = {
                 answer: answerText,
+                instruction: answerText, // Alias para clareza no prompt
                 question: editingQuestionText !== selectedQuestion.question ? editingQuestionText : null
             };
             
@@ -33,12 +42,15 @@ export const useQuestionsActions = () => {
             } else {
                 res = await api.post(`/unanswered-questions/${selectedQuestion.id}/answer-to-prompt`, {
                     ...payload,
-                    agent_id: parseInt(selectedAgentId)
+                    agent_id: agentId
                 });
             }
 
             const data = await res.json();
             if (data.success) {
+                if (data.warning) {
+                    alert(data.warning);
+                }
                 setQuestions(prev => prev.filter(q => q.id !== selectedQuestion.id));
                 setActiveModal(null);
             } else {

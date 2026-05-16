@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from api.limiter import limiter
-from api.routers import auth, agents, knowledge, analytics, media, sessions, tools, variables, feedback, chat, tester, integrations, support
+from api.routers import auth, agents, knowledge, analytics, media, sessions, tools, variables, feedback, chat, tester, integrations, support, inbox
 from fastapi import WebSocket, WebSocketDisconnect
 from core.websocket import manager
 
@@ -42,8 +42,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Jaime AI API",
-    description="API modular para o sistema de agentes de IA Jaime.",
+    title="AI Agent Manager API",
+    description="Plataforma avançada para gestão de Agentes de IA, Bases de Conhecimento e Automações de Atendimento.",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -103,6 +103,7 @@ app.include_router(chat.router)
 app.include_router(tester.router)
 app.include_router(integrations.router)
 app.include_router(support.router)
+app.include_router(inbox.router)
 
 # --- WEBSOCKET ---
 @app.websocket("/ws/events")
