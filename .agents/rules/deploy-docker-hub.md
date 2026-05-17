@@ -15,6 +15,9 @@ Antes de iniciar o build e o push no Docker Hub, o agente **DEVE PERGUNTAR** ao 
 ### 1. Escopo do Deploy
 É para fazer o build e o push **APENAS** do `frontend` e do `backend`. Não devem ser criadas imagens separadas para worker ou api avulsos, apenas as duas principais.
 
+**Padrão Estrito e Obrigatório das Tags:**
+O formato da tag deve obrigatoriamente iniciar com o tipo do serviço, seguido por um hífen `-` e depois a versão (ex: `backend-1.6.5`). **É TERMINANTEMENTE PROIBIDO inverter essa ordem (ex: 1.6.5-backend é incorreto e não deve ser gerado).**
+
 **URLs Oficiais das Imagens:**
 - **Frontend:** `aryarajalves/configurar-agentes-ia:frontend-VERSAO`
 - **Backend:** `aryarajalves/configurar-agentes-ia:backend-VERSAO`
