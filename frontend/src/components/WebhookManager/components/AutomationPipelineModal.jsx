@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_URL } from '../../../config';
 import PipelineCountdown from './Common/PipelineCountdown';
 import RaioXViewerModal from './RaioXViewerModal';
+import PreRouterViewerModal from './PreRouterViewerModal';
 
 const AutomationPipelineModal = ({ 
     event: initialEvent, 
@@ -265,45 +266,52 @@ const AutomationPipelineModal = ({
                 </div>
 
                 {/* Modal Maximizado (Overlay Secundário) */}
-                {maximizedStep && (maximizedStep.title.includes('Raio-X') ? (
-                    <RaioXViewerModal 
-                        data={maximizedStep.content} 
-                        onClose={() => setMaximizedStep(null)} 
-                    />
-                ) : (
-                    <div 
-                        className="premium-modal-overlay" 
-                        style={{ zIndex: 1200, background: 'rgba(0,0,0,0.85)' }}
-                    >
+                {maximizedStep && (
+                    maximizedStep.title.includes('Decisão da IA') || maximizedStep.title.includes('Pre-Router') ? (
+                        <PreRouterViewerModal 
+                            data={maximizedStep.content} 
+                            onClose={() => setMaximizedStep(null)} 
+                        />
+                    ) : maximizedStep.title.includes('Raio-X') ? (
+                        <RaioXViewerModal 
+                            data={maximizedStep.content} 
+                            onClose={() => setMaximizedStep(null)} 
+                        />
+                    ) : (
                         <div 
-                            className="premium-modal-content"
-                            style={{ maxWidth: '900px', width: '95%', height: '80vh', borderRadius: '24px', padding: '2.5rem', display: 'flex', flexDirection: 'column' }}
-                            onClick={e => e.stopPropagation()}
+                            className="premium-modal-overlay" 
+                            style={{ zIndex: 1200, background: 'rgba(0,0,0,0.85)' }}
                         >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ fontSize: '1.5rem' }}>{maximizedStep.icon}</span>
-                                    <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, color: '#fff' }}>{maximizedStep.title}</h2>
-                                </div>
-                                <button 
-                                    onClick={() => setMaximizedStep(null)}
-                                    className="modal-close-btn"
-                                    style={{ width: '36px', height: '36px' }}
-                                >✕</button>
-                            </div>
                             <div 
-                                style={{ 
-                                    flex: 1, background: 'rgba(15, 23, 42, 0.8)', borderRadius: '16px', padding: '2rem',
-                                    color: '#cbd5e1', fontSize: '1rem', lineHeight: '1.6', fontFamily: 'monospace',
-                                    whiteSpace: 'pre-wrap', overflowY: 'auto'
-                                }} 
-                                className="custom-scrollbar"
+                                className="premium-modal-content"
+                                style={{ maxWidth: '900px', width: '95%', height: '80vh', borderRadius: '24px', padding: '2.5rem', display: 'flex', flexDirection: 'column' }}
+                                onClick={e => e.stopPropagation()}
                             >
-                                {maximizedStep.content}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <span style={{ fontSize: '1.5rem' }}>{maximizedStep.icon}</span>
+                                        <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, color: '#fff' }}>{maximizedStep.title}</h2>
+                                    </div>
+                                    <button 
+                                        onClick={() => setMaximizedStep(null)}
+                                        className="modal-close-btn"
+                                        style={{ width: '36px', height: '36px' }}
+                                    >✕</button>
+                                </div>
+                                <div 
+                                    style={{ 
+                                        flex: 1, background: 'rgba(15, 23, 42, 0.8)', borderRadius: '16px', padding: '2rem',
+                                        color: '#cbd5e1', fontSize: '1rem', lineHeight: '1.6', fontFamily: 'monospace',
+                                        whiteSpace: 'pre-wrap', overflowY: 'auto'
+                                    }} 
+                                    className="custom-scrollbar"
+                                >
+                                    {maximizedStep.content}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                )}
             </div>
         </div>
     );

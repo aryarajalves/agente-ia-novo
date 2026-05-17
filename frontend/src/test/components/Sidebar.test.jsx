@@ -18,6 +18,7 @@ describe('Sidebar Component', () => {
 
     beforeEach(() => {
         onLogoutMock = vi.fn();
+        localStorage.clear();
     });
 
     const renderSidebar = (role = 'Super Admin', name = 'Admin Super') => {
@@ -46,6 +47,21 @@ describe('Sidebar Component', () => {
             renderSidebar('Super Admin');
             expect(screen.getByText('Super Admin')).toBeInTheDocument();
         });
+
+        it('deve renderizar o logo customizado e o nome da empresa se definidos no localStorage', () => {
+            localStorage.setItem('company_name', 'Minha Empresa');
+            localStorage.setItem('company_logo', 'https://example.com/logo.png');
+            localStorage.setItem('company_logo_size', 'large');
+            renderSidebar();
+            
+            expect(screen.getByText('Minha Empresa')).toBeInTheDocument();
+            expect(screen.queryByText('Agent Flow')).not.toBeInTheDocument();
+            const img = screen.getByAltText('Minha Empresa');
+            expect(img).toBeInTheDocument();
+            expect(img).toHaveAttribute('src', 'https://example.com/logo.png');
+            expect(img.className).toContain('size-large');
+            expect(document.title).toBe('Minha Empresa');
+        });
     });
 
     // ===== VISIBILIDADE POR ROLE =====
@@ -55,23 +71,24 @@ describe('Sidebar Component', () => {
 
             expect(screen.getByText('Meus Agentes')).toBeInTheDocument();
             expect(screen.getByText('Bases de Conhecimento')).toBeInTheDocument();
-            expect(screen.getByText('Ferramentas (API)')).toBeInTheDocument();
+            expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
+            expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Financeiro')).toBeInTheDocument();
             expect(screen.getByText('Integrações')).toBeInTheDocument();
-            expect(screen.getByText('Fine-Tuning')).toBeInTheDocument();
             expect(screen.getByText('Gestão de Usuários')).toBeInTheDocument();
         });
     });
 
     describe('Controle de Permissões - Admin', () => {
-        it('Admin deve ver links de gerenciamento e laboratório, mas NÃO gestão de usuários', () => {
+        it('Admin deve ver links de gerenciamento, mas NÃO gestão de usuários', () => {
             renderSidebar('Admin');
 
             expect(screen.getByText('Meus Agentes')).toBeInTheDocument();
             expect(screen.getByText('Bases de Conhecimento')).toBeInTheDocument();
-            expect(screen.getByText('Ferramentas (API)')).toBeInTheDocument();
+            expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
+            expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Financeiro')).toBeInTheDocument();
-            expect(screen.getByText('Fine-Tuning')).toBeInTheDocument();
+            expect(screen.getByText('Integrações')).toBeInTheDocument();
             expect(screen.queryByText('Gestão de Usuários')).not.toBeInTheDocument();
         });
     });
@@ -82,8 +99,10 @@ describe('Sidebar Component', () => {
 
             expect(screen.getByText('Meus Agentes')).toBeInTheDocument();
             expect(screen.queryByText('Bases de Conhecimento')).not.toBeInTheDocument();
-            expect(screen.queryByText('Ferramentas (API)')).not.toBeInTheDocument();
-            expect(screen.queryByText('Fine-Tuning')).not.toBeInTheDocument();
+            expect(screen.queryByText('Suporte Humano')).not.toBeInTheDocument();
+            expect(screen.queryByText('Inbox de Dúvidas')).not.toBeInTheDocument();
+            expect(screen.queryByText('Financeiro')).not.toBeInTheDocument();
+            expect(screen.queryByText('Integrações')).not.toBeInTheDocument();
             expect(screen.queryByText('Gestão de Usuários')).not.toBeInTheDocument();
         });
     });

@@ -1,8 +1,9 @@
 import logging
 from typing import List, Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 
 from models import UnansweredQuestionModel, KnowledgeBaseModel, KnowledgeItemModel, AgentConfigModel
 from api.deps import get_db, verify_api_key
@@ -14,20 +15,104 @@ router = APIRouter(tags=["Inbox"])
 @router.get("/unanswered-questions")
 async def list_unanswered_questions(
     status: str = Query("PENDENTE"),
+    limit: int = Query(20, ge=1),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_api_key)
 ):
     try:
+        # Conta o total de registros com esse status
+        count_stmt = (
+            select(func.count())
+            .select_from(UnansweredQuestionModel)
+            .where(UnansweredQuestionModel.status == status)
+        )
+        count_result = await db.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        # Seleciona os registros paginados
         result = await db.execute(
             select(UnansweredQuestionModel)
             .where(UnansweredQuestionModel.status == status)
             .order_by(UnansweredQuestionModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         items = result.scalars().all()
-        return {"success": True, "items": items}
+
+        # Enriquecer os registros decodificando o session_id numérico ou com tel_ para telefone real
+        from models import WebhookEventModel, WebhookConfigModel
+        from sqlalchemy import text
+        enriched_items = []
+        for q in items:
+            phone = q.session_id
+            if q.session_id:
+                if q.session_id.startswith("tel_"):
+                    phone = q.session_id[4:]
+                elif q.session_id.isdigit():
+                    # 1. Tenta buscar pelo ID do Lead na tabela 'leads' padrão
+                    try:
+                        lead_res = await db.execute(
+                            text("SELECT telefone FROM leads WHERE id = :lid"),
+                            {"lid": int(q.session_id)}
+                        )
+                        db_phone = lead_res.scalar()
+                        if db_phone:
+                            phone = db_phone
+                    except Exception:
+                        pass
+                    
+                    # 2. Se não encontrou na 'leads' padrão, tenta buscar pelas tabelas dos webhooks associados ao agente
+                    if phone == q.session_id:
+                        try:
+                            wh_res = await db.execute(
+                                select(WebhookConfigModel.leads_table)
+                                .where(WebhookConfigModel.agent_id == q.agent_id)
+                            )
+                            tables = set(wh_res.scalars().all())
+                            for table in tables:
+                                if table and table != "leads":
+                                    try:
+                                        lead_res = await db.execute(
+                                            text(f"SELECT telefone FROM {table} WHERE id = :lid"),
+                                            {"lid": int(q.session_id)}
+                                        )
+                                        db_phone = lead_res.scalar()
+                                        if db_phone:
+                                            phone = db_phone
+                                            break
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                    # 3. Fallback original: se ainda for o ID, tenta buscar por contato_id em webhook_events
+                    if phone == q.session_id:
+                        event_result = await db.execute(
+                            select(WebhookEventModel.telefone)
+                            .where(WebhookEventModel.contato_id == q.session_id)
+                            .order_by(WebhookEventModel.created_at.desc())
+                            .limit(1)
+                        )
+                        db_phone = event_result.scalar()
+                        if db_phone:
+                            phone = db_phone
+
+            enriched_items.append({
+                "id": q.id,
+                "agent_id": q.agent_id,
+                "session_id": phone or q.session_id,
+                "question": q.question,
+                "context": q.context,
+                "status": q.status,
+                "created_at": q.created_at.isoformat() if q.created_at else None,
+                "updated_at": q.updated_at.isoformat() if q.updated_at else None
+            })
+
+        return {"success": True, "items": enriched_items, "total": total}
     except Exception as e:
         logger.error(f"Erro ao listar dúvidas: {e}")
-        return {"success": False, "items": [], "error": str(e)}
+        return {"success": False, "items": [], "total": 0, "error": str(e)}
 
 @router.post("/unanswered-questions/{question_id}/answer")
 async def answer_question(
@@ -119,3 +204,28 @@ async def discard_question(
     q.status = "DESCARTADA"
     await db.commit()
     return {"success": True}
+
+@router.post("/unanswered-questions/bulk-discard")
+async def bulk_discard_questions(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key)
+):
+    """Descarta múltiplas dúvidas de uma vez."""
+    ids = payload.get("ids")
+    if not ids or not isinstance(ids, list):
+        raise HTTPException(status_code=400, detail="Lista de IDs 'ids' é obrigatória")
+        
+    try:
+        stmt = (
+            update(UnansweredQuestionModel)
+            .where(UnansweredQuestionModel.id.in_(ids))
+            .values(status="DESCARTADA", updated_at=datetime.now(timezone.utc))
+        )
+        await db.execute(stmt)
+        await db.commit()
+        return {"success": True}
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Erro no descarte em massa: {e}")
+        return {"success": False, "error": str(e)}

@@ -5,7 +5,8 @@ export const useQuestionsActions = () => {
     const { 
         selectedQuestion, teachMode, selectedKbId, selectedAgentId, 
         answerText, editingQuestionText, setQuestions, setActiveModal, setSaving,
-        setSelectedQuestion, setAnswerText, setEditingQuestionText
+        setSelectedQuestion, setAnswerText, setEditingQuestionText,
+        selectedIds, setSelectedIds
     } = useQuestions();
 
     const openModal = (q, type) => {
@@ -79,5 +80,26 @@ export const useQuestionsActions = () => {
         }
     };
 
-    return { openModal, handleAnswerSubmit, handleDiscard };
+    const handleBulkDiscard = async () => {
+        if (selectedIds.size === 0) return;
+        setSaving(true);
+        try {
+            const idsList = Array.from(selectedIds);
+            const res = await api.post('/unanswered-questions/bulk-discard', { ids: idsList });
+            const data = await res.json();
+            if (data.success) {
+                setQuestions(prev => prev.filter(q => !selectedIds.has(q.id)));
+                setSelectedIds(new Set());
+                setActiveModal(null);
+            } else {
+                alert(data.error || "Erro ao descartar dúvidas selecionadas.");
+            }
+        } catch (e) {
+            alert("Erro ao conectar ao servidor.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return { openModal, handleAnswerSubmit, handleDiscard, handleBulkDiscard };
 };

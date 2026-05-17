@@ -280,6 +280,9 @@ class UserModel(Base):
     password = Column(String, nullable=False) # Nota: Em produção usar hashbcryt. Aqui mantemos simples conforme solicitado.
     role = Column(String, default="Usuário") # "Super Admin", "Admin", "Usuário"
     status = Column(String, default="ATIVO") # "ATIVO", "INATIVO"
+    company_name = Column(String, nullable=True)
+    company_logo = Column(Text, nullable=True)
+    company_logo_size = Column(String, nullable=True, default="medium")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

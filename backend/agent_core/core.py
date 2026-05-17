@@ -266,9 +266,8 @@ async def process_message(
                 except Exception as e:
                     print(f"⚠️ Erro no modelo {m}: {str(e)}")
                     continue
-            
             if not response_message:
-                return {"content": "❌ Desculpe, estou enfrentando uma instabilidade técnica agora. Por favor, tente novamente em instantes.", "error": True, "usage": total_usage}
+                return {"content": "❌ Desculpe, estou enfrentando uma instabilidade técnica agora. Por favor, tente novamente em instantes.", "error": True, "usage": total_usage, "model": getattr(config, 'model', 'gpt-4o-mini')}
 
             messages.append(response_message)
             
@@ -292,7 +291,10 @@ async def process_message(
                         summary = await generate_handoff_summary(history + [messages[-2]]) 
                         handoff_data["summary"] = summary
                         
-                        tool_result = f"Transferindo para {destino}..."
+                        # Sincroniza etiquetas no Chatwoot imediatamente
+                        handoff_result = await handle_chatwoot_handoff(db, context_variables, None, True, tool_args, history, config.id)
+                        
+                        tool_result = handoff_result
                         messages.append({"tool_call_id": tool_call.id, "role": "tool", "name": tool_name, "content": tool_result})
                         last_response = f"Entendi perfeitamente. Estou transferindo seu atendimento para nossa equipe especializada para que você receba o suporte adequado. Um momento, por favor! ✨"
                         
@@ -302,15 +304,29 @@ async def process_message(
                             "output": tool_result
                         })
                         
+                        tool_calls_log.append({
+                            "name": "chatwoot:sincronizacao_etiquetas",
+                            "args": json.dumps({"is_human": True}, ensure_ascii=False),
+                            "output": handoff_result
+                        })
+                        
+                        detalhes_suporte = f"Destino: {destino}. Motivo: {motivo}."
+                        if handoff_result and "DETALHES:" in handoff_result:
+                            try:
+                                # Extrair a seção de detalhes
+                                partes = handoff_result.split("DETALHES: ")
+                                if len(partes) > 1:
+                                    detalhes_etiquetas = partes[1].split(". INSTRUÇÃO")[0]
+                                    if detalhes_etiquetas and "Ação padrão" not in detalhes_etiquetas:
+                                        detalhes_suporte += f"\n🏷️ {detalhes_etiquetas}"
+                            except Exception as e_parse:
+                                print(f"Erro ao parsear detalhes do handoff: {e_parse}")
+
                         if on_step:
-                            on_step(f"🚑 Suporte Humano solicitado", f"Destino: {destino}. Motivo: {motivo}")
+                            on_step(f"🚑 Suporte Humano solicitado", detalhes_suporte)
 
                         # O handoff é terminal. Definimos o resultado e paramos o loop principal.
                         is_handoff_terminal = True
-
-                        # Sincroniza etiquetas no Chatwoot imediatamente
-                        from chatwoot_utils import handle_chatwoot_handoff
-                        await handle_chatwoot_handoff(db, context_variables, None, True, tool_args, history, config.id)
                         
                         break 
 
@@ -369,7 +385,7 @@ async def process_message(
             
         except Exception as e:
             print(f"❌ Erro crítico no loop do agente: {str(e)}")
-            return {"content": f"Erro interno: {str(e)}", "error": True, "usage": total_usage}
+            return {"content": f"Erro interno: {str(e)}", "error": True, "usage": total_usage, "model": getattr(config, 'model', 'gpt-4o-mini')}
 
     # 7. Filtros de Saída e Auditoria
     # Garantir que last_response seja string (importante para testes com mocks)

@@ -5,9 +5,24 @@ import { API_URL, AGENT_API_KEY } from '../config';
 const Sidebar = ({ onLogout }) => {
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [userData, setUserData] = useState({ name: '', email: '', password: '' });
+    const [userData, setUserData] = useState({ 
+        name: '', 
+        email: '', 
+        password: '',
+        company_name: '',
+        company_logo: '',
+        company_logo_size: 'medium'
+    });
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState({ type: '', message: '' });
+
+    const [companyName, setCompanyName] = useState(localStorage.getItem('company_name') || '');
+    const [companyLogo, setCompanyLogo] = useState(localStorage.getItem('company_logo') || '');
+    const [companyLogoSize, setCompanyLogoSize] = useState(localStorage.getItem('company_logo_size') || 'medium');
+
+    useEffect(() => {
+        document.title = companyName ? companyName : 'Agente de IA';
+    }, [companyName]);
 
     const userRole = localStorage.getItem('user_role') || 'Usuário';
     const isSuperAdmin = userRole === 'Super Admin';
@@ -24,7 +39,27 @@ const Sidebar = ({ onLogout }) => {
             });
             if (response.ok) {
                 const data = await response.json();
-                setUserData({ name: data.name || '', email: data.email || '', password: '' });
+                setUserData({ 
+                    name: data.name || '', 
+                    email: data.email || '', 
+                    password: '',
+                    company_name: data.company_name || '',
+                    company_logo: data.company_logo || '',
+                    company_logo_size: data.company_logo_size || 'medium'
+                });
+                
+                if (data.company_name !== undefined) {
+                    localStorage.setItem('company_name', data.company_name || '');
+                    setCompanyName(data.company_name || '');
+                }
+                if (data.company_logo !== undefined) {
+                    localStorage.setItem('company_logo', data.company_logo || '');
+                    setCompanyLogo(data.company_logo || '');
+                }
+                if (data.company_logo_size !== undefined) {
+                    localStorage.setItem('company_logo_size', data.company_logo_size || 'medium');
+                    setCompanyLogoSize(data.company_logo_size || 'medium');
+                }
             }
         } catch (error) {
             console.error("Erro ao carregar dados do usuário:", error);
@@ -43,13 +78,27 @@ const Sidebar = ({ onLogout }) => {
                     'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
                     'X-API-Key': AGENT_API_KEY
                 },
-                body: JSON.stringify(userData)
+                body: JSON.stringify({
+                    name: userData.name,
+                    email: userData.email,
+                    password: userData.password || undefined,
+                    company_name: userData.company_name,
+                    company_logo: userData.company_logo,
+                    company_logo_size: userData.company_logo_size
+                })
             });
             if (response.ok) {
                 const updated = await response.json();
                 if (updated && updated.name) {
                     localStorage.setItem('user_name', updated.name);
                 }
+                localStorage.setItem('company_name', updated.company_name || '');
+                localStorage.setItem('company_logo', updated.company_logo || '');
+                localStorage.setItem('company_logo_size', updated.company_logo_size || 'medium');
+                setCompanyName(updated.company_name || '');
+                setCompanyLogo(updated.company_logo || '');
+                setCompanyLogoSize(updated.company_logo_size || 'medium');
+
                 setStatus({ type: 'success', message: 'Perfil atualizado com sucesso!' });
                 setTimeout(() => {
                     setShowSettingsModal(false);
@@ -76,8 +125,16 @@ const Sidebar = ({ onLogout }) => {
         <>
             <aside className="sidebar">
                 <div className="sidebar-logo">
-                    <div className="logo-icon">🤖</div>
-                    <span className="logo-text">Agent Flow</span>
+                    {companyLogo ? (
+                        <img 
+                            src={companyLogo} 
+                            alt={companyName || 'Logo'} 
+                            className={`company-logo-img size-${companyLogoSize}`} 
+                        />
+                    ) : (
+                        <div className="logo-icon">🤖</div>
+                    )}
+                    <span className="logo-text">{companyName || 'Agent Flow'}</span>
                 </div>
 
                 <nav className="sidebar-nav">
@@ -110,7 +167,7 @@ const Sidebar = ({ onLogout }) => {
                                         <NavLink
                                             to="/knowledge-bases?tab=inbox"
                                             className={({ isActive }) => {
-                                                const search = window.location.search;
+                                                const search = (typeof window !== 'undefined' && window.location && window.location.search) || '';
                                                 const isInbox = search.includes('tab=inbox');
                                                 return `nav-item ${isInbox ? 'active' : ''}`;
                                             }}
@@ -126,7 +183,7 @@ const Sidebar = ({ onLogout }) => {
                                         <NavLink
                                             to="/knowledge-bases"
                                             className={({ isActive }) => {
-                                                const search = window.location.search;
+                                                const search = (typeof window !== 'undefined' && window.location && window.location.search) || '';
                                                 const isInbox = search.includes('tab=inbox');
                                                 return `nav-item ${isActive && !isInbox ? 'active' : ''}`;
                                             }}
@@ -253,6 +310,119 @@ const Sidebar = ({ onLogout }) => {
                                     </div>
                                 </>
                             )}
+
+                            <div className="form-group" style={{ marginTop: '1rem' }}>
+                                <label>Nome da Empresa (White-label)</label>
+                                <input 
+                                    type="text" 
+                                    value={userData.company_name || ''}
+                                    onChange={e => setUserData({...userData, company_name: e.target.value})}
+                                    placeholder="Ex: Minha Empresa"
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>Logo da Empresa (Upload)</label>
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.75rem',
+                                    border: '2px dashed rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '8px',
+                                    padding: '1.25rem',
+                                    textAlign: 'center',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    position: 'relative',
+                                    transition: 'border-color 0.2s ease, background-color 0.2s ease'
+                                }}>
+                                    {userData.company_logo ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', zIndex: 2 }}>
+                                            <img 
+                                                src={userData.company_logo} 
+                                                alt="Preview da Logo" 
+                                                style={{ maxHeight: '80px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} 
+                                            />
+                                            <button 
+                                                type="button" 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setUserData({...userData, company_logo: ''});
+                                                }}
+                                                style={{
+                                                    background: 'rgba(239, 68, 68, 0.2)',
+                                                    color: '#f87171',
+                                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                                    padding: '0.35rem 0.75rem',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: '600',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onMouseOver={(e) => { e.target.style.background = '#ef4444'; e.target.style.color = 'white'; }}
+                                                onMouseOut={(e) => { e.target.style.background = 'rgba(239, 68, 68, 0.2)'; e.target.style.color = '#f87171'; }}
+                                            >
+                                                Remover Logo
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                                            <span style={{ fontSize: '1.75rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}>📤</span>
+                                            <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: '500' }}>Clique ou arraste uma imagem aqui</span>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>PNG, JPG ou SVG (Máx. 2MB)</span>
+                                        </div>
+                                    )}
+                                    <input 
+                                        type="file" 
+                                        accept="image/*"
+                                        onChange={async (e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                    setUserData({...userData, company_logo: reader.result});
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                        style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            width: '100%',
+                                            height: '100%',
+                                            opacity: 0,
+                                            cursor: 'pointer',
+                                            zIndex: 1
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Tamanho da Logo na Sidebar</label>
+                                <select 
+                                    value={userData.company_logo_size || 'medium'}
+                                    onChange={e => setUserData({...userData, company_logo_size: e.target.value})}
+                                    className="form-control-select"
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        borderRadius: '8px',
+                                        backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        color: '#fff',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    <option value="small" style={{ backgroundColor: '#0f172a' }}>Pequeno</option>
+                                    <option value="medium" style={{ backgroundColor: '#0f172a' }}>Médio</option>
+                                    <option value="large" style={{ backgroundColor: '#0f172a' }}>Grande</option>
+                                </select>
+                            </div>
 
                             {status.message && (
                                 <div className={`status-message ${status.type}`} style={{ marginBottom: '1.5rem' }}>

@@ -31,6 +31,9 @@ async def test_transferir_suporte_humano_automation(mock_config):
     mock_webhook_config.leads_table = "leads_test"
     mock_webhook_config.chatwoot_url = "https://chatwoot.test"
     mock_webhook_config.chatwoot_api_token = "test_token"
+    mock_webhook_config.handoff_labels_to_add = json.dumps(["atendimento_humano"])
+    mock_webhook_config.handoff_labels_to_remove = json.dumps(["bot_ativo"])
+    mock_webhook_config.handoff_message = None
     
     # Setup db.execute to return the config
     mock_result = MagicMock()
@@ -53,8 +56,8 @@ async def test_transferir_suporte_humano_automation(mock_config):
         "conversation_id": "100"
     }
 
-    with patch("agent.get_openai_client") as mock_get_client, \
-         patch("agent.search_knowledge_base", new_callable=AsyncMock) as mock_rag, \
+    with patch("agent_core.core.get_openai_client") as mock_get_client, \
+         patch("rag_service.search_knowledge_base", new_callable=AsyncMock) as mock_rag, \
          patch("httpx.AsyncClient.get") as mock_get, \
          patch("httpx.AsyncClient.post") as mock_post:
         

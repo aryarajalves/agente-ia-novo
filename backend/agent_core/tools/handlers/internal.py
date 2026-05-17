@@ -24,7 +24,10 @@ async def handle_unanswered_question(db, context_variables, func_args_str, histo
         from models import UnansweredQuestionModel
         func_args = json.loads(func_args_str)
         question = func_args.get("pergunta")
-        session_id = context_variables.get("session_id") or "Desconhecida"
+        
+        # Prioriza o telefone real do contato se estiver disponível nas variáveis de contexto
+        session_id = context_variables.get("contact_phone") or context_variables.get("session_id") or "Desconhecida"
+        
         context_text = f"Sessão: {session_id}\nHistórico:\n" + "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history[-5:]])
         new_q = UnansweredQuestionModel(agent_id=agent_id, session_id=session_id, question=question, context=context_text, status="PENDENTE")
         if db:

@@ -11,6 +11,12 @@ export const QuestionsProvider = ({ children }) => {
     const [agents, setAgents] = useState([]);
     const [publicToken, setPublicToken] = useState('');
     
+    // Paginação e Seleção
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [limit, setLimit] = useState(20);
+    const [page, setPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    
     // Form States
     const [answerText, setAnswerText] = useState('');
     const [editingQuestionText, setEditingQuestionText] = useState('');
@@ -27,6 +33,10 @@ export const QuestionsProvider = ({ children }) => {
         kbList, setKbList,
         agents, setAgents,
         publicToken, setPublicToken,
+        selectedIds, setSelectedIds,
+        limit, setLimit,
+        page, setPage,
+        totalCount, setTotalCount,
         answerText, setAnswerText,
         editingQuestionText, setEditingQuestionText,
         selectedKbId, setSelectedKbId,

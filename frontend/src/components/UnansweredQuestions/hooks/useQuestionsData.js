@@ -5,15 +5,19 @@ import { api } from '../../../api/client';
 export const useQuestionsData = () => {
     const { 
         setQuestions, setLoading, setKbList, setAgents, 
-        setPublicToken, setSelectedKbId, setSelectedAgentId 
+        setPublicToken, setSelectedKbId, setSelectedAgentId,
+        limit, page, setTotalCount, setSelectedIds
     } = useQuestions();
 
     const fetchQuestions = useCallback(async () => {
         setLoading(true);
+        // Reseta os selecionados na atualização/mudança de página
+        setSelectedIds(new Set());
         try {
+            const offset = (page - 1) * limit;
             const [kbRes, uqRes, agentsRes, settingsRes] = await Promise.all([
                 api.get('/knowledge-bases'),
-                api.get('/unanswered-questions?status=PENDENTE'),
+                api.get(`/unanswered-questions?status=PENDENTE&limit=${limit}&offset=${offset}`),
                 api.get('/agents'),
                 api.get('/settings/public-tokens')
             ]);
@@ -23,7 +27,10 @@ export const useQuestionsData = () => {
             if (kbData.length > 0) setSelectedKbId(kbData[0].id);
 
             const uqData = await uqRes.json();
-            if (uqData.success) setQuestions(uqData.items);
+            if (uqData.success) {
+                setQuestions(uqData.items);
+                setTotalCount(uqData.total);
+            }
 
             const agentsData = await agentsRes.json();
             setAgents(agentsData);
@@ -38,7 +45,7 @@ export const useQuestionsData = () => {
         } finally {
             setLoading(false);
         }
-    }, [setQuestions, setLoading, setKbList, setAgents, setPublicToken, setSelectedKbId, setSelectedAgentId]);
+    }, [setQuestions, setLoading, setKbList, setAgents, setPublicToken, setSelectedKbId, setSelectedAgentId, limit, page, setTotalCount, setSelectedIds]);
 
     useEffect(() => {
         fetchQuestions();

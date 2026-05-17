@@ -173,3 +173,191 @@
 }
 
 .teach-mode-tabs button.active { background: #6366f1; color: #fff; }
+
+/* --- NOVOS ESTILOS PREMIUM (SELEÇÃO, PAGINAÇÃO E TELEFONE) --- */
+
+/* Tag de Telefone */
+.uq-phone-tag {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Card Selecionado */
+.uq-card.selected {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.05);
+}
+
+/* Checkbox Customizado */
+.uq-checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.uq-custom-checkbox {
+    appearance: none;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
+    padding: 7px;
+    border-radius: 4px;
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin: 0;
+}
+
+.uq-custom-checkbox:checked {
+    background-color: #6366f1;
+    border-color: #6366f1;
+}
+
+.uq-custom-checkbox:checked:after {
+    content: '\2714';
+    font-size: 10px;
+    color: #fff;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.uq-custom-checkbox:hover {
+    border-color: #6366f1;
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+/* Área de seleção no cabeçalho */
+.header-select-all {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.select-all-label {
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #e2e8f0;
+}
+
+.selected-count-badge {
+    background: #6366f1;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+
+/* Botões de Ação do Header */
+.btn-bulk-discard {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    padding: 0.6rem 1.2rem;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-bulk-discard:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    color: #ef4444;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.15);
+}
+
+/* Paginação Estilo Premium */
+.uq-pagination-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2.5rem;
+    background: rgba(30, 41, 59, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1rem 1.5rem;
+    backdrop-filter: blur(8px);
+}
+
+.uq-pagination-limit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.limit-label {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.uq-pagination-select {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.uq-pagination-select:hover {
+    border-color: rgba(99, 102, 241, 0.5);
+}
+
+.uq-pagination-navigation {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.uq-page-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.uq-page-btn:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+.uq-page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.uq-page-info {
+    font-size: 0.85rem;
+    color: #e2e8f0;
+    font-weight: 600;
+}

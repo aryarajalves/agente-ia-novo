@@ -30,7 +30,7 @@ async def get_me(current_email: str = Depends(get_current_user), db: AsyncSessio
         admin_email = env_vars.get("ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL") or "admin@agente.com"
         
         if current_email == admin_email:
-            return {"id": 0, "name": "Admin Super", "email": admin_email, "role": "Super Admin"}
+            return {"id": 0, "name": "Admin Super", "email": admin_email, "role": "Super Admin", "company_name": None, "company_logo": None, "company_logo_size": "medium"}
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     return user
 
@@ -63,6 +63,12 @@ async def update_me(user_update: UserUpdate, current_email: str = Depends(get_cu
     if is_env_admin or (user and user.role == "Super Admin"):
         if "name" in update_data:
             user.name = update_data["name"]
+        if "company_name" in update_data:
+            user.company_name = update_data["company_name"]
+        if "company_logo" in update_data:
+            user.company_logo = update_data["company_logo"]
+        if "company_logo_size" in update_data:
+            user.company_logo_size = update_data["company_logo_size"]
     else:
         if "password" in update_data and update_data["password"]:
             update_data["password"] = get_password_hash(update_data["password"])
@@ -78,7 +84,10 @@ async def update_me(user_update: UserUpdate, current_email: str = Depends(get_cu
         "name": user.name,
         "email": user.email,
         "role": user.role,
-        "status": user.status
+        "status": user.status,
+        "company_name": user.company_name,
+        "company_logo": user.company_logo,
+        "company_logo_size": user.company_logo_size
     }
 
 @router.post("/login")

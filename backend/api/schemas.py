@@ -14,11 +14,17 @@ class UserCreate(BaseModel):
     password: str
     role: str = "Usuário"
     status: str = "ATIVO"
+    company_name: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_logo_size: Optional[str] = "medium"
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
+    company_name: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_logo_size: Optional[str] = None
 
 # --- KNOWLEDGE BASE SCHEMAS ---
 

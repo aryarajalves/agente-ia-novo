@@ -73,6 +73,8 @@ _typing_indicator_supported = True  # cached: set to False on first 404
 
 def _get_cost(model, usage):
     if not usage: return 0
+    if not model or not isinstance(model, str):
+        model = "gpt-4o-mini"
     # Preços por 1k tokens (USD) - Baseados em GPT-4o e GPT-4o-mini
     rates = {
         "gpt-4o-mini": {"in": 0.00015 / 1000, "out": 0.00060 / 1000},
