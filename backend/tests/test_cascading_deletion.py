@@ -34,8 +34,8 @@ async def test_manual_deletion_cascading(client, db_session):
     await db_session.refresh(agent)
 
     # Garantir que a tabela de leads existe
-    from webhook_router import _ensure_leads_table
-    await _ensure_leads_table(f"leads_{uid}")
+    from webhooks.service import ensure_leads_table
+    await ensure_leads_table(f"leads_{uid}")
 
     # Inserir Lead
     await db_session.execute(text(f"""
@@ -111,19 +111,26 @@ async def test_auto_deletion_cascading(db_session):
     import uuid
     uid = str(uuid.uuid4())[:8]
     # 1. Setup
+    from models import KnowledgeBaseModel, AgentConfigModel
+    kb = KnowledgeBaseModel(id=1, name="Test KB 1")
+    agent = AgentConfigModel(id=1, name="Test Agent 1")
+    db_session.add(kb)
+    db_session.add(agent)
+    
     config = WebhookConfigModel(
         name=f"Auto Del {uid}",
         token=f"token_auto_{uid}",
         leads_table=f"leads_auto_{uid}",
         delete_keywords=json.dumps(["sair", "deletar"]),
-        delete_message="Eliminado!"
+        delete_message="Eliminado!",
+        agent_id=1
     )
     db_session.add(config)
     await db_session.commit()
     await db_session.refresh(config)
 
-    from webhook_router import _ensure_leads_table
-    await _ensure_leads_table(f"leads_auto_{uid}")
+    from webhooks.service import ensure_leads_table
+    await ensure_leads_table(f"leads_auto_{uid}")
 
     # Inserir Lead
     await db_session.execute(text(f"INSERT INTO leads_auto_{uid} (webhook_config_id, telefone, conversa_id, conta_id) VALUES ({config.id}, '5511888888888', 'c1', 'a1')"))
@@ -155,7 +162,20 @@ async def test_auto_deletion_cascading(db_session):
             config.delete_keywords = json.dumps(["sair", "deletar"])
             config.delete_message = "Eliminado!"
             
-            mock_s.query().filter().first.side_effect = [event, config, MagicMock(id=1)] 
+            def smart_query(model):
+                mock_query = MagicMock()
+                mock_filter = MagicMock()
+                mock_query.filter.return_value = mock_filter
+                
+                if model == WebhookEventModel:
+                    mock_filter.first.return_value = event
+                elif model == WebhookConfigModel:
+                    mock_filter.first.return_value = config
+                else:
+                    mock_filter.first.return_value = MagicMock(id=1)
+                return mock_query
+                
+            mock_s.query.side_effect = smart_query
             mock_s.execute.return_value.fetchone.return_value = [lead_id]
             
             process_webhook_automation(event.id)

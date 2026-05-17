@@ -332,6 +332,7 @@ class WebhookConfigModel(Base):
     labels_on_message = Column(Text, nullable=True)     # JSON array: etiquetas adicionadas em toda msg
     delete_keywords = Column(Text, nullable=True)       # JSON array: palavras que disparam deleção
     delete_message = Column(Text, nullable=True)        # Mensagem enviada antes de deletar o contato
+    delete_labels = Column(Text, nullable=True)         # JSON array: etiquetas que substituirão as atuais no reset
     response_delay_seconds = Column(Integer, default=0) # Delay em segundos antes de enviar resposta ao usuário
     window_close_label = Column(String, nullable=True)   # Etiqueta a remover no Chatwoot quando janela 24h expirar
     followup_enabled = Column(Boolean, default=False)    # Ativar follow-up automático

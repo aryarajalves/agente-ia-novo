@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { formatDate } from '../utils/helpers';
+import { formatDate, showToast } from '../utils/helpers';
 import { api } from '../../../api/client';
 import { API_URL } from '../../../config';
 import AutomationPipelineModal from './AutomationPipelineModal';
@@ -16,6 +16,7 @@ const LeadHistoryModal = ({
     const [limit, setLimit] = useState(20);
     const [selectedPipelineEvent, setSelectedPipelineEvent] = useState(null);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, eventId: null });
+    const [maximizedText, setMaximizedText] = useState(null);
 
     // Bloquear scroll ao montar
     useEffect(() => {
@@ -31,7 +32,7 @@ const LeadHistoryModal = ({
             // Normalizar telefone para a busca (remover +)
             const cleanPhone = (lead.telefone || '').replace('+', '');
             // Buscamos todos os eventos (usuário e agente) para este lead
-            const res = await api.get(`/webhooks/${webhook.id}/events?search=${cleanPhone}&page=${page}&limit=${limit}`);
+            const res = await api.get(`/webhooks/${webhook.id}/events?search=${cleanPhone}&page=${page}&limit=${limit}&event_type=all`);
             const data = await res.json();
 
             // Garantir que temos a lista de itens correta do backend
@@ -56,11 +57,15 @@ const LeadHistoryModal = ({
         try {
             const res = await api.post(`/webhooks/${webhook.id}/events/bulk-delete`, { event_ids: [confirmDelete.eventId] });
             if (res.ok) {
+                showToast('Mensagem excluída com sucesso!', 'success');
                 fetchLeadHistory();
                 setConfirmDelete({ isOpen: false, eventId: null });
+            } else {
+                showToast('Erro ao excluir mensagem.', 'error');
             }
         } catch (e) {
             console.error('Erro ao excluir evento:', e);
+            showToast('Erro ao excluir mensagem.', 'error');
         }
     };
 
@@ -181,23 +186,63 @@ const LeadHistoryModal = ({
                                         <td style={{ padding: '1rem', fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>{event.id}</td>
                                         <td style={{ padding: '1rem', fontSize: '0.85rem', color: isAgent ? 'rgba(255,255,255,0.2)' : '#e2e8f0', maxWidth: '250px' }}>
                                             {!isAgent && (
-                                                <div style={{ maxHeight: '60px', overflowY: 'auto', lineHeight: '1.4', fontStyle: isGrouped ? 'italic' : 'normal' }}>
-                                                    {isGrouped && <span style={{ fontSize: '0.65rem', marginRight: '4px', opacity: 0.8 }}>📦</span>}
-                                                    {message}
+                                                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                                                    <div style={{ maxHeight: '60px', overflowY: 'auto', lineHeight: '1.4', fontStyle: isGrouped ? 'italic' : 'normal', paddingRight: message.length > 50 ? '24px' : '0' }}>
+                                                        {isGrouped && <span style={{ fontSize: '0.65rem', marginRight: '4px', opacity: 0.8 }}>📦</span>}
+                                                        {message}
+                                                    </div>
+                                                    {message.length > 50 && (
+                                                        <button
+                                                            onClick={() => setMaximizedText(message)}
+                                                            title="Maximizar"
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: 0,
+                                                                right: 0,
+                                                                background: 'rgba(255, 255, 255, 0.05)',
+                                                                border: 'none',
+                                                                color: '#6366f1',
+                                                                borderRadius: '4px',
+                                                                width: '18px',
+                                                                height: '18px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontSize: '0.65rem',
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s',
+                                                                zIndex: 10
+                                                            }}
+                                                            onMouseOver={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)'}
+                                                            onMouseOut={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                                        >⛶</button>
+                                                    )}
                                                 </div>
                                             )}
                                         </td>
                                         <td style={{ padding: '1rem', textAlign: 'center' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                                <span style={{ 
-                                                    fontSize: '0.6rem', fontWeight: 900, 
-                                                    background: isGrouped ? 'rgba(148, 163, 184, 0.1)' : (isAgent ? 'rgba(99, 102, 241, 0.15)' : 'rgba(16, 185, 129, 0.15)'), 
-                                                    color: isGrouped ? '#94a3b8' : (isAgent ? '#818cf8' : '#10b981'),
-                                                    padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase',
-                                                    border: `1px solid ${isGrouped ? 'rgba(148, 163, 184, 0.2)' : (isAgent ? 'rgba(99, 102, 241, 0.2)' : 'rgba(16, 185, 129, 0.2)')}`
-                                                }}>
-                                                    {isGrouped ? 'AGRUPADO' : (isAgent ? 'AGENTE' : 'USUÁRIO')}
-                                                </span>
+                                                {event.event_type === 'memory' ? (
+                                                    <span style={{ 
+                                                        fontSize: '0.6rem', fontWeight: 900, 
+                                                        background: 'rgba(245, 158, 11, 0.15)', 
+                                                        color: '#f59e0b',
+                                                        padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase',
+                                                        border: '1px solid rgba(245, 158, 11, 0.2)'
+                                                    }}>
+                                                        🔌 OUTRA PLATAFORMA
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ 
+                                                        fontSize: '0.6rem', fontWeight: 900, 
+                                                        background: isGrouped ? 'rgba(148, 163, 184, 0.1)' : (isAgent ? 'rgba(99, 102, 241, 0.15)' : 'rgba(16, 185, 129, 0.15)'), 
+                                                        color: isGrouped ? '#94a3b8' : (isAgent ? '#818cf8' : '#10b981'),
+                                                        padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase',
+                                                        border: `1px solid ${isGrouped ? 'rgba(148, 163, 184, 0.2)' : (isAgent ? 'rgba(99, 102, 241, 0.2)' : 'rgba(16, 185, 129, 0.2)')}`
+                                                    }}>
+                                                        {isGrouped ? 'AGRUPADO' : (isAgent ? 'AGENTE' : 'USUÁRIO')}
+                                                    </span>
+                                                )}
                                                 <span style={{ 
                                                     fontSize: '0.65rem', fontWeight: 800, background: 'rgba(255,255,255,0.05)', 
                                                     padding: '4px 8px', borderRadius: '6px', color: '#94a3b8' 
@@ -208,8 +253,36 @@ const LeadHistoryModal = ({
                                         </td>
                                         <td style={{ padding: '1rem', fontSize: '0.85rem', color: '#818cf8', maxWidth: '250px' }}>
                                             {(isAgent || event.agent_response) && !isGrouped && (
-                                                <div style={{ maxHeight: '60px', overflowY: 'auto', lineHeight: '1.4' }}>
-                                                    {isAgent ? message : event.agent_response}
+                                                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                                                    <div style={{ maxHeight: '60px', overflowY: 'auto', lineHeight: '1.4', paddingRight: (isAgent ? message : event.agent_response).length > 50 ? '24px' : '0' }}>
+                                                        {isAgent ? message : event.agent_response}
+                                                    </div>
+                                                    {(isAgent ? message : event.agent_response).length > 50 && (
+                                                        <button
+                                                            onClick={() => setMaximizedText(isAgent ? message : event.agent_response)}
+                                                            title="Maximizar"
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: 0,
+                                                                right: 0,
+                                                                background: 'rgba(255, 255, 255, 0.05)',
+                                                                border: 'none',
+                                                                color: '#818cf8',
+                                                                borderRadius: '4px',
+                                                                width: '18px',
+                                                                height: '18px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontSize: '0.65rem',
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s',
+                                                                zIndex: 10
+                                                            }}
+                                                            onMouseOver={e => e.currentTarget.style.background = 'rgba(129, 140, 248, 0.2)'}
+                                                            onMouseOut={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                                        >⛶</button>
+                                                    )}
                                                 </div>
                                             )}
                                             {isGrouped && <span style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>Absorvida pela próxima</span>}
@@ -217,7 +290,7 @@ const LeadHistoryModal = ({
                                         <td style={{ padding: '1rem', fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>{formatDate(event.created_at)}</td>
                                         <td style={{ padding: '1rem', textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                                                {!isAgent && (
+                                                {!isAgent && event.event_type !== 'memory' && (
                                                     <button
                                                         onClick={() => setSelectedPipelineEvent(event)}
                                                         title="Ver Pipeline"
@@ -281,6 +354,100 @@ const LeadHistoryModal = ({
                                     onClick={confirmDeleteEvent}
                                     style={{ padding: '0.7rem 1.5rem', borderRadius: '12px', background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 20px rgba(239, 68, 68, 0.2)', fontSize: '0.85rem', minWidth: '110px' }}
                                 >Sim, Excluir</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal de Visualização Completa */}
+                {maximizedText && (
+                    <div 
+                        className="premium-modal-overlay" 
+                        onClick={() => {}} 
+                        style={{ 
+                            zIndex: 1200, 
+                            background: 'rgba(0, 0, 0, 0.85)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            position: 'fixed',
+                            top: 0, left: 0, right: 0, bottom: 0
+                        }}
+                    >
+                        <div 
+                            className="premium-modal-content" 
+                            onClick={e => e.stopPropagation()}
+                            style={{ 
+                                maxWidth: '600px', 
+                                width: '90%', 
+                                padding: '2rem', 
+                                borderRadius: '16px', 
+                                background: '#0f172a', 
+                                border: '1px solid rgba(255,255,255,0.1)', 
+                                boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '1.5rem',
+                                position: 'relative'
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem' }}>
+                                <h3 style={{ margin: 0, color: '#f8fafc', fontWeight: 800, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    🔍 Visualização Completa
+                                </h3>
+                                <button 
+                                    onClick={() => setMaximizedText(null)} 
+                                    style={{ 
+                                        background: 'rgba(255,255,255,0.05)', 
+                                        border: 'none', 
+                                        color: '#94a3b8', 
+                                        borderRadius: '50%', 
+                                        width: '28px', 
+                                        height: '28px', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onMouseOver={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'; e.currentTarget.style.color = '#ef4444'; }}
+                                    onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#94a3b8'; }}
+                                >✕</button>
+                            </div>
+                            
+                            <div 
+                                style={{ 
+                                    maxHeight: '400px', 
+                                    overflowY: 'auto', 
+                                    color: '#e2e8f0', 
+                                    fontSize: '0.95rem', 
+                                    lineHeight: '1.6', 
+                                    whiteSpace: 'pre-wrap', 
+                                    background: 'rgba(0,0,0,0.2)', 
+                                    padding: '1.25rem', 
+                                    borderRadius: '12px',
+                                    border: '1px solid rgba(255,255,255,0.03)'
+                                }}
+                            >
+                                {maximizedText}
+                            </div>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <button 
+                                    onClick={() => setMaximizedText(null)} 
+                                    style={{ 
+                                        padding: '0.6rem 1.5rem', 
+                                        borderRadius: '10px', 
+                                        background: '#6366f1', 
+                                        border: 'none', 
+                                        color: '#fff', 
+                                        fontWeight: 700, 
+                                        cursor: 'pointer', 
+                                        boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)',
+                                        fontSize: '0.85rem'
+                                    }}
+                                >Fechar</button>
                             </div>
                         </div>
                     </div>

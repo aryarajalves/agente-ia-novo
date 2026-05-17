@@ -41,6 +41,24 @@
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1) !important;
 }
 
+/* Customização do Select e Options para Alto Contraste */
+select.premium-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E") !important;
+  background-position: right 1rem center !important;
+  background-repeat: no-repeat !important;
+  background-size: 1.25rem !important;
+  padding-right: 2.5rem !important;
+  cursor: pointer;
+}
+
+select.premium-input option {
+  background-color: #0f172a !important; /* Fundo escuro slate */
+  color: #f1f5f9 !important; /* Texto branco de alto contraste */
+  padding: 12px !important;
+  font-size: 0.9rem !important;
+}
+
 .premium-help-text {
   font-size: 0.75rem;
   color: #64748b;

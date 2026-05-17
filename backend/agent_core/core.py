@@ -101,10 +101,10 @@ async def process_message(
     system_prompt = config.system_prompt
     system_prompt += "\n\n⚠️ **REGRA DE OURO:** Não use 'IA', 'Robô', 'Suporte Humano'. Use 'especialista', 'equipe'."
     system_prompt += "\n\n🚨 **PRIORIDADE DE RESPOSTA (SEGUIR À RISCA):**"
-    system_prompt += "\n1. Se o usuário fizer uma pergunta sobre algo que NÃO esteja no seu conhecimento (RAG) ou nas 'INSTRUÇÕES ADICIONAIS' (Inbox), use OBRIGATORIAMENTE a ferramenta 'registrar_duvida_sem_resposta' e diga que vai verificar com a equipe."
+    system_prompt += "\n1. Se o usuário fizer uma pergunta sobre algo que NÃO esteja no seu PROMPT DE SISTEMA (as diretrizes/conhecimento descritos acima), no seu conhecimento (RAG) ou nas 'INSTRUÇÕES ADICIONAIS' (Inbox), use OBRIGATORIAMENTE a ferramenta 'registrar_duvida_sem_resposta' e diga que vai verificar com a equipe."
     system_prompt += "\n2. Use 'transferir_suporte_humano' APENAS se o usuário pedir EXPLICITAMENTE ('quero falar com atendente', 'me passa pra um humano', 'quero suporte humano')."
     system_prompt += "\n3. NUNCA use 'transferir_suporte_humano' apenas porque você não sabe a resposta. Para isso existe a regra 1."
-    system_prompt += "\n4. NUNCA invente nomes de membros da equipe ou clientes. Se a pessoa citada não estiver no seu conhecimento (RAG ou Inbox), trate como dúvida (Regra 1)."
+    system_prompt += "\n4. NUNCA invente nomes de membros da equipe ou clientes. Se a pessoa citada não estiver no seu PROMPT DE SISTEMA, conhecimento (RAG ou Inbox), trate como dúvida (Regra 1)."
     system_prompt = resolve_conditional_blocks(system_prompt, context_variables)
     for k, v in context_variables.items():
         system_prompt = system_prompt.replace("{" + k + "}", str(v) if v is not None else "")
@@ -121,9 +121,9 @@ async def process_message(
     # --- REGRAS RÍGIDAS DE INTEGRIDADE (CONTRA ALUCINAÇÃO) ---
     strict_rules = (
         "\n\n### REGRA DE OURO (COMPORTAMENTO OBRIGATÓRIO):\n"
-        "1. Seu 'CONHECIMENTO OFICIAL' é composto por: (a) CONTEXTO RAG e (b) INSTRUÇÕES ADICIONAIS (Inbox). Se a informação estiver em QUALQUER um desses lugares, você DEVE responder com confiança.\n"
-        "2. Se a informação necessária NÃO estiver em nenhum desses dois locais, você DEVE chamar a ferramenta 'registrar_duvida_sem_resposta' ANTES de responder.\n"
-        "3. É PROIBIDO inventar nomes, prazos ou políticas que não constem no seu contexto (RAG ou Inbox).\n"
+        "1. Seu 'CONHECIMENTO OFICIAL' é composto por: (a) SEU PRÓPRIO PROMPT DE SISTEMA (instruções/informações de produtos descritas acima neste prompt), (b) CONTEXTO RAG e (c) INSTRUÇÕES ADICIONAIS (Inbox). Se a informação estiver em QUALQUER um desses lugares, você DEVE responder com confiança.\n"
+        "2. Se a informação necessária NÃO estiver em nenhum desses locais, você DEVE chamar a ferramenta 'registrar_duvida_sem_resposta' ANTES de responder.\n"
+        "3. É PROIBIDO inventar nomes, prazos ou políticas que não constem no seu PROMPT DE SISTEMA, RAG ou Inbox.\n"
         "4. Após registrar a dúvida, diga ao usuário que está verificando com a equipe, mas NUNCA invente uma resposta.\n"
     )
     system_prompt += strict_rules

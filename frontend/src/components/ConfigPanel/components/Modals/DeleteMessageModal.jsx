@@ -1,9 +1,10 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 const DeleteMessageModal = ({ isOpen, onConfirm, onCancel, messageText }) => {
     if (!isOpen) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div className="guide-modal-overlay">
             <div className="guide-modal-card" style={{ maxWidth: '400px', margin: 'auto' }}>
                 <div className="guide-modal-header" style={{ borderBottom: '1px solid rgba(239, 68, 68, 0.2)' }}>
@@ -67,7 +68,8 @@ const DeleteMessageModal = ({ isOpen, onConfirm, onCancel, messageText }) => {
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

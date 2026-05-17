@@ -5,10 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from main import app
 from database import get_db
 
-@pytest.mark.asyncio
-async def test_bulk_delete_leads(db_session: AsyncSession):
+from models import WebhookConfigModel
+
+async def test_bulk_delete_leads(client, db_session: AsyncSession):
     # 1. Setup: Criar um webhook e alguns leads
-    webhook_id = 1 # Supondo que o ID 1 existe no DB de teste ou foi criado por fixtures
+    config = WebhookConfigModel(id=1, name="Test Webhook 1", token="tk_1", leads_table="webhook_leads_1")
+    db_session.add(config)
+    await db_session.commit()
+    webhook_id = config.id
     
     # Garantir que a tabela existe
     table_name = "webhook_leads_1"
@@ -39,12 +43,11 @@ async def test_bulk_delete_leads(db_session: AsyncSession):
     ids_to_delete = [row[0] for row in res.fetchall()]
 
     # 2. Executar deleção em massa via API
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        response = await ac.request(
-            "DELETE", 
-            f"/webhooks/{webhook_id}/leads/bulk-delete",
-            json={"lead_ids": ids_to_delete}
-        )
+    response = await client.request(
+        "POST", 
+        f"/webhooks/{webhook_id}/leads/delete-batch",
+        json={"lead_ids": ids_to_delete}
+    )
 
     assert response.status_code == 204
 

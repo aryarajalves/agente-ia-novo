@@ -18,12 +18,16 @@ done
 
 echo "✅ Banco de dados disponível."
 
-echo "🛠️ Verificando/Criando banco de dados se necessário..."
-python -c "import asyncio; import models; from database import init_db; asyncio.run(init_db())"
+if [ "$RUN_MIGRATIONS" = "true" ] || [ -z "$1" ]; then
+  echo "🛠️ Verificando/Criando banco de dados se necessário..."
+  python -c "import asyncio; import models; from database import init_db; asyncio.run(init_db())"
 
-echo "🔄 Rodando migrações (alembic upgrade head)..."
-python -c "from alembic.config import main; main(argv=['upgrade', 'head'])"
-echo "✅ Migrações concluídas."
+  echo "🔄 Rodando migrações (alembic upgrade head)..."
+  python -c "from alembic.config import main; main(argv=['upgrade', 'head'])"
+  echo "✅ Migrações concluídas."
+else
+  echo "⏭️ Pulando inicialização e migrações do banco (executando como serviço de apoio: $1)."
+fi
 
 echo "🚀 Iniciando aplicação ou worker..."
 

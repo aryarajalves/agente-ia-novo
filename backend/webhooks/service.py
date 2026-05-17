@@ -155,33 +155,78 @@ async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
 
 
 async def delete_contact_data(db: AsyncSession, webhook_id: int, table_name: str, phones: list, lead_ids: list = None):
-    """Remove todos os dados de um contato (Logs, Memória, Sumários, Gatilhos)."""
+    """Remove todos os dados de um contato (Logs, Memória, Sumários, Gatilhos) de todas as plataformas."""
     if not phones and not lead_ids: 
         logger.info("Nenhum telefone ou lead_id fornecido para deleção.")
         return
         
-    logger.info(f"🗑️ Iniciando limpeza de dados para {len(phones)} telefones e {len(lead_ids or [])} IDs no webhook {webhook_id}")
+    logger.info(f"🗑️ Iniciando limpeza cross-platform de dados para {len(phones)} telefones e {len(lead_ids or [])} IDs")
     
     suffixes = [p[-8:] for p in phones if p and len(p) >= 8]
     
-    # 1. Limpar eventos se houver telefones
+    # 1. Coletar IDs de leads e telefones de todas as tabelas cadastradas no sistema
+    all_lead_ids = []
+    if lead_ids:
+        all_lead_ids.extend([str(lid) for lid in lead_ids])
+        
+    try:
+        res_tables = await db.execute(text("SELECT DISTINCT leads_table FROM webhook_configs WHERE leads_table IS NOT NULL AND leads_table != ''"))
+        all_tables = [r[0] for r in res_tables.fetchall()]
+    except Exception as e_tables:
+        logger.warning(f"Erro ao obter leads_tables: {e_tables}")
+        all_tables = [table_name] if table_name else []
+
+    if table_name and table_name not in all_tables:
+        all_tables.append(table_name)
+
+    # 2. Remover o registro do lead e obter IDs de todas as tabelas de leads
+    if phones:
+        for t in all_tables:
+            try:
+                async with db.begin_nested():
+                    where_tbl = "(telefone = ANY(:tels)"
+                    params_tbl = {"tels": phones}
+                    if suffixes:
+                        where_tbl += " OR RIGHT(telefone, 8) = ANY(:suffixes)"
+                        params_tbl["suffixes"] = suffixes
+                    where_tbl += ")"
+                    
+                    # Selecionar IDs de leads antes de excluir para limpar memórias e logs atrelados
+                    res_ids = await db.execute(text(f"SELECT id FROM {t} WHERE {where_tbl}"), params_tbl)
+                    found_ids = [str(r[0]) for r in res_ids.fetchall() if r[0]]
+                    all_lead_ids.extend(found_ids)
+                    
+                    # Deletar o lead
+                    del_res = await db.execute(text(f"DELETE FROM {t} WHERE {where_tbl}"), params_tbl)
+                    logger.info(f"✅ {del_res.rowcount} leads removidos da tabela {t}.")
+            except Exception as e_del_tbl:
+                logger.warning(f"Erro ao processar limpeza da tabela {t}: {e_del_tbl}")
+                
+    elif lead_ids:
+        # Se veio apenas lead_ids (sem telefones), deletar da tabela principal informada
+        try:
+            async with db.begin_nested():
+                del_res = await db.execute(text(f"DELETE FROM {table_name} WHERE id = ANY(:ids)"), {"ids": lead_ids})
+                logger.info(f"✅ {del_res.rowcount} leads removidos por ID da tabela {table_name}.")
+        except Exception as e_del_ids:
+            logger.warning(f"Erro ao deletar lead_ids do table_name: {e_del_ids}")
+
+    # 3. Limpar eventos de webhook se houver telefones
     if phones:
         where_events = "(telefone = ANY(:tels)"
-        params_events = {"wid": webhook_id, "tels": phones}
+        params_events = {"tels": phones}
         if suffixes:
             where_events += " OR RIGHT(telefone, 8) = ANY(:suffixes)"
             params_events["suffixes"] = suffixes
         where_events += ")"
         
-        evt_res = await db.execute(text(f"DELETE FROM webhook_events WHERE webhook_config_id = :wid AND {where_events}"), params_events)
-        logger.info(f"✅ {evt_res.rowcount} eventos removidos.")
+        evt_res = await db.execute(text(f"DELETE FROM webhook_events WHERE {where_events}"), params_events)
+        logger.info(f"✅ {evt_res.rowcount} eventos removidos de todas as plataformas.")
         
-        # Limpar memórias e logs
-        await db.execute(text("DELETE FROM user_memory WHERE session_id = ANY(:tels)"), {"tels": phones})
-        await db.execute(text("DELETE FROM session_summaries WHERE session_id = ANY(:tels)"), {"tels": phones})
-        await db.execute(text("DELETE FROM interaction_logs WHERE session_id = ANY(:tels)"), {"tels": phones})
-        await db.execute(text("DELETE FROM knowledge_items WHERE metadata_val = ANY(:tels)"), {"tels": phones})
-        logger.info("✅ Memórias, sumários e logs limpos.")
+        # O sync_memory_to_vector salva com prefixo 'phone:' (ex: phone:5511999998888)
+        tels_with_prefix = [f"phone:{p}" for p in phones if p]
+        all_meta_vals = phones + tels_with_prefix
+        await db.execute(text("DELETE FROM knowledge_items WHERE metadata_val = ANY(:metas)"), {"metas": all_meta_vals})
         
         # Limpar triggers
         where_trig = "contact_phone = ANY(:tels)"
@@ -194,25 +239,20 @@ async def delete_contact_data(db: AsyncSession, webhook_id: int, table_name: str
         trig_ids = [r[0] for r in trig_res.fetchall()]
         
         if trig_ids:
-            # Garante que message_status seja limpo antes (embora haja CASCADE, ser explícito ajuda no log)
             ms_res = await db.execute(text("DELETE FROM message_status WHERE trigger_id = ANY(:ids)"), {"ids": trig_ids})
             st_res = await db.execute(text("DELETE FROM scheduled_triggers WHERE id = ANY(:ids)"), {"ids": trig_ids})
             logger.info(f"✅ {st_res.rowcount} triggers agendados e {ms_res.rowcount} status de mensagem removidos.")
-        else:
-            logger.info("ℹ️ Nenhum trigger agendado encontrado para este contato.")
 
-    # 2. Remover o lead propriamente dito
-    if lead_ids:
-        lead_res = await db.execute(text(f"DELETE FROM {table_name} WHERE id = ANY(:ids) AND webhook_config_id = :wid"), {"ids": lead_ids, "wid": webhook_id})
-        logger.info(f"✅ {lead_res.rowcount} leads removidos por ID da tabela {table_name}.")
-    elif phones:
-        # Se não temos IDs, mas temos telefones, deletamos por telefone (fallback)
-        where_leads = "(telefone = ANY(:tels)"
-        if suffixes:
-            where_leads += " OR RIGHT(telefone, 8) = ANY(:suffixes)"
-        where_leads += ")"
-        lead_res = await db.execute(text(f"DELETE FROM {table_name} WHERE {where_leads} AND webhook_config_id = :wid"), {"tels": phones, "suffixes": suffixes, "wid": webhook_id})
-        logger.info(f"✅ {lead_res.rowcount} leads removidos por Telefone da tabela {table_name}.")
+    # 4. Limpar memórias, sumários e logs de interação (usando telefones, telefones com prefixo 'tel_' e IDs coletados)
+    tels_with_prefix_tel = [f"tel_{p}" for p in phones] if phones else []
+    all_keys = (phones or []) + tels_with_prefix_tel + all_lead_ids
+    all_keys = list(dict.fromkeys(all_keys)) # remover duplicados
+    
+    if all_keys:
+        await db.execute(text("DELETE FROM user_memory WHERE session_id = ANY(:keys)"), {"keys": all_keys})
+        await db.execute(text("DELETE FROM session_summaries WHERE session_id = ANY(:keys)"), {"keys": all_keys})
+        await db.execute(text("DELETE FROM interaction_logs WHERE session_id = ANY(:keys)"), {"keys": all_keys})
+        logger.info("✅ Memórias, sumários e logs de interação de todas as plataformas removidos.")
 
 async def handle_keyword_handoffs(db: AsyncSession, config, event, extracted: dict, cw_url_default: str, cw_token_default: str):
     """Lógica de transbordo por palavra-chave."""

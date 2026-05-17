@@ -317,6 +317,7 @@ def process_webhook_automation(self, event_id: int):
             db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS response_delay_seconds INTEGER DEFAULT 0"))
             db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_audio BOOLEAN DEFAULT TRUE"))
             db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_image BOOLEAN DEFAULT TRUE"))
+            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS delete_labels TEXT"))
             db.commit()
         except Exception:
             db.rollback()
@@ -440,23 +441,31 @@ def process_webhook_automation(self, event_id: int):
                         _send_chatwoot_message(db, event_id, target_cid, target_aid, farewell_msg, config)
                         _add_step(db, event_id, "📤 Mensagem de despedida enviada", "Fluxo finalizado via palavra-chave.")
                         
-                        # --- LIMPEZA DE ETIQUETAS NO CHATWOOT ---
-                        # Remove todas as etiquetas atuais para sinalizar que o contato foi finalizado/deletado
+                        # --- SUBSTITUIÇÃO DE ETIQUETAS NO CHATWOOT NO RESET ---
                         try:
                             cw_url = (config.chatwoot_url or "").rstrip("/")
                             cw_token = config.chatwoot_api_token
                             if cw_url and cw_token:
                                 labels_api_url = f"{cw_url}/api/v1/accounts/{target_aid}/conversations/{target_cid}/labels"
                                 headers = {"api_access_token": cw_token, "Content-Type": "application/json"}
+                                
+                                # Carregar etiquetas configuradas para substituição no reset
+                                reset_labels = []
+                                if config.delete_labels:
+                                    try:
+                                        reset_labels = json.loads(config.delete_labels)
+                                    except Exception:
+                                        if isinstance(config.delete_labels, list):
+                                            reset_labels = config.delete_labels
+                                
                                 with httpx.Client(timeout=10.0) as client:
-                                    # Enviar lista vazia para limpar as etiquetas no Chatwoot
-                                    resp = client.post(labels_api_url, json={"labels": []}, headers=headers)
+                                    resp = client.post(labels_api_url, json={"labels": reset_labels}, headers=headers)
                                     if resp.status_code in (200, 201):
-                                        _add_step(db, event_id, "🏷️ Etiquetas Limpas", "Todas as etiquetas foram removidas do Chatwoot.")
+                                        _add_step(db, event_id, "🏷️ Etiquetas Substituídas no Reset", f"Etiquetas da conversa substituídas por: {reset_labels}")
                                     else:
-                                        logger.warning(f"Erro ao limpar etiquetas: {resp.status_code} - {resp.text}")
+                                        logger.warning(f"Erro ao substituir etiquetas no reset: {resp.status_code} - {resp.text}")
                         except Exception as e_lbl:
-                            logger.warning(f"Erro no processamento de limpeza de etiquetas: {e_lbl}")
+                            logger.warning(f"Erro no processamento de substituição de etiquetas: {e_lbl}")
 
                     # 2. Deletar tudo do banco de dados (Cascata completa)
                     if config.leads_table:
@@ -477,9 +486,9 @@ def process_webhook_automation(self, event_id: int):
                                 db.rollback()
                                 logger.warning(f"Erro ao deletar em cascata ({sql[:30]}...): {ex}")
 
-                        # B. Histórico de eventos (webhook_events)
-                        _safe_delete("DELETE FROM webhook_events WHERE webhook_config_id = :wid AND telefone = :tel", 
-                                     {"wid": config.id, "tel": target_tel})
+                        # B. Histórico de eventos (webhook_events) - Remoção cross-platform de todas as plataformas
+                        _safe_delete("DELETE FROM webhook_events WHERE telefone = :tel", 
+                                     {"tel": target_tel})
                         
                         # C. Memórias extraídas (user_memory)
                         _safe_delete("DELETE FROM user_memory WHERE session_id = :tel OR session_id = :lid", 
@@ -1044,6 +1053,8 @@ def process_webhook_automation(self, event_id: int):
                 db.commit()
         except Exception:
             pass
+    finally:
+        db.close()
 
 @app.task(bind=True, name="webhook_tasks.sync_memory_to_vector", max_retries=0)
 def sync_memory_to_vector(self, event_id: int):

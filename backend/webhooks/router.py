@@ -6,7 +6,7 @@ import os
 import httpx
 import tempfile
 import redis as redis_lib
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, or_, and_, func
 from pydantic import BaseModel, field_validator
@@ -57,6 +57,7 @@ class WebhookConfigCreate(BaseModel):
     labels_on_message: List[str] = []
     delete_keywords: List[str] = []
     delete_message: Optional[str] = None
+    delete_labels: List[str] = []
     response_delay_seconds: int = 0
     window_close_label: List[str] = []
     followup_enabled: bool = False
@@ -86,9 +87,9 @@ class WebhookConfigResponse(BaseModel):
     memory_token: Optional[str]
     leads_table: str
     description: Optional[str]
-    is_active: bool
-    delay_seconds: int
-    agent_id: Optional[int]
+    is_active: Optional[bool] = True
+    delay_seconds: Optional[int] = 30
+    agent_id: Optional[int] = None
     blocked_messages: Union[List[str], Any, None] = []
     allowed_contacts: Union[List[str], Any, None] = []
     chatwoot_url: Optional[str] = None
@@ -96,13 +97,14 @@ class WebhookConfigResponse(BaseModel):
     labels_on_message: Union[List[str], Any, None] = []
     delete_keywords: Union[List[str], Any, None] = []
     delete_message: Optional[str] = None
+    delete_labels: Union[List[str], Any, None] = []
     response_delay_seconds: Optional[int] = None
     window_close_label: Union[List[str], Any, None] = []
     followup_enabled: Optional[bool] = None
     followup_steps: Union[List[dict], Any, None] = []
     followup_business_hours: Union[dict, Any, None] = None
-    memory_sync_enabled: bool
-    memory_phone_path: str
+    memory_sync_enabled: Optional[bool] = False
+    memory_phone_path: Optional[str] = "phone"
     memory_mappings: Union[List[dict], Any, None] = []
     ignore_by_label: Optional[str] = None
     handoff_labels_to_add: Union[List[str], Any, None] = []
@@ -114,11 +116,11 @@ class WebhookConfigResponse(BaseModel):
     ai_handoff_keyword: Optional[str] = None
     ai_handoff_message: Optional[str] = None
     secondary_agent_ids: Union[List[int], Any, None] = []
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     @field_validator(
         "blocked_messages", "allowed_contacts", "labels_on_message", 
-        "delete_keywords", "window_close_label", "followup_steps", 
+        "delete_keywords", "delete_labels", "window_close_label", "followup_steps", 
         "followup_business_hours", "memory_mappings", "handoff_labels_to_add", 
         "handoff_labels_to_remove", "ai_handoff_labels_to_add", 
         "ai_handoff_labels_to_remove", "secondary_agent_ids",
@@ -150,6 +152,7 @@ class WebhookConfigUpdate(BaseModel):
     labels_on_message: Optional[List[str]] = None
     delete_keywords: Optional[List[str]] = None
     delete_message: Optional[str] = None
+    delete_labels: Optional[List[str]] = None
     response_delay_seconds: Optional[int] = None
     window_close_label: Optional[List[str]] = None
     followup_enabled: Optional[bool] = None
@@ -432,7 +435,7 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
             old_event_res = await db.execute(select(WebhookEventModel).where(WebhookEventModel.id == int(last_event_id)))
             old_event = old_event_res.scalar_one_or_none()
             
-            if old_event:
+            if old_event and old_event.status == "waiting":
                 old_event.status = "grouped"
                 
                 # Adicionar passo informativo no pipeline do evento absorvido
@@ -452,10 +455,14 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
                     "status": "grouped",
                     "steps": steps
                 })
-            
-            # Adicionar espaçamento duplo para clareza visual e separação de contexto
-            if accumulated_text:
-                accumulated_text += "\n\n"
+                
+                # Adicionar espaçamento duplo para clareza visual e separação de contexto
+                if accumulated_text:
+                    accumulated_text += "\n\n"
+            else:
+                # Se o evento anterior não estava mais esperando (já foi processado, concluído ou deu erro),
+                # nós NÃO o agrupamos. Iniciamos um novo acumulado.
+                accumulated_text = ""
         except Exception as e:
             logger.error(f"Erro ao agrupar evento anterior {last_event_id}: {e}")
 
@@ -636,12 +643,18 @@ async def list_webhook_events(
         where_clauses.append("dono = :dono")
         params["dono"] = dono
     
-    if event_type:
+    if event_type and event_type != "all":
         where_clauses.append("event_type = :event_type")
         params["event_type"] = event_type
         
     if search:
-        where_clauses.append("(telefone LIKE :search OR contato_nome ILIKE :search OR mensagem ILIKE :search)")
+        digits_only = re.sub(r"\D", "", search)
+        if len(digits_only) >= 8:
+            suffix = digits_only[-8:]
+            where_clauses.append("(telefone LIKE :search OR RIGHT(telefone, 8) = :suffix OR contato_nome ILIKE :search OR mensagem ILIKE :search)")
+            params["suffix"] = suffix
+        else:
+            where_clauses.append("(telefone LIKE :search OR contato_nome ILIKE :search OR mensagem ILIKE :search)")
         params["search"] = f"%{search}%"
 
     where_str = " AND ".join(where_clauses)
@@ -792,6 +805,56 @@ async def delete_leads_batch(webhook_id: int, req: LeadBulkDeleteRequest, db: As
         await db.rollback()
         logger.error(f"❌ Erro ao deletar leads em lote: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro interno ao deletar leads: {str(e)}")
+
+@router.delete("/{webhook_id}/leads/{lead_id}", status_code=204)
+async def delete_single_lead(webhook_id: int, lead_id: int, db: AsyncSession = Depends(get_db)):
+    logger.info(f"🗑️ Deletando lead {lead_id} para webhook {webhook_id}")
+    config = await db.get(WebhookConfigModel, webhook_id)
+    if not config: raise HTTPException(status_code=404, detail="Webhook não encontrado")
+    
+    try:
+        phone = None
+        conversa_id = None
+        conta_id = None
+        
+        async with db.begin_nested():
+            # Buscar telefone, conversa_id e conta_id do lead para limpar dados associados e mandar despedida
+            query = text(f"SELECT telefone, conversa_id, conta_id FROM {config.leads_table} WHERE id = :lid AND webhook_config_id = :wid")
+            res = await db.execute(query, {"lid": lead_id, "wid": webhook_id})
+            row = res.fetchone()
+            if row:
+                phone = row[0]
+                conversa_id = row[1]
+                conta_id = row[2]
+            
+            # Deletar da tabela de leads
+            await db.execute(text(f"DELETE FROM {config.leads_table} WHERE id = :lid"), {"lid": lead_id})
+            
+            if phone:
+                # Remove dados vinculados
+                await delete_contact_data(db, webhook_id, config.leads_table, [phone], lead_ids=[lead_id])
+                
+        await db.commit()
+        
+        # Enviar mensagem de despedida Chatwoot (se configurada) fora da transação
+        if conversa_id and conta_id and config.delete_message:
+            url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
+            token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
+            if url and token:
+                headers = {"api_access_token": token, "Content-Type": "application/json"}
+                full_url = f"{url}/api/v1/accounts/{conta_id}/conversations/{conversa_id}/messages"
+                payload = {"content": config.delete_message, "message_type": "outgoing"}
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client_http:
+                        await client_http.post(full_url, json=payload, headers=headers)
+                except Exception as e:
+                    logger.error(f"Erro ao enviar mensagem de despedida Chatwoot: {e}")
+                    
+        return Response(status_code=204)
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ Erro ao deletar lead único: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno ao deletar lead: {str(e)}")
 
 @router.delete("/{webhook_id}/leads/all", status_code=204)
 async def delete_all_leads(webhook_id: int, db: AsyncSession = Depends(get_db)):

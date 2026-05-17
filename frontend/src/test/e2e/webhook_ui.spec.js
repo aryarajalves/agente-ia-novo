@@ -27,21 +27,7 @@ test.describe('Webhook Management UI Updates', () => {
     await expect(page.locator('text=RESPOSTA AGENTE')).toBeVisible();
   });
 
-  test('should display TIPO column in HistoryModal and remove Fechar button', async ({ page }) => {
-    await page.goto('/webhooks');
-    
-    const historyButton = page.locator('button:has-text("Histórico")').first();
-    await expect(historyButton).toBeVisible();
-    await historyButton.click();
 
-    // Verificar coluna TIPO
-    await expect(page.locator('th:has-text("TIPO")')).toBeVisible();
-
-    // Verificar se o botão 'Fechar' no rodapé foi removido ou desativado
-    // Como eu removi do código, não deve ser encontrado no rodapé
-    const footerCloseBtn = page.locator('div[style*="justify-content: space-between"] button:has-text("Fechar")');
-    await expect(footerCloseBtn).toHaveCount(0);
-  });
 
   test('should show Maximizar button for long pipeline steps', async ({ page }) => {
     // Este teste assume que existe um evento com pipeline processado

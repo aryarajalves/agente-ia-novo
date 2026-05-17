@@ -4,8 +4,10 @@ from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport
 import os
 import sys
+import logging
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
 # Carrega as variáveis do .env na raiz do projeto
 load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')))
 
@@ -14,28 +16,47 @@ os.environ["TESTING"] = "true"
 # Adiciona o diretório backend ao path para conseguir importar os módulos
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Fallback para DATABASE_URL caso não esteja no .env
-if not os.getenv("DATABASE_URL"):
-    os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost:5433/ai_agent_db"
+# Capturar e interceptar a DATABASE_URL para isolamento de testes
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    db_url = "postgresql+asyncpg://postgres:postgres@localhost:5433/ai_agent_db"
+
+# Redireciona de forma limpa para test_ai_agent_db para proteger o banco de desenvolvimento
+if "/ai_agent_db" in db_url:
+    db_url = db_url.replace("/ai_agent_db", "/test_ai_agent_db")
+
+os.environ["DATABASE_URL"] = db_url
+DATABASE_URL = db_url
 
 from main import app
 from database import get_db, Base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Mock da base de dados para testes
-# Em um ambiente de produção/CI, você usaria um banco de dados de teste separado
-# Para simplificar aqui, vamos usar o banco atual ou um banco de teste se configurado
-
-# No longer needed with asyncio_mode = auto and proper pytest.ini configuration
+from sqlalchemy import text
 
 @pytest.fixture
 async def db_engine():
+    # Cria o banco de dados test_ai_agent_db dinamicamente conectando no banco padrão 'postgres'
+    if "postgresql" in DATABASE_URL:
+        admin_url = DATABASE_URL.rsplit('/', 1)[0] + '/postgres'
+        admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+        async with admin_engine.connect() as conn:
+            try:
+                result = await conn.execute(text("SELECT 1 FROM pg_database WHERE datname='test_ai_agent_db'"))
+                if not result.scalar():
+                    await conn.execute(text("CREATE DATABASE test_ai_agent_db"))
+                    logger.info("✨ Banco de dados de testes 'test_ai_agent_db' criado com sucesso.")
+            except Exception as e:
+                logger.warning(f"Erro ao criar banco de testes 'test_ai_agent_db': {e}")
+        await admin_engine.dispose()
+
     from database import init_db
     await init_db()
+    
     test_engine = create_async_engine(DATABASE_URL)
     async with test_engine.begin() as conn:
+        # Ativar a extensão pgvector antes de tentar criar as tabelas
+        if "postgresql" in DATABASE_URL:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield test_engine
     await test_engine.dispose()
@@ -46,13 +67,30 @@ async def db_session(db_engine) -> AsyncGenerator:
         db_engine, class_=AsyncSession, expire_on_commit=False
     )
     async with test_session_maker() as session:
+        # Limpar todos os registros de todas as tabelas públicas na base de testes isolada
+        try:
+            res = await session.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+            tables = [row[0] for row in res.fetchall() if row[0] != "spatial_ref_sys"]
+            if tables:
+                await session.execute(text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE"))
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Erro ao truncar tabelas públicas: {e}")
+            await session.rollback()
+        
         yield session
-        # Limpeza após o teste para evitar UniqueViolation em execuções repetidas
+        
+        # Limpeza agressiva pós-teste na base isolada
         await session.rollback()
-        # Opcional: Para uma limpeza agressiva entre testes:
-        # for table in reversed(Base.metadata.sorted_tables):
-        #     await session.execute(table.delete())
-        # await session.commit()
+        try:
+            res = await session.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+            tables = [row[0] for row in res.fetchall() if row[0] != "spatial_ref_sys"]
+            if tables:
+                await session.execute(text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE"))
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Erro ao truncar tabelas pós-teste: {e}")
+            await session.rollback()
 
 @pytest.fixture
 async def client(db_session) -> AsyncGenerator:

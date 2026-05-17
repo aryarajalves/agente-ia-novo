@@ -24,8 +24,8 @@ async def test_soft_deletion_vs_full_purge(client, db_session):
     await db_session.refresh(agent)
 
     # Criar tabela de leads
-    from webhook_router import _ensure_leads_table
-    await _ensure_leads_table(f"leads_{uid}")
+    from webhooks.service import ensure_leads_table
+    await ensure_leads_table(f"leads_{uid}")
 
     # --- CENÁRIO 1: SOFT DELETE (Somente Lead e Logs) ---
     phone1 = f"1{uid}"[:12]
@@ -41,18 +41,18 @@ async def test_soft_deletion_vs_full_purge(client, db_session):
     response = await client.delete(f"/webhooks/{config.id}/leads/{lead1_id}")
     assert response.status_code == 204, f"Soft Delete falhou: {response.status_code} - {response.text}"
 
-    # Verificar: Lead e Evento sumiram, mas Memória ficou
+    # Verificar: Lead e Evento sumiram, e Memória também foi apagada (conforme regra do usuário)
     res = await db_session.execute(text(f"SELECT COUNT(*) FROM leads_{uid} WHERE id = {lead1_id}"))
     count_lead = res.scalar()
     assert count_lead == 0, f"Lead ainda existe na tabela leads_{uid} (count={count_lead})"
-
+    
     res = await db_session.execute(select(func.count(WebhookEventModel.id)).where(WebhookEventModel.telefone == phone1))
     count_ev = res.scalar()
     assert count_ev == 0, f"Evento ainda existe (count={count_ev})"
-
+    
     res = await db_session.execute(select(func.count(UserMemoryModel.id)).where(UserMemoryModel.session_id == phone1))
     count_mem = res.scalar()
-    assert count_mem == 1, f"Memória deveria ter ficado (count={count_mem})"
+    assert count_mem == 0, f"Memória deveria ter sido limpa (count={count_mem})"
 
     # --- CENÁRIO 2: FULL PURGE (Tudo) ---
     phone2 = f"2{uid}"[:12]

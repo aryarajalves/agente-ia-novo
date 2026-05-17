@@ -1,4 +1,5 @@
 import React from 'react';
+import '../styles/bulk_toolbar.css';
 
 const BulkActionToolbar = ({
     selectedWebhooks,

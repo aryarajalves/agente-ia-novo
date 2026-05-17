@@ -1,8 +1,20 @@
 import React from 'react';
+import { LabelMultiSelect } from './LabelSelect';
 
-export const DeleteKeywordsSection = ({ keywords, farewellMessage, onMessageChange, inputValue, onInputChange, onAdd, onRemove }) => (
-    <div style={{ background: '#1e293b', border: '1px solid rgba(239, 68, 68, 0.1)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#ef4444' }} />
+export const DeleteKeywordsSection = ({ 
+    keywords, 
+    farewellMessage, 
+    onMessageChange, 
+    inputValue, 
+    onInputChange, 
+    onAdd, 
+    onRemove,
+    deleteLabels = [],
+    onLabelsChange,
+    labelsList = []
+}) => (
+    <div style={{ background: '#1e293b', border: '1px solid rgba(239, 68, 68, 0.1)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem', position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#ef4444', borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
             <span>🗑️</span>
             <span style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', color: '#fca5a5', textTransform: 'uppercase' }}>Auto-Deleção por Palavra-Chave</span>
@@ -46,6 +58,21 @@ export const DeleteKeywordsSection = ({ keywords, farewellMessage, onMessageChan
                 style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.75rem 0.9rem', color: '#fff', fontSize: '0.85rem', outline: 'none', minHeight: '60px', resize: 'vertical' }}
             />
         </div>
+
+        {labelsList && labelsList.length > 0 && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem', marginTop: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🏷️ Substituir etiquetas ao resetar</label>
+                <LabelMultiSelect
+                    selected={deleteLabels || []}
+                    options={labelsList}
+                    onChange={onLabelsChange}
+                    accentColor="#818cf8"
+                />
+                <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '0.35rem 0 0', lineHeight: 1.4 }}>
+                    Ao resetar a conversa via palavra-chave, todas as etiquetas existentes no Chatwoot serão substituídas por esta lista.
+                </p>
+            </div>
+        )}
     </div>
 );
 

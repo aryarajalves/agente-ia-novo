@@ -64,8 +64,10 @@ const EditWebhookModal = ({
         blocked_messages: [],
         delete_keywords: [],
         delete_message: '',
+        delete_labels: [],
         labels_on_message: [],
         ignore_by_label: '',
+        window_close_label: [],
         handoff_labels_to_remove: [],
         handoff_labels_to_add: [],
         handoff_keyword: '',
@@ -90,8 +92,10 @@ const EditWebhookModal = ({
     safeEditForm.allowed_contacts = parseList(safeEditForm.allowed_contacts);
     safeEditForm.blocked_messages = parseList(safeEditForm.blocked_messages);
     safeEditForm.delete_keywords = parseList(safeEditForm.delete_keywords);
+    safeEditForm.delete_labels = parseList(safeEditForm.delete_labels);
     safeEditForm.followup_steps = parseList(safeEditForm.followup_steps);
     safeEditForm.labels_on_message = parseList(safeEditForm.labels_on_message);
+    safeEditForm.window_close_label = parseList(safeEditForm.window_close_label);
     safeEditForm.handoff_labels_to_add = parseList(safeEditForm.handoff_labels_to_add);
     safeEditForm.handoff_labels_to_remove = parseList(safeEditForm.handoff_labels_to_remove);
     safeEditForm.ai_handoff_labels_to_add = parseList(safeEditForm.ai_handoff_labels_to_add);
@@ -350,6 +354,9 @@ const EditWebhookModal = ({
                                             setEditDeleteInput('');
                                         }}
                                         onRemove={(kw) => setEditForm({ ...safeEditForm, delete_keywords: (safeEditForm.delete_keywords || []).filter(k => k !== kw) })}
+                                        deleteLabels={safeEditForm.delete_labels || []}
+                                        onLabelsChange={v => setEditForm({ ...safeEditForm, delete_labels: v })}
+                                        labelsList={labelsList}
                                     />
                                 </div>
                             )}
@@ -383,6 +390,18 @@ const EditWebhookModal = ({
                                                         onChange={v => setEditForm({ ...safeEditForm, ignore_by_label: v })}
                                                         accentColor="#ef4444"
                                                     />
+                                                </div>
+                                                <div className="form-group-premium">
+                                                    <label className="premium-label" style={{ color: '#f59e0b', fontSize: '0.65rem' }}>⏳ Remover após janela 24h expirar</label>
+                                                    <LabelMultiSelect
+                                                        selected={safeEditForm.window_close_label || []}
+                                                        options={labelsList}
+                                                        onChange={v => setEditForm({ ...safeEditForm, window_close_label: v })}
+                                                        accentColor="#f59e0b"
+                                                    />
+                                                    <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                        Esta etiqueta será removida automaticamente do contato no Chatwoot quando as 24 horas sem interação do cliente expirarem.
+                                                    </p>
                                                 </div>
                                             </div>
                                         ) : (

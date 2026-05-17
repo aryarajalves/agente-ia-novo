@@ -106,3 +106,39 @@ async def test_no_append_if_not_first_msg():
     
     assert "Entendido." in result["content"]
     assert config.initial_question_message not in result["content"]
+
+@pytest.mark.asyncio
+async def test_no_greeting_or_ad_shortcut_if_not_first_msg():
+    config = MockConfig()
+    history = [{"role": "user", "content": "Olá"}, {"role": "assistant", "content": "Tudo bem?"}]
+    
+    # Test "Oi" with history - should NOT trigger greeting
+    result = await run_pre_router_ai("Oi", history, config)
+    assert result["eh_saudacao"] is False
+    assert result["resposta_direta"] is None
+    
+    # Test Ad message with history - should NOT trigger greeting
+    result = await run_pre_router_ai("Quero saber mais sobre o Laser Day", history, config)
+    assert result["eh_saudacao"] is False
+    assert result["resposta_direta"] is None
+
+@pytest.mark.asyncio
+async def test_greeting_in_history_warm_clarification():
+    config = MockConfig()
+    history = [
+        {"role": "user", "content": "Olá"},
+        {"role": "assistant", "content": "Olá! Como posso te ajudar?"},
+        {"role": "user", "content": "Quero saber os preços"},
+        {"role": "assistant", "content": "Nossos preços começam em R$ 99."}
+    ]
+    
+    # Test "Oie" with history - should trigger a warm friendly response instead of robotic technical choices
+    result = await run_pre_router_ai("Oie", history, config)
+    assert result["eh_saudacao"] is False
+    assert result["precisa_esclarecimento"] is True
+    assert result["resposta_esclarecimento"] is not None
+    
+    # A resposta deve ser acolhedora e não técnica/robótica
+    assert "como posso" in result["resposta_esclarecimento"].lower() or "ajudar" in result["resposta_esclarecimento"].lower() or "olá" in result["resposta_esclarecimento"].lower() or "oi" in result["resposta_esclarecimento"].lower()
+    assert "cancelar" not in result["resposta_esclarecimento"].lower()
+    assert "testar o chat" not in result["resposta_esclarecimento"].lower()

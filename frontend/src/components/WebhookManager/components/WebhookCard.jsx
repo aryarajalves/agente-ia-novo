@@ -77,9 +77,6 @@ const WebhookCard = ({
                     Criado em {formatDate(webhook.created_at)}
                 </span>
                 <div className="actions-group">
-                    <button onClick={onViewHistory} className="btn-action-history" title="Histórico de Execuções">
-                        <span>💬</span> Histórico
-                    </button>
                     <button onClick={onViewLeads} className="btn-action-leads" title="Ver Leads Capturados">
                         <span>👥</span> Contatos
                     </button>

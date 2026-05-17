@@ -44,7 +44,7 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
                 print(f"📢 [AD DETECTED] Mensagem idêntica a um anúncio configurado. Usando initial_message.")
                 break
 
-    if msg_clean_no_punct in common_greetings or is_ad:
+    if (msg_clean_no_punct in common_greetings or is_ad) and is_first_msg:
         return {
             "eh_saudacao": True,
             "precisa_esclarecimento": False,
@@ -86,6 +86,7 @@ NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que
 2. Se a mensagem contiver perguntas ou requisições, você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
 
 3. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true.
+   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa. Defina 'precisa_esclarecimento' como true, mas use uma resposta simpática e natural de retorno de contato em 'resposta_esclarecimento' (Ex: "Olá! Como posso te ajudar agora?" ou "Oi! Em que posso te ajudar hoje?") em vez de perguntar de forma robótica se quer cancelar ou testar o chat.
    ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' como false e 'id_agente_alvo' como o Agente Principal.
    
 4. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
@@ -107,6 +108,9 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
   "data_extraida": "YYYY-MM-DD ou null"
 }}"""
 
+    if not is_first_msg:
+        system_prompt += "\n⚠️ REGRA CRÍTICA DE HISTÓRICO: Há interações anteriores na conversa. NUNCA defina 'eh_saudacao' como true, pois o usuário já está em atendimento. Trate a mensagem como uma pergunta ou continuação normal da conversa."
+
     user_prompt = f"{history_text}\nMENSAGEM ATUAL DO USUÁRIO:\n{message}"
 
     try:
@@ -125,6 +129,10 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         )
         result = json.loads(response.choices[0].message.content.strip())
         
+        if not is_first_msg:
+            result["eh_saudacao"] = False
+            result["resposta_direta"] = None
+            
         # Metadados para depuração (Raio-X)
         result["_model_used"] = model_to_use
         result["_debug_prompt"] = f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
