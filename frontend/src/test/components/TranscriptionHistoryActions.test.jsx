@@ -370,7 +370,7 @@ describe('TranscriptionHistory - Paginação e Deleção Premium', () => {
         expect(questionInput).toBeInTheDocument();
         expect(questionInput.value).toBe('Qual é o foco?');
 
-        const answerTextarea = screen.getByPlaceholderText('Digite a resposta que a IA usará como referência...');
+        const answerTextarea = screen.getByPlaceholderText('A resposta que a IA usará como referência...');
         expect(answerTextarea).toBeInTheDocument();
         expect(answerTextarea.value).toBe('O foco é marketing digital.');
 
@@ -379,7 +379,7 @@ describe('TranscriptionHistory - Paginação e Deleção Premium', () => {
         expect(questionInput.value).toBe('Qual o foco atual?');
 
         // Adicionar card manual
-        const addManualBtn = screen.getByText(/Adicionar Pergunta Manual/i);
+        const addManualBtn = screen.getByText(/Adicionar Manual/i);
         fireEvent.click(addManualBtn);
         
         const inputsAfterAdd = screen.getAllByPlaceholderText('Digite a pergunta didática...');
@@ -387,7 +387,7 @@ describe('TranscriptionHistory - Paginação e Deleção Premium', () => {
 
         // Preencher o manual
         fireEvent.change(inputsAfterAdd[1], { target: { value: 'Quem participou?' } });
-        const textareasAfterAdd = screen.getAllByPlaceholderText('Digite a resposta que a IA usará como referência...');
+        const textareasAfterAdd = screen.getAllByPlaceholderText('A resposta que a IA usará como referência...');
         fireEvent.change(textareasAfterAdd[1], { target: { value: 'A equipe de vendas.' } });
 
         // Clicar em Salvar
@@ -399,8 +399,8 @@ describe('TranscriptionHistory - Paginação e Deleção Premium', () => {
         // Deve chamar a API com a lista correta
         expect(api.post).toHaveBeenCalledWith('/knowledge-bases/10/items/add-batch', {
             items: [
-                { question: 'Qual o foco atual?', answer: 'O foco é marketing digital.', category: 'Treinamento', metadata_val: 'Fonte: Transcrição - aula_vendas.mp4' },
-                { question: 'Quem participou?', answer: 'A equipe de vendas.', category: 'Treinamento Manual', metadata_val: 'Fonte: Transcrição - aula_vendas.mp4' }
+                { question: 'Qual o foco atual?', answer: 'O foco é marketing digital.', category: 'Treinamento', metadata_val: 'Vídeo: aula_vendas.mp4' },
+                { question: 'Quem participou?', answer: 'A equipe de vendas.', category: 'Treinamento Manual', metadata_val: 'Vídeo: aula_vendas.mp4' }
             ]
         });
 

@@ -7,10 +7,13 @@ const KBTable = () => {
     const { 
         kbFilterTerm, setKbFilterTerm, 
         selectedItems,
-        kbLabels, setItemToDelete, setIsConfirmOpen
+        kbLabels, setItemToDelete, setIsConfirmOpen,
+        itemsPerPage, setItemsPerPage,
+        typeFilter, setTypeFilter,
+        currentPage, setCurrentPage
     } = useKB();
     
-    const { paginatedItems, totalPages, currentPage, setCurrentPage, totalCount } = useKBData();
+    const { paginatedItems, totalPages, totalCount } = useKBData();
     const { toggleSelect, toggleSelectAll } = useKBOperations();
 
     return (
@@ -23,8 +26,38 @@ const KBTable = () => {
                     onChange={e => setKbFilterTerm(e.target.value)}
                     className="kb-search-input"
                 />
-                <div className="kb-stats">
-                    Total: {totalCount} itens
+                <div className="kb-stats" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <select 
+                        value={typeFilter} 
+                        onChange={e => { setTypeFilter(e.target.value); setCurrentPage(1); }}
+                        style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '5px 10px', borderRadius: '8px' }}
+                    >
+                        <option value="all">Todos os Tipos</option>
+                        <option value="qa">Apenas P&R</option>
+                        <option value="chunks">Apenas Chunks</option>
+                    </select>
+
+                    <select 
+                        value={itemsPerPage} 
+                        onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                        style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '5px 10px', borderRadius: '8px' }}
+                    >
+                        <option value={20}>20 por página</option>
+                        <option value={50}>50 por página</option>
+                        <option value={100}>100 por página</option>
+                    </select>
+                    <span>Total: {totalCount} itens</span>
+                    
+                    {selectedItems.size > 0 && (
+                        <button 
+                            onClick={() => {
+                                setIsConfirmOpen(true);
+                            }}
+                            style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '5px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                            🗑️ Excluir Selecionados ({selectedItems.size})
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -66,7 +99,7 @@ const KBTable = () => {
                 </tbody>
             </table>
 
-            {totalPages > 1 && (
+            {totalPages >= 1 && (
                 <div className="kb-pagination">
                     <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>Anterior</button>
                     <span>Página {currentPage} de {totalPages}</span>

@@ -6,6 +6,7 @@ import httpx
 import time
 import re
 from datetime import datetime, timezone, timedelta
+from sqlalchemy import text
 from celery_app import app
 from database import SessionLocal, async_session
 from models import WebhookEventModel, WebhookConfigModel, AgentConfigModel, KnowledgeItemModel, KnowledgeBaseModel, InteractionLog
@@ -19,7 +20,16 @@ from core.websocket import manager
 from agent_core.services.media_service import process_media_content
 from celery import shared_task
 
+# Import logic from webhook_services
+from webhook_services import (
+    execute_keyword_deletion_trap,
+    check_automation_trap,
+    retrieve_context_history
+)
+
 logger = logging.getLogger(__name__)
+
+# --- LOCAL UTILITIES & HELPERS FOR TEST BACKWARD-COMPATIBILITY ---
 
 def broadcast_status(webhook_id, event_id, status, steps=None):
     """Envia atualização de status e passos via WebSocket de forma segura para workers."""
@@ -33,7 +43,6 @@ def broadcast_status(webhook_id, event_id, status, steps=None):
             "steps": steps
         }
         
-        # Gerenciamento robusto de loop para ambiente multithreaded (Celery)
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -62,55 +71,12 @@ def _add_step(db, event_id: int, step: str, detail: str = "", metadata: dict = N
     event.processing_steps = json.dumps(steps, ensure_ascii=False)
     db.commit()
     
-    # Log para o console/Docker
     logger.info(f"📍 [Pipeline Event {event_id}] {step}: {detail[:100]}...")
     
-    # Notificar via WebSocket
     broadcast_status(event.webhook_config_id, event.id, event.status, steps)
 
 
-_typing_indicator_supported = True  # cached: set to False on first 404
-
-def _get_cost(model, usage):
-    if not usage: return 0
-    if not model or not isinstance(model, str):
-        model = "gpt-4o-mini"
-    # Preços por 1k tokens (USD) - Baseados em GPT-4o e GPT-4o-mini
-    rates = {
-        "gpt-4o-mini": {"in": 0.00015 / 1000, "out": 0.00060 / 1000},
-        "gpt-4o": {"in": 0.005 / 1000, "out": 0.015 / 1000},
-        "gpt-3.5-turbo": {"in": 0.0005 / 1000, "out": 0.0015 / 1000},
-        "o1": {"in": 0.015 / 1000, "out": 0.060 / 1000},
-    }
-    
-    m = model.lower()
-    # Lógica de seleção inteligente
-    if "mini" in m:
-        rate = rates["gpt-4o-mini"]
-    elif "gpt-3.5" in m:
-        rate = rates["gpt-3.5-turbo"]
-    elif "o1" in m:
-        rate = rates["o1"]
-    elif "gpt" in m or "4o" in m:
-        # Fallback para gpt-4o para modelos premium (incluindo gpt-5.2 etc)
-        rate = rates["gpt-4o"]
-    else:
-        # Fallback final
-        rate = rates["gpt-4o-mini"]
-
-    p_tokens = usage.get("prompt_tokens", 0) or usage.get("mini_prompt", 0) + usage.get("main_prompt", 0)
-    c_tokens = usage.get("completion_tokens", 0) or usage.get("mini_completion", 0) + usage.get("main_completion", 0)
-    
-    usd_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
-    
-    # Conversão para BRL
-    try:
-        conversion_rate = float(os.getenv("USD_TO_BRL_RATE", "6.0"))
-    except:
-        conversion_rate = 6.0
-        
-    return usd_cost * conversion_rate
-
+_typing_indicator_supported = True
 
 def _toggle_typing_indicator(config, account_id, conversation_id, command="on"):
     """Liga ou desliga o status 'digitando' no Chatwoot."""
@@ -128,7 +94,7 @@ def _toggle_typing_indicator(config, account_id, conversation_id, command="on"):
         with httpx.Client(timeout=3.0) as client:
             resp = client.post(full_url, json={"command": command}, headers=headers)
             if resp.status_code == 404:
-                _typing_indicator_supported = False  # disable for rest of process lifetime
+                _typing_indicator_supported = False
     except Exception:
         pass
 
@@ -136,7 +102,6 @@ def _toggle_typing_indicator(config, account_id, conversation_id, command="on"):
 def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, config, split_paragraphs=False, delay=0):
     """
     Envia a resposta do agente para o Chatwoot.
-    Se split_paragraphs=True, divide a mensagem e envia cada parte com o delay configurado.
     """
     try:
         url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
@@ -150,9 +115,7 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
             _add_step(db, event_id, "❌ Erro: Dados faltantes", f"conversa_id={conversation_id}, account_id={account_id}")
             return False
 
-        # Preparar partes da mensagem
         if split_paragraphs:
-            # Divide por parágrafos (duas ou mais quebras de linha)
             parts = [p.strip() for p in re.split(r'\n\n+', content) if p.strip()]
             if not parts: parts = [content]
         else:
@@ -167,13 +130,10 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
 
         success = True
         for i, part in enumerate(parts):
-            # 1. Ativar 'Digitando'
             _toggle_typing_indicator(config, account_id, conversation_id, "on")
             
-            # 2. Pequeno delay de 'simulação' base (mínimo 1s)
             time.sleep(1)
             
-            # 3. Enviar a parte da mensagem
             payload = {"content": part, "message_type": "outgoing"}
             
             try:
@@ -187,10 +147,8 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
                 _add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Erro: {str(http_err)}")
                 success = False
             
-            # 4. Desativar 'Digitando'
             _toggle_typing_indicator(config, account_id, conversation_id, "off")
 
-            # 5. Aplicar delay entre partes (exceto na última)
             if i < total_parts - 1 and delay > 0:
                 time.sleep(delay)
 
@@ -204,6 +162,42 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
     except Exception as e:
         _add_step(db, event_id, "❌ Erro crítico no envio", str(e))
         return False
+
+
+def _get_cost(model, usage):
+    if not usage: return 0
+    if not model or not isinstance(model, str):
+        model = "gpt-4o-mini"
+    rates = {
+        "gpt-4o-mini": {"in": 0.00015 / 1000, "out": 0.00060 / 1000},
+        "gpt-4o": {"in": 0.005 / 1000, "out": 0.015 / 1000},
+        "gpt-3.5-turbo": {"in": 0.0005 / 1000, "out": 0.0015 / 1000},
+        "o1": {"in": 0.015 / 1000, "out": 0.060 / 1000},
+    }
+    
+    m = model.lower()
+    if "mini" in m:
+        rate = rates["gpt-4o-mini"]
+    elif "gpt-3.5" in m:
+        rate = rates["gpt-3.5-turbo"]
+    elif "o1" in m:
+        rate = rates["o1"]
+    elif "gpt" in m or "4o" in m:
+        rate = rates["gpt-4o"]
+    else:
+        rate = rates["gpt-4o-mini"]
+
+    p_tokens = usage.get("prompt_tokens", 0) or usage.get("mini_prompt", 0) + usage.get("main_prompt", 0)
+    c_tokens = usage.get("completion_tokens", 0) or usage.get("mini_completion", 0) + usage.get("main_completion", 0)
+    
+    usd_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
+    
+    try:
+        conversion_rate = float(os.getenv("USD_TO_BRL_RATE", "6.0"))
+    except:
+        conversion_rate = 6.0
+        
+    return usd_cost * conversion_rate
 
 
 def _build_agent_config(db_agent):
@@ -260,6 +254,7 @@ def _build_agent_config(db_agent):
         model_settings=_json.loads(db_agent.model_settings) if db_agent.model_settings else {},
     )
 
+# --- CELERY TASKS ---
 
 @app.task(name="webhook_tasks.process_media_content_task")
 def process_media_content_task(webhook_config_id: int, event_id: int):
@@ -280,7 +275,6 @@ def process_media_content_task(webhook_config_id: int, event_id: int):
         openai_key = os.getenv("OPENAI_API_KEY")
         cw_token = config.chatwoot_api_token
         
-        # Executar o processamento
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -299,7 +293,6 @@ def process_media_content_task(webhook_config_id: int, event_id: int):
 
         extracted_text = media_result.get("text", "")
         event.mensagem = extracted_text
-        # Marcamos como media_ready para que a automação principal saiba que terminou
         event.status = "media_ready" 
         db.commit()
         
@@ -335,7 +328,6 @@ def process_webhook_automation(self, event_id: int):
         event.status = "processing"
         db.commit()
         
-        # Broadcast de início de processamento
         _add_step(db, event_id, "🚀 Iniciando Pipeline", "A tarefa de automação foi iniciada pelo worker.")
 
         config = db.query(WebhookConfigModel).filter(WebhookConfigModel.id == event.webhook_config_id).first()
@@ -350,17 +342,15 @@ def process_webhook_automation(self, event_id: int):
             return
 
         # --- RESOLUÇÃO DE MÍDIAS AGRUPADAS ---
-        # Se a mensagem contém placeholders de mídia, tentamos buscar as transcrições reais
         if "[AUDIO PENDENTE]" in (event.mensagem or "") or "[IMAGE PENDENTE]" in (event.mensagem or ""):
             _add_step(db, event_id, "⏳ Aguardando mídias", "Algumas mídias deste grupo ainda estão sendo processadas. Aguardando conclusão...")
             
-            from datetime import timedelta
             for attempt in range(12): 
                 media_events = db.query(WebhookEventModel).filter(
                     WebhookEventModel.webhook_config_id == config.id,
                     WebhookEventModel.telefone == event.telefone,
                     WebhookEventModel.message_type.in_(["audio", "image"]),
-                    WebhookEventModel.status.in_(["media_ready", "grouped", "completed"]), # Aceita mais status
+                    WebhookEventModel.status.in_(["media_ready", "grouped", "completed"]),
                     WebhookEventModel.created_at >= event.created_at - timedelta(minutes=5)
                 ).all()
                 
@@ -369,14 +359,11 @@ def process_webhook_automation(self, event_id: int):
                 for me in media_events:
                     placeholder = f"[{me.message_type.upper()} PENDENTE]"
                     
-                    # Só substitui se me.mensagem for a transcrição real (não o placeholder)
                     if placeholder in current_msg and me.mensagem and placeholder not in me.mensagem:
                         content = me.mensagem
                         if me.message_type == "image":
                             content = f"[IMAGEM: {me.mensagem}]"
                         
-                        # Adiciona um espaço extra após o conteúdo se ele for colado em texto
-                        # mas apenas se o texto seguinte não começar com espaço/quebra
                         idx = current_msg.find(placeholder)
                         after_placeholder = current_msg[idx + len(placeholder):]
                         if after_placeholder and not after_placeholder.startswith((" ", "\n", "?", "!", ".", ",")):
@@ -405,7 +392,6 @@ def process_webhook_automation(self, event_id: int):
             db.commit()
             return
 
-        # 4. Texto (Informa e continua)
         if msg_type == "text":
             _add_step(db, event_id, "📝 Mensagem de texto", "Tipo de mensagem identificado como texto. Continuando pipeline...")
 
@@ -430,155 +416,11 @@ def process_webhook_automation(self, event_id: int):
                         break
                 
                 if keyword_match:
-                    _add_step(db, event_id, "🗑️ Auto-Deleção Detectada", f"Palavra-chave encontrada: '{keyword_match}'")
-                    
-                    # EXTRAIR DADOS ANTES DA DELEÇÃO (para evitar erro de instância deletada)
                     target_tel = str(event.telefone or "")
                     target_cid = str(event.conversa_id or "")
                     target_aid = str(event.conta_id or "")
-
-                    # 1. Enviar mensagem de despedida PRIMEIRO (conforme solicitado pelo usuário)
-                    farewell_msg = config.delete_message or "Seus dados foram removidos do nosso sistema. Até logo!"
-                    if target_cid and target_aid:
-                        _send_chatwoot_message(db, event_id, target_cid, target_aid, farewell_msg, config)
-                        _add_step(db, event_id, "📤 Mensagem de despedida enviada", "Fluxo finalizado via palavra-chave.")
-                        
-                        # --- SUBSTITUIÇÃO DE ETIQUETAS NO CHATWOOT NO RESET ---
-                        try:
-                            cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-                            cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
-                            if cw_url and cw_token:
-                                labels_api_url = f"{cw_url}/api/v1/accounts/{target_aid}/conversations/{target_cid}/labels"
-                                headers = {"api_access_token": cw_token, "Content-Type": "application/json"}
-                                
-                                # Carregar etiquetas configuradas para substituição no reset
-                                reset_labels = []
-                                if config.delete_labels:
-                                    try:
-                                        reset_labels = json.loads(config.delete_labels)
-                                    except Exception:
-                                        if isinstance(config.delete_labels, list):
-                                            reset_labels = config.delete_labels
-                                
-                                with httpx.Client(timeout=10.0) as client:
-                                    resp = client.post(labels_api_url, json={"labels": reset_labels}, headers=headers)
-                                    if resp.status_code in (200, 201):
-                                        _add_step(db, event_id, "🏷️ Etiquetas Substituídas no Reset", f"Etiquetas da conversa substituídas por: {reset_labels}")
-                                    else:
-                                        logger.warning(f"Erro ao substituir etiquetas no reset: {resp.status_code} - {resp.text}")
-                        except Exception as e_lbl:
-                            logger.warning(f"Erro no processamento de substituição de etiquetas: {e_lbl}")
-
-                    # 2. Deletar tudo do banco de dados (Cascata inteligente síncrona cross-platform)
-                    if config.leads_table:
-                        from sqlalchemy import text
-                        # A. Coletar IDs de leads e telefones de todas as tabelas cadastradas no sistema usando sufixo de 8 dígitos
-                        suffix_8 = target_tel[-8:] if len(target_tel) >= 8 else "---"
-                        
-                        all_lead_ids = []
-                        all_tables = [config.leads_table]
-                        try:
-                            res_tables = db.execute(text("SELECT DISTINCT leads_table FROM webhook_configs WHERE leads_table IS NOT NULL AND leads_table != ''"))
-                            all_tables = list(set([r[0] for r in res_tables.fetchall() if r[0]] + [config.leads_table]))
-                        except Exception as e_tables:
-                            logger.warning(f"Erro ao obter leads_tables: {e_tables}")
-
-                        # B. Deletar leads de todas as tabelas e coletar seus IDs
-                        for t in all_tables:
-                            try:
-                                res_ids = db.execute(
-                                    text(f"SELECT id FROM {t} WHERE telefone = :tel OR RIGHT(telefone, 8) = :suffix"),
-                                    {"tel": target_tel, "suffix": suffix_8}
-                                )
-                                found_ids = [str(r[0]) for r in res_ids.fetchall() if r[0]]
-                                all_lead_ids.extend(found_ids)
-                                
-                                db.execute(
-                                    text(f"DELETE FROM {t} WHERE telefone = :tel OR RIGHT(telefone, 8) = :suffix"),
-                                    {"tel": target_tel, "suffix": suffix_8}
-                                )
-                                db.commit()
-                            except Exception as e_del_tbl:
-                                db.rollback()
-                                logger.warning(f"Erro ao processar limpeza da tabela {t}: {e_del_tbl}")
-
-                        # C. Histórico de eventos (webhook_events) - Remoção cross-platform com sufixo de 8 dígitos
-                        try:
-                            db.execute(
-                                text("DELETE FROM webhook_events WHERE telefone = :tel OR RIGHT(telefone, 8) = :suffix"),
-                                {"tel": target_tel, "suffix": suffix_8}
-                            )
-                            db.commit()
-                        except Exception as e_evt:
-                            db.rollback()
-                            logger.warning(f"Erro ao deletar eventos: {e_evt}")
-
-                        # D. Limpar memórias vetoriais (knowledge_items)
-                        try:
-                            db.execute(
-                                text("DELETE FROM knowledge_items WHERE metadata_val = :tel OR metadata_val = :tel_pref OR metadata_val = :tel_suff OR metadata_val = :tel_pref_suff"),
-                                {
-                                    "tel": target_tel,
-                                    "tel_pref": f"phone:{target_tel}",
-                                    "tel_suff": suffix_8,
-                                    "tel_pref_suff": f"phone:{suffix_8}"
-                                }
-                            )
-                            db.commit()
-                        except Exception as e_ki:
-                            db.rollback()
-                            logger.warning(f"Erro ao deletar knowledge_items: {e_ki}")
-
-                        # E. Triggers agendados e status de mensagens
-                        try:
-                            trig_res = db.execute(
-                                text("SELECT id FROM scheduled_triggers WHERE contact_phone = :tel OR RIGHT(contact_phone, 8) = :suffix"),
-                                {"tel": target_tel, "suffix": suffix_8}
-                            )
-                            trig_ids = [r[0] for r in trig_res.fetchall()]
-                            
-                            if trig_ids:
-                                db.execute(text("DELETE FROM message_status WHERE trigger_id = ANY(:ids)"), {"ids": trig_ids})
-                                db.execute(text("DELETE FROM scheduled_triggers WHERE id = ANY(:ids)"), {"ids": trig_ids})
-                            else:
-                                db.execute(
-                                    text("DELETE FROM scheduled_triggers WHERE contact_phone = :tel OR RIGHT(contact_phone, 8) = :suffix"),
-                                    {"tel": target_tel, "suffix": suffix_8}
-                                )
-                            db.commit()
-                        except Exception as e_trig:
-                            db.rollback()
-                            logger.warning(f"Erro ao limpar triggers no reset: {e_trig}")
-
-                        # F. Memórias, sumários e logs de interação (usando telefones, telefones com prefixo 'tel_' e IDs coletados)
-                        try:
-                            tels_with_prefix_tel = [f"tel_{target_tel}", f"tel_{suffix_8}"]
-                            all_keys = [target_tel, suffix_8] + tels_with_prefix_tel + all_lead_ids
-                            all_keys = list(dict.fromkeys([k for k in all_keys if k])) # remover duplicados e nulos
-                            
-                            if all_keys:
-                                db.execute(text("DELETE FROM user_memory WHERE session_id = ANY(:keys)"), {"keys": all_keys})
-                                db.execute(text("DELETE FROM session_summaries WHERE session_id = ANY(:keys)"), {"keys": all_keys})
-                                db.execute(text("DELETE FROM interaction_logs WHERE session_id = ANY(:keys)"), {"keys": all_keys})
-                                db.commit()
-                        except Exception as e_mem:
-                            db.rollback()
-                            logger.warning(f"Erro ao limpar memórias, sumários e logs: {e_mem}")
-
-                        logger.info(f"🗑️ Deleção cross-platform inteligente síncrona concluída para {target_tel}")
                     
-                    # 3. Limpar cache de debounce no Redis (IMPORTANTE: evita que a próxima mensagem agrupe com esta)
-                    try:
-                        import redis as redis_lib
-                        _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
-                        _redis_local.delete(f"webhook:debounce:id:{config.id}:{target_tel}")
-                        _redis_local.delete(f"webhook:debounce:text:{config.id}:{target_tel}")
-                        # Setar lock temporário de 10 segundos para evitar recriação de lead por webhook de eco (is_out)
-                        _redis_local.setex(f"webhook:resetting:{config.id}:{target_tel}", 10, "1")
-                    except Exception as redis_err:
-                        logger.error(f"Erro ao limpar redis no reset: {redis_err}")
-
-                    # Finalizamos o processo
+                    execute_keyword_deletion_trap(db, event, config, target_tel, target_cid, target_aid)
                     return
             except Exception as e:
                 logger.error(f"Erro no processamento de auto-deleção: {e}")
@@ -586,20 +428,17 @@ def process_webhook_automation(self, event_id: int):
 
         # --- TRAP DE AUTOMAÇÃO E SEGURANÇA ---
         lead_internal_id = None
+        last_msg = None
+        lead_created_at = None
         if config.leads_table:
             try:
-                from sqlalchemy import text
                 _add_step(db, event_id, "🔍 Verificando status do contato", "Validando etiquetas do Chatwoot e janela de 24h...")
                 
-                # Buscamos apenas ID e timestamps, ignorando 'pode_enviar_mensagem' conforme solicitado pelo usuário
                 query = text(f"SELECT id, ultima_mensagem_em, created_at FROM {config.leads_table} WHERE telefone = :tel LIMIT 1")
                 res = db.execute(query, {"tel": event.telefone}).fetchone()
                 
-                lead_created_at = None
-                last_msg = None
                 if res:
                     lead_internal_id, last_msg, lead_created_at = res
-                    # --- ATUALIZAÇÃO PROATIVA DA MENSAGEM DO USUÁRIO ---
                     try:
                         db.execute(text(f"""
                             UPDATE {config.leads_table} SET
@@ -616,78 +455,13 @@ def process_webhook_automation(self, event_id: int):
                     except Exception as e_upd:
                         logger.warning(f"Erro ao atualizar mensagem do usuário no lead: {e_upd}")
                     
-                # --- Sincronização Dinâmica com Chatwoot (Etiqueta de Pausa) ---
-                # Agora SEMPRE verificamos as etiquetas para decidir se a automação deve rodar
-                is_paused = False
-                ignore_label = (config.ignore_by_label or "humano").strip().lower()
-                
-                try:
-                    cw_url = (config.chatwoot_url or "").rstrip("/")
-                    cw_token = config.chatwoot_api_token
-                    if cw_url and cw_token and event.conversa_id and event.conta_id:
-                        # Usamos o helper centralizado para verificar a etiqueta de pausa
-                        is_paused = asyncio.run(is_conversation_paused(
-                            cw_url, 
-                            int(event.conta_id), 
-                            int(event.conversa_id), 
-                            cw_token, 
-                            ignore_label
-                        ))
-                        
-                        if is_paused:
-                            _add_step(db, event_id, "🚑 Automação Pausada", f"A etiqueta '{ignore_label}' foi detectada no Chatwoot. Interrompendo processamento.")
-                        else:
-                            _add_step(db, event_id, "✅ Contato autorizado", f"Etiqueta '{ignore_label}' não encontrada ou inativa. Seguindo com a automação.")
-                except Exception as e_sync:
-                    logger.error(f"Erro na sincronização de status: {e_sync}")
-                    _add_step(db, event_id, "⚠️ Erro Técnico", f"Falha ao validar etiquetas: {str(e_sync)}")
-
-                # --- ADIÇÃO DE ETIQUETAS AUTOMÁTICAS (EM CADA MENSAGEM) ---
-                if config.labels_on_message:
-                    try:
-                        labels_to_add = []
-                        if isinstance(config.labels_on_message, list):
-                            labels_to_add = config.labels_on_message
-                        elif isinstance(config.labels_on_message, str) and config.labels_on_message.strip():
-                            labels_to_add = json.loads(config.labels_on_message)
-                        
-                        if labels_to_add and isinstance(labels_to_add, list):
-                            cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-                            cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
-                            if cw_url and cw_token and event.conversa_id and event.conta_id:
-                                _add_step(db, event_id, "🏷️ Adicionando etiquetas automáticas", f"Etiquetas: {', '.join(labels_to_add)}")
-                                asyncio.run(sync_conversation_labels(
-                                    cw_url, 
-                                    int(event.conta_id), 
-                                    int(event.conversa_id), 
-                                    cw_token, 
-                                    to_add=labels_to_add
-                                ))
-                    except Exception as e_labels:
-                        logger.error(f"Erro ao adicionar etiquetas automáticas: {e_labels}")
-                        _add_step(db, event_id, "⚠️ Aviso: Etiquetas não adicionadas", f"Falha ao sincronizar etiquetas: {str(e_labels)}")
-
+                is_paused = check_automation_trap(db, event, config, lead_internal_id, last_msg, lead_created_at)
                 if is_paused:
                     event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
                     event.status = "ignored"
                     db.commit()
                     return
-                
-                # --- Verificação da Janela de 24h ---
-                if last_msg:
-                    # Garantir que ambos sejam aware (UTC) para comparação segura
-                    msg_dt = last_msg
-                    if msg_dt.tzinfo is None:
-                        msg_dt = msg_dt.replace(tzinfo=timezone.utc)
-                    
-                    now = get_now_utc()
-                    diff_seconds = (now - msg_dt).total_seconds()
-                    if diff_seconds > 86400: # 24 horas
-                        _add_step(db, event_id, "🔒 Janela Fechada", f"A janela de 24h expirou. Resposta cancelada por segurança.")
-                        event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
-                        event.status = "completed"
-                        db.commit()
-                        return
+
             except Exception as e:
                 logger.error(f"Erro ao verificar trap de automação: {e}")
                 _add_step(db, event_id, "🔍 Aviso: Trap Ignorado", f"Erro ao verificar lead: {str(e)}")
@@ -696,11 +470,9 @@ def process_webhook_automation(self, event_id: int):
         _add_step(db, event_id, "🤖 Conectando ao agente", f"Agente: {db_agent.name}")
 
         mensagem = event.mensagem or ""
-        # Integrar legenda se houver (útil para imagens com texto)
         if event.legenda:
             mensagem = f"[Legenda do Usuário]: {event.legenda}\n\n[Análise/Resumo da Mídia]: {mensagem}"
 
-        # Usar o ID interno do lead como sessionId se disponível, caso contrário usar o telefone limpo como fallback estável
         raw_phone = event.telefone or ""
         clean_phone = re.sub(r"\D", "", raw_phone)
         session_id = str(lead_internal_id) if lead_internal_id else f"tel_{clean_phone}"
@@ -708,66 +480,13 @@ def process_webhook_automation(self, event_id: int):
         _add_step(db, event_id, "📨 Mensagem enviada ao agente", mensagem[:500] + ("..." if len(mensagem) > 500 else ""))
 
         # --- RECUPERAÇÃO DE HISTÓRICO (MEMÓRIA DE CONTEXTO) ---
-        history = []
-        if db_agent.context_window > 0:
-            try:
-                # Normalização robusta: buscamos pelo telefone com e sem o '+', e também pelos últimos 8 dígitos
-                # para cobrir variações de 9° dígito (ex: 558596... vs 5585996...)
-                search_phones = [raw_phone, clean_phone, f"+{clean_phone}"]
-                search_phones = list(dict.fromkeys([p for p in search_phones if p]))
-
-                # Extraímos os últimos 8 dígitos para busca resiliente ao nono dígito
-                tel_suffix = clean_phone[-8:] if len(clean_phone) >= 8 else clean_phone
-
-                from sqlalchemy import or_
-                # Ignoramos o evento atual (event_id) para não duplicar a mensagem que está sendo processada agora
-                past_events = db.query(WebhookEventModel).filter(
-                    WebhookEventModel.webhook_config_id == event.webhook_config_id,
-                    or_(
-                        WebhookEventModel.telefone.in_(search_phones),
-                        WebhookEventModel.telefone.like(f"%{tel_suffix}")  # Cobre variações do 9° dígito
-                    ),
-                    WebhookEventModel.id != event_id,
-                    WebhookEventModel.status.in_(["completed", "processed", "delivered", "success"])  # 'success' = eventos de memória (memory webhook)
-                ).order_by(WebhookEventModel.created_at.desc()).limit(db_agent.context_window).all()
-
-                # Reverte para ordem cronológica (mais antiga para mais recente)
-                past_events.reverse()
-
-                seen_msgs = set()
-                for pe in past_events:
-                    # 1. Processar 'mensagem'
-                    if pe.mensagem:
-                        role = "assistant" if (pe.dono and pe.dono.lower() in ['agente', 'bot']) else "user"
-                        msg_clean = pe.mensagem.strip()
-                        if msg_clean not in seen_msgs:
-                            history.append({"role": role, "content": pe.mensagem})
-                            seen_msgs.add(msg_clean)
-                    
-                    # 2. Processar 'agent_response' (se houver e não for duplicata)
-                    if pe.agent_response:
-                        resp_clean = pe.agent_response.strip()
-                        if resp_clean not in seen_msgs:
-                            history.append({"role": "assistant", "content": pe.agent_response})
-                            seen_msgs.add(resp_clean)
-                
-                # Truncamento final de segurança para respeitar a janela (valor configurado no agente)
-                if len(history) > db_agent.context_window:
-                    history = history[-db_agent.context_window:]
-                
-                if history:
-                    num_pairs = len(past_events)
-                    _add_step(db, event_id, "🧠 Memória de Contexto", f"Injetadas {num_pairs} interações ({len(history)} mensagens) como contexto.")
-            except Exception as e:
-                logger.error(f"Erro ao recuperar histórico para contexto: {e}")
-                _add_step(db, event_id, "⚠️ Erro na Memória", "Não foi possível carregar o histórico anterior.")
+        history = retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_id)
 
         # --- EXECUÇÃO DO AGENTE ---
         async def _run():
             nonlocal mensagem
             image_url = event.link if event.message_type == "image" else None
             async with async_session() as async_db:
-                # 1. Carregar agentes secundários
                 secondary_agents = []
                 if config.secondary_agent_ids:
                     try:
@@ -781,21 +500,17 @@ def process_webhook_automation(self, event_id: int):
                     except Exception as e:
                         logger.error(f"Erro ao carregar agentes secundarios: {e}")
                 
-                # 2. Pre-Router AI
                 _add_step(db, event_id, "🧠 Analisando Intenção (Pre-Router)", "A IA está decidindo o roteamento e entendendo o contexto da mensagem...")
                 db.commit()
                 
                 pre_router_result = await run_pre_router_ai(mensagem, history, db_agent, secondary_agents)
                 
-                # Exibir metadados transparentes do Pre-Router
                 pr_model = pre_router_result.get("_model_used", db_agent.model or "gpt-4o-mini")
                 pr_usage = pre_router_result.get("_usage", {})
                 pr_prompt = pre_router_result.get("_debug_prompt", "Prompt indisponível")
                 
-                # Cálculo de custo manual para o Pre-Router (exibição)
                 pr_cost = 0.0
                 if pr_usage:
-                    # Tabela de preços aproximada 2026 para exibição
                     rates = {
                         "gpt-4o-mini": {"in": 0.15 / 1_000_000, "out": 0.60 / 1_000_000},
                         "gpt-4o": {"in": 5.00 / 1_000_000, "out": 15.00 / 1_000_000}
@@ -806,7 +521,6 @@ def process_webhook_automation(self, event_id: int):
                     pr_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
 
                 import json as _json
-                # Limpa os campos internos para o display limpo da decisão
                 decision_copy = {k: v for k, v in pre_router_result.items() if not k.startswith("_")}
                 
                 _add_step(
@@ -825,17 +539,14 @@ def process_webhook_automation(self, event_id: int):
                     }
                 )
                 
-                # A. Se for apenas saudação
                 if pre_router_result.get("eh_saudacao") and pre_router_result.get("resposta_direta"):
                     _add_step(db, event_id, "👋 Saudação Detectada", "O Pre-Router gerou uma resposta direta, ignorando o agente principal.")
                     return {"content": pre_router_result.get("resposta_direta"), "usage": pr_usage, "model": pr_model, "debug": {"is_greeting": True}}
                 
-                # B. Se precisar de esclarecimento
                 if pre_router_result.get("precisa_esclarecimento") and pre_router_result.get("resposta_esclarecimento"):
                     _add_step(db, event_id, "❓ Mensagem Ambígua", "O Pre-Router gerou uma pergunta de esclarecimento.")
                     return {"content": pre_router_result.get("resposta_esclarecimento"), "usage": pr_usage, "model": pr_model, "debug": {"needs_clarification": True}}
                     
-                # 3. Preparar o agente selecionado
                 target_agent_id = pre_router_result.get("id_agente_alvo")
                 final_agent_config = agent_config
                 final_db_agent = db_agent
@@ -850,11 +561,9 @@ def process_webhook_automation(self, event_id: int):
                         final_agent_config = _build_agent_config(target_db_agent)
                         _add_step(db, event_id, f"🔀 Roteamento Efetuado", f"Mensagem roteada do principal para o Secundário: {final_db_agent.name}")
                 
-                # 4. Substituir a mensagem pela mensagem extraída/limpa (se disponível)
                 extracted = pre_router_result.get("perguntas_extraidas")
                 extracted_date = pre_router_result.get("data_extraida")
                 
-                # Se o pre-router extraiu uma data, injetamos como contexto para o agente principal
                 if extracted_date:
                     mensagem = f"[DATA EXTRAÍDA PELO SISTEMA: {extracted_date}]\n{extracted or mensagem}"
                 elif extracted and str(extracted).strip():
@@ -882,24 +591,20 @@ def process_webhook_automation(self, event_id: int):
                     on_step=lambda step, detail: _add_step(db, event_id, step, detail)
                 )
                 
-                # --- AGREGAR CUSTOS DO PRE-ROUTER (NOVO) ---
                 if isinstance(result, dict) and "usage" in result and pre_router_result and "_usage" in pre_router_result:
                     pr_u = pre_router_result["_usage"]
                     m_u = result["usage"]
                     
                     if hasattr(m_u, "mini_prompt"):
-                        # Se for objeto UsageLog
                         m_u.mini_prompt += pr_u.get("prompt_tokens", 0)
                         m_u.mini_completion += pr_u.get("completion_tokens", 0)
                     elif isinstance(m_u, dict):
-                        # Se for dicionário
                         m_u["prompt_tokens"] = m_u.get("prompt_tokens", 0) + pr_u.get("prompt_tokens", 0)
                         m_u["completion_tokens"] = m_u.get("completion_tokens", 0) + pr_u.get("completion_tokens", 0)
                         m_u["total_tokens"] = m_u.get("total_tokens", 0) + pr_u.get("total_tokens", 0)
                 
                 return result
 
-        # --- EXECUÇÃO DA IA ---
         ai_metadata = {}
 
         try:
@@ -907,23 +612,16 @@ def process_webhook_automation(self, event_id: int):
         except Exception as ai_err:
             logger.error(f"❌ Erro crítico na execução da IA: {ai_err}")
             _add_step(db, event_id, "❌ Falha na IA", f"Ocorreu um erro ao processar a mensagem com o agente: {str(ai_err)}")
-            raise ai_err # Repassa para o bloco try/except externo
+            raise ai_err
 
-        # --- ATUALIZAÇÃO DO RAIO-X COM O PROMPT FINAL RESOLVIDO ---
-        # Se o process_message retornou o prompt resolvido no debug, usamos ele para total transparência
         actual_debug = result.get("debug", {}) if isinstance(result, dict) else {}
         resolved_prompt = actual_debug.get("resolved_prompt") or db_agent.system_prompt
-        # Extrair RAG se disponível
         rag_context = actual_debug.get("rag_context", "")
 
-        # Raio-X: Contexto Enviado (Atualizado com o que a IA Realmente recebeu)
-        
-        # Para clareza no Raio-X, adicionamos a mensagem ATUAL do usuário ao final do histórico exibido
         display_history = history.copy() if history else []
         if event.mensagem:
             display_history.append({"role": "user", "content": event.mensagem})
 
-        # Check if this execution was bypassed by Pre-Router
         is_bypassed = False
         if isinstance(result, dict) and result.get("debug"):
             is_bypassed = result.get("debug").get("is_greeting") or result.get("debug").get("needs_clarification")
@@ -949,11 +647,9 @@ def process_webhook_automation(self, event_id: int):
             
         _add_step(db, event_id, step_title, json.dumps(debug_payload, ensure_ascii=False, indent=2))
         
-        # Extrair metadados da resposta
         response_text = result.get("content", "") if isinstance(result, dict) else str(result)
         ai_usage = result.get("usage") if isinstance(result, dict) else None
         
-        # Converte UsageLog para dict para ser serializável em JSON
         if hasattr(ai_usage, "to_dict"):
             ai_usage = ai_usage.to_dict()
 
@@ -962,10 +658,8 @@ def process_webhook_automation(self, event_id: int):
             "usage": ai_usage,
         }
         if ai_metadata["usage"]:
-            # Recalcula custo se necessário passando o usage (já validado como dict ou UsageLog)
             ai_metadata["cost"] = _get_cost(ai_metadata["model"], ai_metadata["usage"])
 
-        # --- LOG DE FERRAMENTAS ACIONADAS ---
         tool_calls = result.get("debug", {}).get("tool_calls", []) if isinstance(result, dict) else []
         if tool_calls:
             tools_summary = []
@@ -986,15 +680,12 @@ def process_webhook_automation(self, event_id: int):
                   metadata=ai_metadata)
 
         event.agent_response = response_text
-        db.commit() # Garante que a resposta seja visível na UI imediatamente
+        db.commit()
 
-        # --- REGISTRO FINANCEIRO (INTERACTION LOG) ---
         try:
-            # Extrair tokens totais para o log financeiro
             p_tokens = 0
             c_tokens = 0
             if ai_usage:
-                # O usage aqui já é um dict ou UsageLog
                 if isinstance(ai_usage, dict):
                     p_tokens = ai_usage.get("prompt_tokens", 0) or (ai_usage.get("main_prompt", 0) + ai_usage.get("mini_prompt", 0))
                     c_tokens = ai_usage.get("completion_tokens", 0) or (ai_usage.get("main_completion", 0) + ai_usage.get("mini_completion", 0))
@@ -1002,7 +693,6 @@ def process_webhook_automation(self, event_id: int):
                     p_tokens = getattr(ai_usage, "prompt_tokens", 0)
                     c_tokens = getattr(ai_usage, "completion_tokens", 0)
 
-            # Salva o log oficial para o dashboard financeiro
             new_log = InteractionLog(
                 agent_id=config.agent_id,
                 session_id=session_id,
@@ -1011,7 +701,7 @@ def process_webhook_automation(self, event_id: int):
                 model_used=ai_metadata.get("model", db_agent.model),
                 input_tokens=p_tokens,
                 output_tokens=c_tokens,
-                cost_usd=ai_metadata.get("cost_usd", (ai_metadata.get("cost", 0) / 6.0)), # Aproximação se faltar USD
+                cost_usd=ai_metadata.get("cost_usd", (ai_metadata.get("cost", 0) / 6.0)),
                 cost_brl=ai_metadata.get("cost", 0),
                 timestamp=get_now_utc()
             )
@@ -1022,10 +712,8 @@ def process_webhook_automation(self, event_id: int):
             logger.error(f"Erro ao salvar InteractionLog no Webhook: {log_err}")
             _add_step(db, event_id, "⚠️ Erro no Financeiro", "Não foi possível registrar o custo desta interação.")
 
-        # --- ATUALIZAÇÃO PROATIVA DA TABELA DE LEADS (MENSAGEM COMPLETA) ---
         if response_text and config.leads_table and event.telefone:
             try:
-                from sqlalchemy import text
                 table = config.leads_table
                 db.execute(text(f"""
                     UPDATE {table} SET
@@ -1040,20 +728,14 @@ def process_webhook_automation(self, event_id: int):
                 logger.error(f"Erro ao atualizar leads table proativamente: {le}")
                 _add_step(db, event_id, "⚠️ Aviso: Falha ao salvar no Contato", str(le))
         
-        # --- DELAY DE ENTREGA DA RESPOSTA ---
         response_delay = getattr(config, 'response_delay_seconds', 0) or 0
         
-        # Enviar resposta ao Chatwoot se for uma mensagem válida
         if response_text and event.conversa_id and event.conta_id:
-            # Chamada com splitting=True e delay entre parágrafos
             _send_chatwoot_message(
                 db, event_id, event.conversa_id, event.conta_id, response_text, config,
                 split_paragraphs=True, delay=response_delay
             )
-            # Log final de entrega (o splitting logou as partes internamente)
         elif event.conversa_id and event.conta_id:
-            # Fallback: agent produced an empty result — send a default holding message
-            # so the customer is never left without any reply
             fallback_msg = getattr(config, 'fallback_empty_response', None)
             if not fallback_msg:
                 fallback_msg = (
@@ -1064,14 +746,12 @@ def process_webhook_automation(self, event_id: int):
                       f"O agente não gerou conteúdo. Mensagem padrão enviada ao cliente: {fallback_msg[:100]}")
             _send_chatwoot_message(db, event_id, event.conversa_id, event.conta_id, fallback_msg, config)
         else:
-            _add_step(db, event_id, "⚠️ Resposta Vazia", "O agente gerou uma resposta vazia e não há dados de conversa válidos para enviar fallback.")
-
+            _add_step(db, event_id, "⚠️ Resposta Vazia", "O agente gerou uma resposta vazia e não há dados de conversa válidos.")
 
         event.status = "completed"
         db.commit()
         _add_step(db, event_id, "🏁 Pipeline Finalizado", "Processamento concluído com sucesso.")
 
-        # --- LIMPEZA DE DEBOUNCE (REDIS) ---
         try:
             import redis as redis_lib
             _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
@@ -1105,22 +785,18 @@ def sync_memory_to_vector(self, event_id: int):
         if not event:
             return
 
-        # LOG DE ENTRADA: Para entender o disparador
         _add_step(db, event_id, "🔍 Entrada no Pipeline", f"Tarefa iniciada para o evento {event_id}. Status atual no DB: {event.status}")
 
-        # Idempotência: Se já terminou (sucesso ou erro), não reinicia.
         if event.status in ["success", "completed", "error"]:
             _add_step(db, event_id, "🚫 Sincronização Ignorada", f"O evento já está finalizado como '{event.status}'. Abortando execução para evitar loop.")
             logger.info(f"Task cancelada: Evento {event_id} já está em estado final '{event.status}'.")
             return
             
         if event.status == "processing":
-             # Se está em processamento, ignoramos a menos que queiramos forçar um reset (ex: travado)
              _add_step(db, event_id, "⚠️ Pipeline em andamento", "Já existe um worker processando este evento. Abortando colisão.")
              logger.info(f"Task cancelada: Evento {event_id} já está sendo processado.")
              return
 
-        # Limpa passos para novo monitoramento legítimo
         event.processing_steps = "[]"
         event.status = "processing"
         db.commit()
@@ -1130,7 +806,6 @@ def sync_memory_to_vector(self, event_id: int):
 
         _add_step(db, event_id, "🔍 Iniciando sincronização vetorial", "Analisando dados recebidos via webhook para persistência em memória.")
 
-        # 1. Extrair dados do payload
         raw = {}
         try:
             raw = json.loads(event.raw_payload or "{}")
@@ -1155,7 +830,6 @@ def sync_memory_to_vector(self, event_id: int):
         vars_str = ", ".join([f"{k}" for k in facts.keys()])
         _add_step(db, event_id, "🛠️ Variáveis identificadas", f"Campos: {vars_str}", metadata={"facts": facts})
 
-        # 2. Localizar KB do agente
         config = db.query(WebhookConfigModel).filter(WebhookConfigModel.id == event.webhook_config_id).first()
         if not config or not config.agent_id:
             _add_step(db, event_id, "❌ Erro: Agente não configurado", "O webhook não possui um agente vinculado para salvar a memória.")
@@ -1176,7 +850,6 @@ def sync_memory_to_vector(self, event_id: int):
             db.commit()
             return
 
-        # 3. Gerar Embeddings e Salvar
         _add_step(db, event_id, "💾 Gerando Embeddings de Memória", f"Iniciando conversão de {len(facts)} fatos em vetores pesquisáveis...")
         
         success_count = 0
@@ -1185,7 +858,6 @@ def sync_memory_to_vector(self, event_id: int):
             _add_step(db, event_id, f"🔄 Processando campo: {key}", "Solicitando embedding à OpenAI...")
             
             try:
-                # Melhorando a chamada async em ambiente sync
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 emb, usage = loop.run_until_complete(get_embedding(content))
@@ -1203,7 +875,7 @@ def sync_memory_to_vector(self, event_id: int):
                     db.add(new_item)
                     db.commit()
                     success_count += 1
-                    # Converte objeto Usage para dicionário serializável
+                    
                     usage_stats = {}
                     if usage:
                         if hasattr(usage, 'model_dump'): usage_stats = usage.model_dump()
@@ -1235,7 +907,3 @@ def sync_memory_to_vector(self, event_id: int):
             db.commit()
     finally:
         db.close()
-
-
-
-

@@ -425,12 +425,66 @@ async def process_transcription_endpoint(kb_id: int, request: TranscriptionProce
 @router.post("/knowledge-bases/generate-qa-from-transcription")
 async def generate_qa_from_transcription(
     request: GenerateQAFromTranscriptionRequest,
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_api_key)
 ):
     try:
         from smart_importer import generate_global_qa
-        qa_list, _ = await generate_global_qa(request.text, total_questions=request.total_questions)
-        return qa_list
+        from api.services.cost_service import calculate_ai_cost
+        from models import TranscriptionTaskModel, InteractionLog
+        from datetime import datetime, timezone
+        from sqlalchemy import select
+        from config_store import USD_TO_BRL
+
+        qa_list, usage = await generate_global_qa(
+            request.text, 
+            total_questions=request.total_questions,
+            model=request.model or "gpt-4o-mini"
+        )
+        
+        model_used = usage.get("model", request.model or "gpt-4o-mini") if usage else (request.model or "gpt-4o-mini")
+        cost_usd = 0.0
+
+        if usage:
+            input_tk = usage.get("input_tokens", 0)
+            output_tk = usage.get("output_tokens", 0)
+            cost_usd, cost_brl = calculate_ai_cost(model_used, input_tk, output_tk)
+
+            # 1. Se task_id for fornecido, atualiza a tarefa de transcrição
+            task_filename = "N/A"
+            if request.task_id:
+                task_res = await db.execute(
+                    select(TranscriptionTaskModel).where(TranscriptionTaskModel.id == request.task_id)
+                )
+                task = task_res.scalar_one_or_none()
+                if task:
+                    task.cost_usd = (task.cost_usd or 0.0) + cost_usd
+                    task_filename = task.filename or "N/A"
+                    logger.info(f"💰 Custo de extração de P&R de ${cost_usd:.6f} adicionado à tarefa {task.id}")
+
+            # 2. Registra o custo na tabela InteractionLog para contabilizar no financeiro
+            new_log = InteractionLog(
+                agent_id=None,  # NULL para marcar como "Sistema / IA Interna"
+                session_id=f"SYS_EXTRACTION_KB_{request.task_id or 'unknown'}",
+                user_message=f"Extração P&R (IA) - Arquivo: {task_filename}" if request.task_id else "Extração P&R (IA)",
+                agent_response=f"Geração de {len(qa_list)} perguntas e respostas concluída via {model_used}.",
+                model_used=model_used,
+                input_tokens=input_tk,
+                output_tokens=output_tk,
+                cost_usd=cost_usd,
+                cost_brl=cost_usd * USD_TO_BRL,
+                timestamp=datetime.now(timezone.utc)
+            )
+            db.add(new_log)
+            await db.commit()
+            logger.info(f"📊 Extração registrada no financeiro: R$ {new_log.cost_brl:.4f} ({new_log.model_used})")
+
+        return {
+            "items": qa_list, 
+            "model": model_used,
+            "cost_usd": cost_usd,
+            "cost_brl": cost_usd * USD_TO_BRL
+        }
     except Exception as e:
         logger.error(f"Erro em generate_qa_from_transcription: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

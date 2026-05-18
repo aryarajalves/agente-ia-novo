@@ -111,7 +111,7 @@ function KnowledgeBaseList() {
 
     return (
         <div className="dashboard-container">
-            <div className="dashboard-header">
+            <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                     <h1>{activeTab === 'inbox' ? 'Inbox de Dúvidas' : 'Centrais de Conhecimento'}</h1>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
@@ -120,9 +120,11 @@ function KnowledgeBaseList() {
                             : 'Gerencie bibliotecas de respostas e ensine seus agentes.'}
                     </p>
                 </div>
-                {/* Botão superior removido para centralizar foco no botão central da lista vazia */}
-
-            </div>
+                {activeTab !== 'inbox' && (
+                    <Link to="/knowledge-bases/new" className="create-agent-btn-shiny">
+                        <span>+</span> Nova Base
+                    </Link>
+                )}            </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                 {activeTab !== 'inbox' && (

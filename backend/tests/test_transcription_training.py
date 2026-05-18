@@ -25,9 +25,10 @@ async def test_generate_qa_from_transcription(client: AsyncClient):
         
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["pergunta"] == "Qual o foco da aula?"
-        assert data[0]["resposta"] == "O foco é inteligência artificial."
+        assert "items" in data
+        assert len(data["items"]) == 1
+        assert data["items"][0]["pergunta"] == "Qual o foco da aula?"
+        assert data["items"][0]["resposta"] == "O foco é inteligência artificial."
 
 @pytest.mark.asyncio
 async def test_add_batch_knowledge_items(client: AsyncClient, db_session):
@@ -114,3 +115,72 @@ async def test_add_batch_knowledge_items(client: AsyncClient, db_session):
         # Verificar se os embeddings foram salvos corretamente
         assert len(new_items[0].embedding) == 1536
         assert new_items[0].embedding[0] == pytest.approx(0.1)
+
+@pytest.mark.asyncio
+async def test_generate_qa_from_transcription_with_model_and_cost(client: AsyncClient, db_session):
+    """Test QA generation with model selection, task_id cost accumulation, and financial logging."""
+    from models import TranscriptionTaskModel, InteractionLog
+    from sqlalchemy import delete
+    
+    # 1. Limpar e criar uma tarefa de transcrição de teste
+    await db_session.execute(delete(TranscriptionTaskModel))
+    await db_session.execute(delete(InteractionLog))
+    await db_session.commit()
+    
+    task = TranscriptionTaskModel(
+        filename="video_aula_test.mp3",
+        status="SUCCESS",
+        result_text="A inteligência artificial mudará o mundo da automação.",
+        cost_usd=0.005  # Custo inicial da transcrição
+    )
+    db_session.add(task)
+    await db_session.commit()
+    await db_session.refresh(task)
+    
+    mock_qa = [
+        {"pergunta": "Qual o foco da aula?", "resposta": "O foco é inteligência artificial.", "categoria": "Treinamento"}
+    ]
+    mock_usage = {
+        "input_tokens": 1000,
+        "output_tokens": 500,
+        "model": "gemini-1.5-flash"
+    }
+    
+    with patch("smart_importer.generate_global_qa", new_callable=AsyncMock) as mock_generate_smart, \
+         patch("api.routers.knowledge.generate_global_qa", new_callable=AsyncMock) as mock_generate_api:
+        
+        mock_generate_smart.return_value = (mock_qa, mock_usage)
+        mock_generate_api.return_value = (mock_qa, mock_usage)
+        
+        response = await client.post(
+            "/knowledge-bases/generate-qa-from-transcription",
+            json={
+                "text": "A inteligência artificial mudará o mundo da automação.",
+                "total_questions": 1,
+                "model": "gemini-1.5-flash",
+                "task_id": task.id
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert len(data["items"]) == 1
+        assert data["model"] == "gemini-1.5-flash"
+        assert "cost_usd" in data
+        assert "cost_brl" in data
+        assert data["cost_usd"] > 0.0
+        assert data["cost_brl"] > 0.0
+        
+        # 2. Validar que a tarefa de transcrição acumulou o custo do LLM
+        await db_session.refresh(task)
+        assert task.cost_usd > 0.005  # O custo deve ter sido adicionado!
+        
+        # 3. Validar que um registro financeiro foi adicionado na tabela InteractionLog
+        res_log = await db_session.execute(select(InteractionLog))
+        logs = res_log.scalars().all()
+        assert len(logs) == 1
+        assert logs[0].agent_id is None  # Deve ser nulo para Sistema
+        assert logs[0].model_used == "gemini-1.5-flash"
+        assert logs[0].cost_usd > 0.0
+        assert "video_aula_test.mp3" in logs[0].user_message

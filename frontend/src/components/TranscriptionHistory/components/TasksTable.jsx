@@ -88,6 +88,7 @@ const TasksTable = () => {
                             <th>Arquivo</th>
                             <th>Status</th>
                             <th>Data</th>
+                            <th>Custo</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -122,6 +123,7 @@ const TasksTable = () => {
                                     )}
                                 </td>
                                 <td style={{ whiteSpace: 'nowrap', opacity: 0.6 }}>{formatDate(upload.created_at)}</td>
+                                <td style={{ whiteSpace: 'nowrap', opacity: 0.5 }}>-</td>
                                 <td>
                                     <div className="row-actions">
                                         {upload.status === 'error' && (
@@ -169,6 +171,9 @@ const TasksTable = () => {
                                 </td>
                                 <td>{getStatusBadge(task.status)}</td>
                                 <td style={{ whiteSpace: 'nowrap' }}>{formatDate(task.created_at)}</td>
+                                <td style={{ whiteSpace: 'nowrap', color: '#10b981', fontWeight: '500' }}>
+                                    {task.cost_usd ? `$${task.cost_usd.toFixed(4)}` : '$0.0000'}
+                                </td>
                                 <td>
                                     <div className="row-actions">
                                         {task.status === 'SUCCESS' && (

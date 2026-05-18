@@ -8,7 +8,9 @@ export const KBProvider = ({ children, initialKB, kbId, kbType, onAdd, onDelete,
     const [knowledgeBase, setKnowledgeBase] = useState(initialKB || []);
     const [kbLabels, setKbLabels] = useState({ question: 'Pergunta', answer: 'Resposta', metadata: 'Metadado' });
     const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
     const [kbFilterTerm, setKbFilterTerm] = useState('');
+    const [typeFilter, setTypeFilter] = useState('all');
     const [selectedItems, setSelectedItems] = useState(new Set());
     const [isExpanded, setIsExpanded] = useState(true);
 
@@ -55,7 +57,9 @@ export const KBProvider = ({ children, initialKB, kbId, kbType, onAdd, onDelete,
         knowledgeBase, setKnowledgeBase,
         kbLabels, setKbLabels,
         currentPage, setCurrentPage,
+        itemsPerPage, setItemsPerPage,
         kbFilterTerm, setKbFilterTerm,
+        typeFilter, setTypeFilter,
         selectedItems, setSelectedItems,
         isExpanded, setIsExpanded,
         isConfirmOpen, setIsConfirmOpen,

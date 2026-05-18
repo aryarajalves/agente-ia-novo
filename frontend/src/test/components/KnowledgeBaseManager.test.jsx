@@ -28,6 +28,8 @@ vi.mock('react-dom', async () => {
     };
 });
 
+import { MemoryRouter } from 'react-router-dom';
+
 describe('KnowledgeBaseManager - Bloqueio de Scroll', () => {
     beforeEach(() => {
         document.body.style.overflow = '';
@@ -39,7 +41,11 @@ describe('KnowledgeBaseManager - Bloqueio de Scroll', () => {
     });
 
     it('deve aplicar overflow: hidden ao body quando a tela de geração estiver presente', () => {
-        render(<KnowledgeBaseManager knowledgeBase={[]} />);
+        render(
+            <MemoryRouter>
+                <KnowledgeBaseManager knowledgeBase={[]} />
+            </MemoryRouter>
+        );
         expect(document.body.style.overflow).toBe('');
     });
 
@@ -51,7 +57,11 @@ describe('KnowledgeBaseManager - Bloqueio de Scroll', () => {
 
         it('deve mostrar a barra de ações em massa quando itens são selecionados', () => {
             // Render com alguns itens
-            render(<KnowledgeBaseManager knowledgeBase={mockKb} />);
+            render(
+                <MemoryRouter>
+                    <KnowledgeBaseManager knowledgeBase={mockKb} />
+                </MemoryRouter>
+            );
             
             // Simular seleção (através do click no checkbox - precisamos encontrar o seletor)
             // Como usamos Set interno, vamos forçar uma renderização com seleção se possível, 

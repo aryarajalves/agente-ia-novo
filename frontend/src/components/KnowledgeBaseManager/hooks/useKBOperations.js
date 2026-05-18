@@ -58,8 +58,7 @@ export const useKBOperations = () => {
             if (response.ok) {
                 setSelectedItems(new Set());
                 setIsConfirmOpen(false);
-                // The parent component should probably refetch or update state
-                // Usually we'd emit an event or call a refresh function
+                setKnowledgeBase(prev => prev.filter(i => !idsToDelete.includes(i.id)));
             } else {
                 const err = await response.json();
                 alert(`Erro ao excluir: ${err.detail || 'Falha desconhecida'}`);

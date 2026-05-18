@@ -1,0 +1,263 @@
+import React, { useEffect, useState } from 'react';
+import { formatDate, showToast } from '../../utils/helpers';
+import { api } from '../../../../api/client';
+import { API_URL } from '../../../../config';
+import AutomationPipelineModal from '../AutomationPipelineModal';
+
+// Import subcomponents
+import LeadHistoryTableRow from './components/LeadHistoryTableRow';
+import ConfirmDeleteModal from './components/ConfirmDeleteModal';
+import MaximizedTextModal from './components/MaximizedTextModal';
+
+const LeadHistoryModal = ({
+    lead,
+    webhook,
+    onClose
+}) => {
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [total, setTotal] = useState(0);
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(20);
+    const [selectedPipelineEvent, setSelectedPipelineEvent] = useState(null);
+    const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, eventId: null });
+    const [maximizedText, setMaximizedText] = useState(null);
+
+    // Bloquear scroll do body ao montar modal
+    useEffect(() => {
+        const originalStyle = window.getComputedStyle(document.body).overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = originalStyle; };
+    }, []);
+
+    const fetchLeadHistory = async () => {
+        if (!webhook || !webhook.id) return;
+        setLoading(true);
+        try {
+            const cleanPhone = (lead.telefone || '').replace('+', '');
+            const res = await api.get(`/webhooks/${webhook.id}/events?search=${cleanPhone}&page=${page}&limit=${limit}&event_type=all`);
+            const data = await res.json();
+            setEvents(data.items || data.events || []);
+            setTotal(data.total || 0);
+        } catch (e) {
+            console.error('Erro ao buscar histórico do lead:', e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchLeadHistory();
+    }, [page, limit, webhook, lead.telefone]);
+
+    const handleDeleteEvent = (eventId) => {
+        setConfirmDelete({ isOpen: true, eventId });
+    };
+
+    const confirmDeleteEvent = async () => {
+        try {
+            const res = await api.post(`/webhooks/${webhook.id}/events/bulk-delete`, { event_ids: [confirmDelete.eventId] });
+            if (res.ok) {
+                showToast('Mensagem excluída com sucesso!', 'success');
+                fetchLeadHistory();
+                setConfirmDelete({ isOpen: false, eventId: null });
+            } else {
+                showToast('Erro ao excluir mensagem.', 'error');
+            }
+        } catch (e) {
+            console.error('Erro ao excluir evento:', e);
+            showToast('Erro ao excluir mensagem.', 'error');
+        }
+    };
+
+    // Conexão WebSocket para atualização em tempo real
+    useEffect(() => {
+        if (!webhook || !webhook.id) return;
+        
+        const wsUrl = API_URL.replace('http', 'ws') + '/ws/events';
+        let ws;
+        
+        try {
+            ws = new WebSocket(wsUrl);
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_event' && data.webhook_id === webhook.id) {
+                        const cleanPhone = (lead.telefone || '').replace('+', '');
+                        const eventPhone = (data.event.telefone || '').replace('+', '');
+                        
+                        if (eventPhone === cleanPhone) {
+                            setEvents(prev => {
+                                if (prev.some(e => e.id === data.event.id)) return prev;
+                                return [data.event, ...prev];
+                            });
+                            setTotal(prev => prev + 1);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Erro ao processar mensagem WS:', e);
+                }
+            };
+            ws.onerror = (err) => console.error('Erro WS:', err);
+        } catch (e) {
+            console.error('Falha ao conectar WS:', e);
+        }
+
+        return () => {
+            if (ws) ws.close();
+        };
+    }, [webhook.id, lead.telefone]);
+
+    if (!webhook) return null;
+
+    const getMessageTypeLabel = (type) => {
+        switch (type) {
+            case 'image': return '🖼️ Imagem';
+            case 'audio': return '🎙️ Áudio';
+            case 'video': return '🎥 Vídeo';
+            case 'document': return '📄 Doc';
+            default: return '📝 Texto';
+        }
+    };
+
+    return (
+        <div className="premium-modal-overlay" style={{ zIndex: 1050 }}>
+            <style dangerouslySetInnerHTML={{ __html: `
+                @keyframes spin-reload {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                .loading-spin {
+                    animation: spin-reload 0.8s linear infinite;
+                    display: inline-block;
+                }
+            ` }} />
+            <div
+                onClick={e => e.stopPropagation()}
+                className="premium-modal-content"
+                style={{ maxWidth: '1050px', height: '90vh', maxHeight: '900px', display: 'flex', flexDirection: 'column' }}
+            >
+                {/* Cabeçalho Premium */}
+                <div className="modal-header-premium" style={{ padding: '1rem 2rem' }}>
+                    <div className="header-info" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{
+                            width: '36px', height: '36px', borderRadius: '10px',
+                            background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem'
+                        }}>📊</div>
+                        <div>
+                            <h2 style={{ margin: 0, fontWeight: 900, color: '#f8fafc', fontSize: '1.1rem' }}>Histórico</h2>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                                <span style={{ color: '#94a3b8' }}>{lead.contato_nome || lead.telefone}</span> · {total} disparos
+                            </p>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button 
+                            onClick={fetchLeadHistory} 
+                            className={`modal-action-btn-reload ${loading ? 'loading-spin' : ''}`}
+                            title="Atualizar Histórico"
+                            disabled={loading}
+                            style={{ 
+                                width: '32px', height: '32px', borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.9rem', cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.3s ease'
+                            }}
+                            onMouseOver={e => {
+                                if (!loading) {
+                                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)';
+                                    e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+                                    e.currentTarget.style.color = '#818cf8';
+                                }
+                            }}
+                            onMouseOut={e => {
+                                if (!loading) {
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                                    e.currentTarget.style.color = '#94a3b8';
+                                }
+                            }}
+                        >🔄</button>
+                        <button onClick={onClose} className="modal-close-btn" style={{ width: '32px', height: '32px' }}>✕</button>
+                    </div>
+                </div>
+
+                {/* Tabela de Disparos */}
+                <div style={{ flex: 1, overflowY: 'auto', background: 'rgba(15, 23, 42, 0.2)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(15, 23, 42, 0.4)' }}>
+                                <th style={{ padding: '1rem', fontSize: '0.65rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>ID INTERNO</th>
+                                <th style={{ padding: '1rem', fontSize: '0.65rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>MENSAGEM USUÁRIO</th>
+                                <th style={{ padding: '1rem', fontSize: '0.65rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', textAlign: 'center' }}>ORIGEM / TIPO</th>
+                                <th style={{ padding: '1rem', fontSize: '0.65rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>RESPOSTA IA</th>
+                                <th style={{ padding: '1rem', fontSize: '0.65rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>DATA/HORA</th>
+                                <th style={{ padding: '1rem', fontSize: '0.65rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', textAlign: 'center' }}>AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '5rem', textAlign: 'center', color: '#64748b' }}>Buscando disparos...</td>
+                                </tr>
+                            ) : events.length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '5rem', textAlign: 'center', color: '#64748b' }}>Nenhum disparo encontrado.</td>
+                                </tr>
+                            ) : events.map(event => (
+                                <LeadHistoryTableRow
+                                    key={event.id}
+                                    event={event}
+                                    getMessageTypeLabel={getMessageTypeLabel}
+                                    setMaximizedText={setMaximizedText}
+                                    setSelectedPipelineEvent={setSelectedPipelineEvent}
+                                    handleDeleteEvent={handleDeleteEvent}
+                                />
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Rodapé - Paginação */}
+                <div style={{ padding: '1.25rem 2.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(15, 23, 42, 0.6)' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                        Exibir: <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setPage(1); }} style={{ background: '#1e293b', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: '6px' }}><option value="10">10</option><option value="20">20</option><option value="50">50</option></select>
+                        <span style={{ marginLeft: '1rem' }}>Mostrando {events.length} de {total} eventos</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ fontSize: '0.85rem', color: '#64748b', marginRight: '0.5rem' }}>
+                                Página <strong>{page}</strong> de <strong>{Math.max(1, Math.ceil(total / limit))}</strong>
+                            </div>
+                            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-page" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', padding: '0.5rem 1rem', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>Anterior</button>
+                            <button disabled={page >= Math.ceil(total / limit)} onClick={() => setPage(p => p + 1)} className="btn-page" style={{ background: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', padding: '0.5rem 1rem', cursor: page >= Math.ceil(total / limit) ? 'not-allowed' : 'pointer' }}>Próxima</button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Submodais Dinâmicos */}
+                {selectedPipelineEvent && (
+                    <AutomationPipelineModal
+                        event={selectedPipelineEvent}
+                        onClose={() => setSelectedPipelineEvent(null)}
+                    />
+                )}
+
+                <ConfirmDeleteModal
+                    isOpen={confirmDelete.isOpen}
+                    eventId={confirmDelete.eventId}
+                    onCancel={() => setConfirmDelete({ isOpen: false, eventId: null })}
+                    onConfirm={confirmDeleteEvent}
+                />
+
+                <MaximizedTextModal
+                    text={maximizedText}
+                    onClose={() => setMaximizedText(null)}
+                />
+            </div>
+        </div>
+    );
+};
+
+export default LeadHistoryModal;

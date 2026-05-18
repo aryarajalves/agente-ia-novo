@@ -52,6 +52,8 @@ class KnowledgeBase(BaseModel):
 class GenerateQAFromTranscriptionRequest(BaseModel):
     text: str
     total_questions: Optional[int] = 5
+    model: Optional[str] = "gpt-4o-mini"
+    task_id: Optional[int] = None
 
 class GenerateChunksFromTranscriptionRequest(BaseModel):
     text: str

@@ -1,4 +1,46 @@
 /* Knowledge Base Editor Premium Styles */
+
+.create-agent-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--accent-gradient);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-family: var(--font-main);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 24px -4px rgba(99, 102, 241, 0.45);
+  position: relative;
+  overflow: hidden;
+}
+
+.create-agent-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent 60%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.create-agent-btn:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 14px 32px -4px rgba(99, 102, 241, 0.6);
+  filter: brightness(1.08);
+}
+
+.create-agent-btn:active {
+  transform: translateY(0) scale(0.99);
+  box-shadow: 0 4px 12px -2px rgba(99, 102, 241, 0.4);
+}
+
+
 .editor-layout {
   display: grid;
   grid-template-columns: 380px 1fr;

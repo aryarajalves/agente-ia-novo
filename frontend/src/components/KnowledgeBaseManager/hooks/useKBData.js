@@ -2,8 +2,7 @@ import { useMemo } from 'react';
 import { useKB } from '../KBContext';
 
 export const useKBData = () => {
-    const { knowledgeBase, kbFilterTerm, currentPage } = useKB();
-    const ITEMS_PER_PAGE = 100;
+    const { knowledgeBase, kbFilterTerm, typeFilter, currentPage, itemsPerPage } = useKB();
 
     const filteredItems = useMemo(() => {
         const safeKb = Array.isArray(knowledgeBase) ? knowledgeBase : [];
@@ -11,6 +10,10 @@ export const useKBData = () => {
             .map((item, index) => (item ? { ...item, originalIndex: index } : null))
             .filter(item => !!item)
             .filter(item => {
+                // Filtro por tipo (QA vs Chunks)
+                if (typeFilter === 'chunks' && item.category !== 'Transcrição') return false;
+                if (typeFilter === 'qa' && item.category === 'Transcrição') return false;
+
                 if (!kbFilterTerm.trim()) return true;
                 const t = kbFilterTerm.toLowerCase();
                 return (
@@ -22,10 +25,10 @@ export const useKBData = () => {
             });
     }, [knowledgeBase, kbFilterTerm]);
 
-    const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
     
     const paginatedItems = useMemo(() => {
-        return filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+        return filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     }, [filteredItems, currentPage]);
 
     return {
