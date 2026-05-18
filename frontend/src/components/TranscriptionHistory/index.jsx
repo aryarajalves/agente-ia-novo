@@ -5,7 +5,10 @@ import FolderManager from './components/FolderManager';
 import TasksTable from './components/TasksTable';
 import ManualTranscriptionModal from './components/ManualTranscriptionModal';
 import BulkDeleteModal from './components/BulkDeleteModal';
+import SingleDeleteModal from './components/SingleDeleteModal';
 import RagBatchModal from './components/RagBatchModal';
+import ViewTranscriptionModal from './components/ViewTranscriptionModal';
+import TrainingModal from './components/TrainingModal';
 import './styles/TranscriptionHistory.css';
 
 const HistoryContent = () => {
@@ -18,7 +21,10 @@ const HistoryContent = () => {
             {/* Modals */}
             <ManualTranscriptionModal />
             <BulkDeleteModal />
+            <SingleDeleteModal />
             <RagBatchModal />
+            <ViewTranscriptionModal />
+            <TrainingModal />
         </div>
     );
 };

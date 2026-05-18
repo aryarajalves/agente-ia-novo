@@ -138,4 +138,28 @@ describe('LeadHistoryModal Component', () => {
         expect(toastEvent.detail.message).toBe('Mensagem excluída com sucesso!');
         expect(toastEvent.detail.type).toBe('success');
     });
+
+    it('deve chamar a API novamente para atualizar o histórico ao clicar no botão "Atualizar Histórico"', async () => {
+        render(
+            <LeadHistoryModal
+                lead={mockLead}
+                webhook={mockWebhook}
+                onClose={() => {}}
+            />
+        );
+
+        // 1. Aguarda carregar
+        expect(await screen.findByText('Olá, sou um lead comum')).toBeInTheDocument();
+        
+        // Limpar histórico de chamadas do get para contar com precisão
+        api.get.mockClear();
+
+        // 2. Clicar no botão de Atualizar
+        const reloadBtn = screen.getByTitle('Atualizar Histórico');
+        expect(reloadBtn).toBeInTheDocument();
+        fireEvent.click(reloadBtn);
+
+        // 3. Validar se a API foi chamada novamente
+        expect(api.get).toHaveBeenCalledTimes(1);
+    });
 });

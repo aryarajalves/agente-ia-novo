@@ -109,6 +109,31 @@ const AutomationPipelineModal = ({
 
     return (
         <div className="premium-modal-overlay" style={{ zIndex: 1100 }}>
+            <style dangerouslySetInnerHTML={{ __html: `
+                @keyframes pulse {
+                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+                    70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+                }
+                @keyframes pulseCard {
+                    0% { border-color: rgba(99, 102, 241, 0.2); background: rgba(99, 102, 241, 0.05); }
+                    50% { border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.09); }
+                    100% { border-color: rgba(99, 102, 241, 0.2); background: rgba(99, 102, 241, 0.05); }
+                }
+                .pipeline-spinner {
+                    width: 24px;
+                    height: 24px;
+                    border: 3px solid rgba(99, 102, 241, 0.1);
+                    border-top-color: #6366f1;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    flex-shrink: 0;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            ` }} />
             <div
                 onClick={e => e.stopPropagation()}
                 className="premium-modal-content"
@@ -262,6 +287,34 @@ const AutomationPipelineModal = ({
                                 </div>
                             );
                         })}
+
+                        {/* Indicador de Automação em Andamento (Premium) */}
+                        {['processing', 'received', 'pending'].includes(event.status) && (
+                            <div style={{ position: 'relative' }}>
+                                {/* Ponto da Timeline Animado */}
+                                <div style={{ 
+                                    position: 'absolute', left: '-36px', top: '10px', width: '12px', height: '12px', 
+                                    borderRadius: '50%', background: '#6366f1', border: '4px solid #0f172a',
+                                    boxShadow: '0 0 12px #6366f1', zIndex: 1,
+                                    animation: 'pulse 1.5s infinite'
+                                }} />
+                                
+                                <div style={{ 
+                                    background: 'rgba(99, 102, 241, 0.05)', border: '1px dashed rgba(99, 102, 241, 0.2)', 
+                                    borderRadius: '20px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem',
+                                    animation: 'pulseCard 2s infinite'
+                                }}>
+                                    {/* Spinner Animado em CSS */}
+                                    <div className="pipeline-spinner" />
+                                    <div>
+                                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#a5b4fc' }}>⚙️ Processando Automação...</h3>
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6366f1', fontWeight: 600 }}>
+                                            Executando fluxos subsequentes. Aguarde a conclusão da automação.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 

@@ -445,8 +445,8 @@ def process_webhook_automation(self, event_id: int):
                         
                         # --- SUBSTITUIÇÃO DE ETIQUETAS NO CHATWOOT NO RESET ---
                         try:
-                            cw_url = (config.chatwoot_url or "").rstrip("/")
-                            cw_token = config.chatwoot_api_token
+                            cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
+                            cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
                             if cw_url and cw_token:
                                 labels_api_url = f"{cw_url}/api/v1/accounts/{target_aid}/conversations/{target_cid}/labels"
                                 headers = {"api_access_token": cw_token, "Content-Type": "application/json"}
@@ -469,66 +469,103 @@ def process_webhook_automation(self, event_id: int):
                         except Exception as e_lbl:
                             logger.warning(f"Erro no processamento de substituição de etiquetas: {e_lbl}")
 
-                    # 2. Deletar tudo do banco de dados (Cascata completa)
+                    # 2. Deletar tudo do banco de dados (Cascata inteligente síncrona cross-platform)
                     if config.leads_table:
                         from sqlalchemy import text
-                        # A. Buscar o ID interno do lead para garantir limpeza total
-                        lid_res = db.execute(
-                            text(f"SELECT id FROM {config.leads_table} WHERE telefone = :tel LIMIT 1"),
-                            {"tel": target_tel}
-                        ).fetchone()
-                        lead_id = lid_res[0] if lid_res else None
+                        # A. Coletar IDs de leads e telefones de todas as tabelas cadastradas no sistema usando sufixo de 8 dígitos
+                        suffix_8 = target_tel[-8:] if len(target_tel) >= 8 else "---"
                         
-                        # Usaremos sub-transações para cada bloco de deleção ser independente
-                        def _safe_delete(sql, params):
-                            try:
-                                db.execute(text(sql), params)
-                                db.commit() # Commit parcial para garantir a deleção
-                            except Exception as ex:
-                                db.rollback()
-                                logger.warning(f"Erro ao deletar em cascata ({sql[:30]}...): {ex}")
-
-                        # B. Histórico de eventos (webhook_events) - Remoção cross-platform de todas as plataformas
-                        _safe_delete("DELETE FROM webhook_events WHERE telefone = :tel", 
-                                     {"tel": target_tel})
-                        
-                        # C. Memórias extraídas (user_memory)
-                        _safe_delete("DELETE FROM user_memory WHERE session_id = :tel OR session_id = :lid", 
-                                     {"tel": target_tel, "lid": str(lead_id) if lead_id else "---"})
-                        
-                        # D. Sumários de sessão
-                        _safe_delete("DELETE FROM session_summaries WHERE session_id = :tel OR session_id = :lid", 
-                                     {"tel": target_tel, "lid": str(lead_id) if lead_id else "---"})
-
-                        # E. Logs de interação
-                        _safe_delete("DELETE FROM interaction_logs WHERE session_id = :tel OR session_id = :lid", 
-                                     {"tel": target_tel, "lid": str(lead_id) if lead_id else "---"})
-
-                        # F. Memórias vetoriais (knowledge_items)
-                        _safe_delete("DELETE FROM knowledge_items WHERE metadata_val = :tel OR metadata_val = :tel_pref", 
-                                     {"tel": target_tel, "tel_pref": f"phone:{target_tel}"})
-
-                        # G. [NOVO] Logs de Disparo e Follow-up (Scheduled Triggers e Message Status)
+                        all_lead_ids = []
+                        all_tables = [config.leads_table]
                         try:
-                            # 1. Obter IDs dos triggers para limpar status vinculados
-                            trig_ids_res = db.execute(
-                                text("SELECT id FROM scheduled_triggers WHERE contact_phone = :tel"),
-                                {"tel": target_tel}
-                            ).fetchall()
-                            trig_ids = [r[0] for r in trig_ids_res]
+                            res_tables = db.execute(text("SELECT DISTINCT leads_table FROM webhook_configs WHERE leads_table IS NOT NULL AND leads_table != ''"))
+                            all_tables = list(set([r[0] for r in res_tables.fetchall() if r[0]] + [config.leads_table]))
+                        except Exception as e_tables:
+                            logger.warning(f"Erro ao obter leads_tables: {e_tables}")
+
+                        # B. Deletar leads de todas as tabelas e coletar seus IDs
+                        for t in all_tables:
+                            try:
+                                res_ids = db.execute(
+                                    text(f"SELECT id FROM {t} WHERE telefone = :tel OR RIGHT(telefone, 8) = :suffix"),
+                                    {"tel": target_tel, "suffix": suffix_8}
+                                )
+                                found_ids = [str(r[0]) for r in res_ids.fetchall() if r[0]]
+                                all_lead_ids.extend(found_ids)
+                                
+                                db.execute(
+                                    text(f"DELETE FROM {t} WHERE telefone = :tel OR RIGHT(telefone, 8) = :suffix"),
+                                    {"tel": target_tel, "suffix": suffix_8}
+                                )
+                                db.commit()
+                            except Exception as e_del_tbl:
+                                db.rollback()
+                                logger.warning(f"Erro ao processar limpeza da tabela {t}: {e_del_tbl}")
+
+                        # C. Histórico de eventos (webhook_events) - Remoção cross-platform com sufixo de 8 dígitos
+                        try:
+                            db.execute(
+                                text("DELETE FROM webhook_events WHERE telefone = :tel OR RIGHT(telefone, 8) = :suffix"),
+                                {"tel": target_tel, "suffix": suffix_8}
+                            )
+                            db.commit()
+                        except Exception as e_evt:
+                            db.rollback()
+                            logger.warning(f"Erro ao deletar eventos: {e_evt}")
+
+                        # D. Limpar memórias vetoriais (knowledge_items)
+                        try:
+                            db.execute(
+                                text("DELETE FROM knowledge_items WHERE metadata_val = :tel OR metadata_val = :tel_pref OR metadata_val = :tel_suff OR metadata_val = :tel_pref_suff"),
+                                {
+                                    "tel": target_tel,
+                                    "tel_pref": f"phone:{target_tel}",
+                                    "tel_suff": suffix_8,
+                                    "tel_pref_suff": f"phone:{suffix_8}"
+                                }
+                            )
+                            db.commit()
+                        except Exception as e_ki:
+                            db.rollback()
+                            logger.warning(f"Erro ao deletar knowledge_items: {e_ki}")
+
+                        # E. Triggers agendados e status de mensagens
+                        try:
+                            trig_res = db.execute(
+                                text("SELECT id FROM scheduled_triggers WHERE contact_phone = :tel OR RIGHT(contact_phone, 8) = :suffix"),
+                                {"tel": target_tel, "suffix": suffix_8}
+                            )
+                            trig_ids = [r[0] for r in trig_res.fetchall()]
                             
                             if trig_ids:
-                                _safe_delete("DELETE FROM message_status WHERE trigger_id = ANY(:ids)", {"ids": trig_ids})
-                                
-                            _safe_delete("DELETE FROM scheduled_triggers WHERE contact_phone = :tel", {"tel": target_tel})
+                                db.execute(text("DELETE FROM message_status WHERE trigger_id = ANY(:ids)"), {"ids": trig_ids})
+                                db.execute(text("DELETE FROM scheduled_triggers WHERE id = ANY(:ids)"), {"ids": trig_ids})
+                            else:
+                                db.execute(
+                                    text("DELETE FROM scheduled_triggers WHERE contact_phone = :tel OR RIGHT(contact_phone, 8) = :suffix"),
+                                    {"tel": target_tel, "suffix": suffix_8}
+                                )
+                            db.commit()
                         except Exception as e_trig:
+                            db.rollback()
                             logger.warning(f"Erro ao limpar triggers no reset: {e_trig}")
 
-                        # H. O registro do Lead propriamente dito (Limpeza do Pipeline de Follow-Up)
-                        _safe_delete(f"DELETE FROM {config.leads_table} WHERE telefone = :tel", 
-                                     {"tel": target_tel})
-                        
-                        logger.info(f"🗑️ Deleção em cascata concluída para {target_tel}")
+                        # F. Memórias, sumários e logs de interação (usando telefones, telefones com prefixo 'tel_' e IDs coletados)
+                        try:
+                            tels_with_prefix_tel = [f"tel_{target_tel}", f"tel_{suffix_8}"]
+                            all_keys = [target_tel, suffix_8] + tels_with_prefix_tel + all_lead_ids
+                            all_keys = list(dict.fromkeys([k for k in all_keys if k])) # remover duplicados e nulos
+                            
+                            if all_keys:
+                                db.execute(text("DELETE FROM user_memory WHERE session_id = ANY(:keys)"), {"keys": all_keys})
+                                db.execute(text("DELETE FROM session_summaries WHERE session_id = ANY(:keys)"), {"keys": all_keys})
+                                db.execute(text("DELETE FROM interaction_logs WHERE session_id = ANY(:keys)"), {"keys": all_keys})
+                                db.commit()
+                        except Exception as e_mem:
+                            db.rollback()
+                            logger.warning(f"Erro ao limpar memórias, sumários e logs: {e_mem}")
+
+                        logger.info(f"🗑️ Deleção cross-platform inteligente síncrona concluída para {target_tel}")
                     
                     # 3. Limpar cache de debounce no Redis (IMPORTANTE: evita que a próxima mensagem agrupe com esta)
                     try:
@@ -536,6 +573,8 @@ def process_webhook_automation(self, event_id: int):
                         _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
                         _redis_local.delete(f"webhook:debounce:id:{config.id}:{target_tel}")
                         _redis_local.delete(f"webhook:debounce:text:{config.id}:{target_tel}")
+                        # Setar lock temporário de 10 segundos para evitar recriação de lead por webhook de eco (is_out)
+                        _redis_local.setex(f"webhook:resetting:{config.id}:{target_tel}", 10, "1")
                     except Exception as redis_err:
                         logger.error(f"Erro ao limpar redis no reset: {redis_err}")
 

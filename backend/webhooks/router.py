@@ -357,13 +357,6 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
             logger.info(f"Mensagem duplicada ignorada: {msg_id}")
             return {"ok": True, "status": "duplicate"}
 
-    # Filtro por etiqueta (Ignore by Label)
-    if config.ignore_by_label and not is_out:
-        labels_list = labels_raw if isinstance(labels_raw, list) else []
-        if config.ignore_by_label in labels_list:
-            logger.info(f"🚫 Contato ignorado por etiqueta: {config.ignore_by_label}")
-            return {"ok": True, "status": "ignored", "reason": f"contact has block label: {config.ignore_by_label}"}
-
     # Filtro por contatos permitidos (Allowed Contacts)
     if config.allowed_contacts and not is_out:
         try:
@@ -415,6 +408,12 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
     # Se a mensagem for de saída (enviada pelo bot ou pelo agente), não criamos um evento de automação.
     # Mas ainda registramos na tabela de leads para manter o histórico se for um agente humano.
     if is_out:
+        # Checar se este telefone acabou de passar por um reset para não reinserir o lead
+        resetting_key = f"webhook:resetting:{config.id}:{phone}"
+        if _redis.get(resetting_key):
+            logger.info(f"⏭️ Mensagem de saída de eco pós-reset ignorada para evitar recriação do lead {phone}")
+            return {"ok": True, "status": "outgoing_ignored"}
+
         try:
             await ensure_leads_table(config.leads_table)
             await upsert_lead(config.leads_table, {**extracted, "dono": "agente"}, config.id)
@@ -422,7 +421,87 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
             logger.error(f"Erro ao inserir lead de saída: {e}")
         return {"ok": True, "status": "outgoing_ignored"}
 
+    # 1. Verificar se é uma palavra-chave de deleção (resetar) antes de checar a tag de ignorar
+    is_delete_keyword = False
+    msg_limpa = extracted["mensagem"].lower().strip()
+    if msg_limpa and config.delete_keywords:
+        try:
+            keywords = []
+            if config.delete_keywords.strip().startswith("["):
+                keywords = json.loads(config.delete_keywords)
+            else:
+                keywords = [k.strip() for k in config.delete_keywords.split(",") if k.strip()]
+            
+            keywords_lower = [str(k).lower().strip() for k in keywords]
+            if msg_limpa in keywords_lower:
+                is_delete_keyword = True
+                logger.info(f"🗑️ Mensagem coincide com palavra-chave de deleção: '{msg_limpa}'")
+        except Exception as e:
+            logger.error(f"Erro ao parsear delete_keywords: {e}")
+
+    # 2. Filtro por etiqueta (Ignore by Label) - ignorado se for palavra-chave de deleção
+    if config.ignore_by_label and not is_delete_keyword:
+        labels_list = labels_raw if isinstance(labels_raw, list) else []
+        if config.ignore_by_label in labels_list:
+            logger.info(f"🚫 Contato possui etiqueta de bloqueio/ignorar: '{config.ignore_by_label}'. Gravando mensagem e log de pausado.")
+            now_br = get_now_br()
+            
+            steps = [{
+                "step": "🚫 Automação Pausada",
+                "detail": f"A automação para este contato está pausada porque ele possui a etiqueta '{config.ignore_by_label}', que indica suporte humano ativo ou pausa manual da IA.",
+                "timestamp": now_br.isoformat()
+            }]
+            
+            event = WebhookEventModel(
+                webhook_config_id=config.id,
+                event_type="message",
+                status="ignored",
+                message_type=content_type,
+                conta_id=extracted.get("conta_id"),
+                inbox_id=extracted.get("inbox_id"),
+                inbox_nome=extracted.get("inbox_nome"),
+                conversa_id=extracted.get("conversa_id"),
+                mensagem_id=extracted.get("mensagem_id"),
+                contato_id=extracted.get("contato_id"),
+                telefone=phone,
+                labels=extracted.get("labels"),
+                contato_nome=extracted.get("contato_nome"),
+                mensagem=extracted.get("mensagem"),
+                link=extracted.get("link"),
+                raw_payload=json.dumps(body, ensure_ascii=False),
+                dono="usuario",
+                agent_response=f"Automação pausada: Contato possui a etiqueta '{config.ignore_by_label}'",
+                processing_steps=json.dumps(steps, ensure_ascii=False)
+            )
+            db.add(event)
+            await db.commit()
+            await db.refresh(event)
+
+            await manager.broadcast({
+                "type": "new_event",
+                "webhook_id": config.id,
+                "event": {
+                    "id": event.id,
+                    "event_type": event.event_type,
+                    "status": event.status,
+                    "telefone": event.telefone,
+                    "contato_nome": event.contato_nome,
+                    "mensagem": event.mensagem,
+                    "agent_response": event.agent_response,
+                    "created_at": event.created_at.isoformat() if event.created_at else None
+                }
+            })
+
+            try:
+                await ensure_leads_table(config.leads_table)
+                await upsert_lead(config.leads_table, extracted, config.id)
+            except Exception as e:
+                logger.error(f"Erro ao atualizar lead ignorado: {e}")
+
+            return {"ok": True, "status": "ignored", "reason": f"contact has block label: {config.ignore_by_label}"}
+
     # --- LÓGICA DE AGRUPAMENTO (DEBOUNCE) ---
+    now_br = get_now_br()
     redis_id_key = f"webhook:debounce:id:{config.id}:{phone}"
     redis_text_key = f"webhook:debounce:text:{config.id}:{phone}"
     
@@ -473,7 +552,6 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
     
     accumulated_text += current_content
     
-    now_br = get_now_br()
     event = WebhookEventModel(
         webhook_config_id=config.id, 
         event_type="message", 
@@ -743,9 +821,9 @@ async def list_webhook_leads(
         params["pe"] = pode_enviar
     if janela_aberta is not None:
         if janela_aberta:
-            where_clauses.append("ultima_mensagem_em >= (NOW() - INTERVAL '24 hours')")
+            where_clauses.append("(ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= (NOW() - INTERVAL '24 hours'))")
         else:
-            where_clauses.append("ultima_mensagem_em < (NOW() - INTERVAL '24 hours')")
+            where_clauses.append("(ultima_mensagem_em IS NULL OR ultima_mensagem_em < (NOW() - INTERVAL '24 hours'))")
     if date_start:
         where_clauses.append("created_at >= :ds")
         params["ds"] = date_start
@@ -763,7 +841,7 @@ async def list_webhook_leads(
     query = text(f"""
         SELECT *, 
                pode_enviar_mensagem AS pode_enviar,
-               (ultima_mensagem_em >= (NOW() - INTERVAL '24 hours')) AS janela_24h_aberta,
+               (ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= (NOW() - INTERVAL '24 hours')) AS janela_24h_aberta,
                (SELECT COUNT(*) FROM webhook_events WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone) AND webhook_events.webhook_config_id = :wid) AS total_disparos
         FROM {config.leads_table} 
         WHERE {where_str} 

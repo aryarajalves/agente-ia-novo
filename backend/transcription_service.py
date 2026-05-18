@@ -8,36 +8,25 @@ logger = logging.getLogger(__name__)
 
 async def transcribe_video(file_path: str, config_params: dict = None) -> dict:
     """
-    Transcreve um arquivo de áudio ou vídeo usando o provedor disponível.
-    Ordem de preferência: OpenAI (Whisper) -> Gemini -> AssemblyAI
+    Transcreve um arquivo de áudio ou vídeo usando única e exclusivamente o provedor AssemblyAI.
     """
-    # 1. Tentar OpenAI (Whisper)
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
-        try:
-            return await transcribe_openai(file_path, openai_key)
-        except Exception as e:
-            logger.error(f"Erro na transcrição OpenAI: {e}")
-
-    # 2. Tentar Gemini (via OpenAI compatibility ou SDK se disponível)
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if gemini_key:
-        try:
-            # Para simplificar e usar a lib já instalada, usamos o endpoint compatível da Gemini
-            return await transcribe_gemini_openai_compat(file_path, gemini_key)
-        except Exception as e:
-            logger.error(f"Erro na transcrição Gemini: {e}")
-
-    # 3. Fallback para AssemblyAI
     assemblyai_key = os.getenv("ASSEMBLYAI_API_KEY")
-    if assemblyai_key and assemblyai_key != "YOUR_ASSEMBLY_API_KEY_HERE":
-        try:
-            return transcribe_assemblyai(file_path, assemblyai_key, config_params)
-        except Exception as e:
-            logger.error(f"Erro na transcrição AssemblyAI: {e}")
-            raise
+    if not assemblyai_key or assemblyai_key == "YOUR_ASSEMBLY_API_KEY_HERE":
+        raise ValueError("ASSEMBLYAI_API_KEY não configurado ou está com valor padrão no .env")
 
-    raise ValueError("Nenhum provedor de transcrição configurado ou disponível (OpenAI, Gemini ou AssemblyAI)")
+    try:
+        # Executa de forma assíncrona não bloqueante usando run_in_executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            transcribe_assemblyai,
+            file_path,
+            assemblyai_key,
+            config_params
+        )
+    except Exception as e:
+        logger.error(f"Erro na transcrição AssemblyAI: {e}")
+        raise
 
 async def transcribe_openai(file_path: str, api_key: str) -> dict:
     logger.info(f"Iniciando transcrição OpenAI (Whisper) para: {file_path}")

@@ -33,6 +33,17 @@ from database import get_db, Base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
 
+@pytest.fixture(scope="session")
+def event_loop():
+    """Cria um loop de eventos de sessão único para evitar erros de loop fechado."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    yield loop
+    # Não fechamos agressivamente para evitar warning se o loop ainda for referenciado internamente no teardown da sessão
+
 @pytest.fixture
 async def db_engine():
     # Cria o banco de dados test_ai_agent_db dinamicamente conectando no banco padrão 'postgres'

@@ -27,6 +27,9 @@ export const TranscriptionProvider = ({ children, onKnowledgeBaseUpdate }) => {
     const [isRagModalOpen, setIsRagModalOpen] = useState(false);
     const [taskForRag, setTaskForRag] = useState(null);
     const [isBatchRagModalOpen, setIsBatchRagModalOpen] = useState(false);
+    const [selectedTaskForView, setSelectedTaskForView] = useState(null);
+    const [isTrainingModalOpen, setIsTrainingModalOpen] = useState(false);
+    const [taskForTraining, setTaskForTraining] = useState(null);
 
     const tasksRef = useRef([]);
     const activeUploadsRef = useRef(uploadManager.getActiveUploads());
@@ -37,6 +40,19 @@ export const TranscriptionProvider = ({ children, onKnowledgeBaseUpdate }) => {
             activeUploadsRef.current = uploads;
         });
         return () => unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            const hasActiveUploads = activeUploadsRef.current.some(u => u.status === 'uploading');
+            if (hasActiveUploads) {
+                e.preventDefault();
+                e.returnValue = 'Você tem uploads de arquivos em andamento. Se sair ou atualizar a página agora, os envios serão cancelados. Deseja realmente sair?';
+                return e.returnValue;
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, []);
 
     useEffect(() => {
@@ -62,6 +78,9 @@ export const TranscriptionProvider = ({ children, onKnowledgeBaseUpdate }) => {
         isRagModalOpen, setIsRagModalOpen,
         taskForRag, setTaskForRag,
         isBatchRagModalOpen, setIsBatchRagModalOpen,
+        selectedTaskForView, setSelectedTaskForView,
+        isTrainingModalOpen, setIsTrainingModalOpen,
+        taskForTraining, setTaskForTraining,
         onKnowledgeBaseUpdate
     };
 

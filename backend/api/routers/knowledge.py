@@ -23,7 +23,8 @@ from api.schemas import (
     BulkDeleteTranscriptionRequest, TranscriptionRenameRequest, 
     TranscriptionFolderRequest, TranscriptionMoveRequest, 
     ManualTranscriptionRequest, TranscriptionContentUpdateRequest,
-    GenerateUploadUrlRequest, ConfirmUploadRequest
+    GenerateUploadUrlRequest, ConfirmUploadRequest,
+    GenerateQAFromTranscriptionRequest, GenerateChunksFromTranscriptionRequest, AddBatchKnowledgeItemsRequest
 )
 from api.deps import get_db, verify_api_key
 from rag_service import (
@@ -420,3 +421,73 @@ async def process_transcription_endpoint(kb_id: int, request: TranscriptionProce
         db.add(KnowledgeItemModel(knowledge_base_id=kb_id, question="Trecho", answer=c["text"], category="Transcrição"))
     await db.commit()
     return {"message": "Processado"}
+
+@router.post("/knowledge-bases/generate-qa-from-transcription")
+async def generate_qa_from_transcription(
+    request: GenerateQAFromTranscriptionRequest,
+    _: None = Depends(verify_api_key)
+):
+    try:
+        from smart_importer import generate_global_qa
+        qa_list, _ = await generate_global_qa(request.text, total_questions=request.total_questions)
+        return qa_list
+    except Exception as e:
+        logger.error(f"Erro em generate_qa_from_transcription: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/knowledge-bases/{kb_id}/items/add-batch")
+async def add_batch_knowledge_items(
+    kb_id: int,
+    request: AddBatchKnowledgeItemsRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key)
+):
+    try:
+        from rag_service import get_embedding
+        added_count = 0
+        for item in request.items:
+            # Gerar embedding para a pergunta
+            emb = None
+            try:
+                emb, _ = await get_embedding(item.question)
+            except Exception as emb_err:
+                logger.error(f"Erro ao gerar embedding para item: {emb_err}")
+            
+            db_item = KnowledgeItemModel(
+                knowledge_base_id=kb_id,
+                question=item.question,
+                answer=item.answer,
+                metadata_val=item.metadata_val,
+                category=item.category or "Treinamento",
+                embedding=emb
+            )
+            db.add(db_item)
+            added_count += 1
+            
+        await db.commit()
+        return {"message": f"Sucesso! {added_count} novos itens adicionados com sucesso."}
+    except Exception as e:
+        logger.error(f"Erro em add_batch_knowledge_items: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/knowledge-bases/generate-chunks-from-transcription")
+async def generate_chunks_from_transcription(
+    request: GenerateChunksFromTranscriptionRequest,
+    _: None = Depends(verify_api_key)
+):
+    try:
+        from smart_importer import chunk_text
+        chunks = chunk_text(request.text, chunk_size=request.chunk_size or 1200, overlap=request.overlap or 150)
+        
+        # Formatar a resposta no formato que a interface espera para os cards
+        formatted_chunks = []
+        for i, c in enumerate(chunks):
+            formatted_chunks.append({
+                "question": f"Trecho da Aula #{i + 1}",
+                "answer": c["text"],
+                "category": "Transcrição"
+            })
+        return formatted_chunks
+    except Exception as e:
+        logger.error(f"Erro em generate_chunks_from_transcription: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

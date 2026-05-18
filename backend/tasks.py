@@ -50,7 +50,7 @@ def process_transcription_task(self, task_record_id: int, s3_key: str, config_di
         # Nota: O transcribe_video no service precisa suportar URL ou arquivo.
         # Vamos passar a URL como se fosse o path.
         logger.info(f"TASK: Iniciando transcrição de {s3_key}")
-        result = transcribe_video(audio_url, config_dict)
+        result = asyncio.run(transcribe_video(audio_url, config_dict))
         
         text = result.get("text") or ""
         duration = result.get("duration", 0)
@@ -116,14 +116,15 @@ def check_window_expiry():
                 continue
 
             try:
+                cutoff = datetime.utcnow() - timedelta(hours=24)
                 expired = db.execute(_text(f"""
                     SELECT id, conta_id, conversa_id, telefone
                     FROM {leads_table}
-                    WHERE ultima_mensagem_em < NOW() - INTERVAL '24 hours'
+                    WHERE ultima_mensagem_em < :cutoff
                       AND (window_close_processed IS NULL OR window_close_processed = FALSE)
                       AND conversa_id IS NOT NULL
                       AND conta_id IS NOT NULL
-                """)).fetchall()
+                """), {"cutoff": cutoff}).fetchall()
 
                 if not expired:
                     continue
@@ -342,14 +343,15 @@ def check_followup_due():
 
                 try:
                     # Traz todos os leads que estão no step_index e DENTRO DA JANELA DE 24 HORAS
+                    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
                     due = db.execute(_text(f"""
                         SELECT id, conta_id, conversa_id, telefone, contato_nome, ultima_mensagem_em
                         FROM {leads_table}
                         WHERE followup_step = :step_index
-                          AND ultima_mensagem_em >= NOW() - INTERVAL '24 hours'
+                          AND ultima_mensagem_em >= :cutoff_24h
                           AND conversa_id IS NOT NULL
                           AND conta_id IS NOT NULL
-                    """), {"step_index": step_index}).fetchall()
+                    """), {"step_index": step_index, "cutoff_24h": cutoff_24h}).fetchall()
 
                     if not due:
                         continue

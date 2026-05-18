@@ -49,7 +49,7 @@ async def test_receive_webhook_text_message(client: AsyncClient, db_session: Asy
     assert event.mensagem == "Olá mundo!"
 
 @pytest.mark.asyncio
-@patch("webhook_router.transcribe_video")
+@patch("webhooks.router.transcribe_video")
 @patch("httpx.AsyncClient.get")
 async def test_receive_webhook_audio_transcription(mock_get, mock_transcribe, client: AsyncClient, db_session: AsyncSession):
     # Setup

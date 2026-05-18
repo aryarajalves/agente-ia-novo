@@ -169,6 +169,7 @@ async def execute_agent(
                 session_id=session_id or f"playground_{int(time.time())}",
                 user_name=ctx.get("user_name") or "Usuário Playground",
                 user_email=ctx.get("user_email"),
+                contact_phone=ctx.get("contact_phone") or ctx.get("phone"),
                 status="OPEN",
                 summary=summary,
                 reason=reason,

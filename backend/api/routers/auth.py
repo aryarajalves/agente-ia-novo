@@ -135,6 +135,9 @@ async def get_users(db: AsyncSession = Depends(get_db)):
 
 @router.post("/users", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
 async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    if user.role == "Super Admin":
+        raise HTTPException(status_code=400, detail="Não é permitido criar usuários com o cargo de Super Admin.")
+        
     user_data = user.model_dump()
     user_data["password"] = get_password_hash(user.password)
     db_user = UserModel(**user_data)
@@ -150,6 +153,9 @@ async def update_user(user_id: int, user: UserCreate, db: AsyncSession = Depends
     if not db_user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     
+    if user.role == "Super Admin" and db_user.role != "Super Admin":
+        raise HTTPException(status_code=400, detail="Não é permitido elevar outros usuários para o cargo de Super Admin.")
+        
     update_data = user.model_dump(exclude_unset=True)
     if "password" in update_data:
         update_data["password"] = get_password_hash(update_data["password"])
@@ -168,6 +174,55 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
     if not db_user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     
+    if db_user.role == "Super Admin":
+        raise HTTPException(status_code=400, detail="O Super Admin do sistema não pode ser removido.")
+        
     await db.delete(db_user)
     await db.commit()
     return {"success": True}
+
+@router.post("/system/reset-database", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def reset_database(db: AsyncSession = Depends(get_db)):
+    """
+    AÇÃO CRÍTICA: Limpa todos os dados do sistema.
+    """
+    from sqlalchemy import text
+    try:
+        tables = [
+            "interaction_logs", "session_summaries", "feedback_logs",
+            "prompt_drafts", "agent_tools", "agent_knowledge_bases",
+            "knowledge_items", "knowledge_bases", "google_tokens",
+            "user_memory", "global_context_variables", "agent_config",
+            "tools"
+        ]
+        
+        # Tenta TRUNCATE em bloco primeiro (mais rápido e reseta IDs)
+        try:
+            # PostgreSQL permite truncar várias tabelas de uma vez com CASCADE
+            tables_str = ", ".join(tables)
+            await db.execute(text(f"TRUNCATE TABLE {tables_str} RESTART IDENTITY CASCADE"))
+            
+            # Limpeza total de usuários (O acesso Super Admin continua via .env)
+            await db.execute(text("DELETE FROM users"))
+            
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"Truncate falhou (provavelmente lock), tentando via Delete: {e}")
+            
+            # Fallback: Deleta um por um se o truncate falhar
+            for table in tables:
+                try:
+                    await db.execute(text(f"DELETE FROM {table}"))
+                except Exception as del_err:
+                    logger.warning(f"Erro ao deletar {table}: {del_err}")
+            
+            # Limpeza total de usuários no fallback também
+            await db.execute(text("DELETE FROM users"))
+            await db.commit()
+            
+        return {"status": "success", "message": "All data wiped"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+

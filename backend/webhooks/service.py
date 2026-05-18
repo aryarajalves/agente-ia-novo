@@ -139,18 +139,36 @@ async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
                         followup_step = 0, updated_at = :now_utc
                     WHERE id = :id
                 """), {**data, "id": row[0], "now_utc": now_utc})
-        elif not is_agent:
-            logger.info(f"🆕 Inserindo NOVO lead na tabela {table_name}: {phone_raw}")
-            await conn.execute(text(f"""
-                INSERT INTO {table_name}
-                    (webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id,
-                     mensagem_id, contato_id, telefone, labels, contato_nome, mensagem, message_type, link,
-                     pode_enviar_mensagem, ultima_mensagem_em, updated_at, created_at)
-                VALUES
-                    (:webhook_config_id, :conta_id, :inbox_id, :inbox_nome, :conversa_id,
-                     :mensagem_id, :contato_id, :telefone, :labels, :contato_nome, :mensagem, :message_type, :link,
-                     TRUE, :now_utc, :now_utc, :now_utc)
-            """), {"webhook_config_id": webhook_config_id, "now_utc": now_utc, **data})
+        else:
+            logger.info(f"🆕 Inserindo NOVO lead na tabela {table_name}: {phone_raw} (is_agent={is_agent})")
+            if is_agent:
+                # Criando lead a partir de uma mensagem enviada pelo agente (disparo ativo)
+                await conn.execute(text(f"""
+                    INSERT INTO {table_name}
+                        (webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id,
+                         mensagem_id, contato_id, telefone, labels, contato_nome, ultima_resposta_agente,
+                         ultima_resposta_agente_em, message_type, link, pode_enviar_mensagem,
+                         ultima_mensagem_em, updated_at, created_at)
+                    VALUES
+                        (:webhook_config_id, :conta_id, :inbox_id, :inbox_nome, :conversa_id,
+                         :mensagem_id, :contato_id, :telefone, :labels, :contato_nome, :mensagem,
+                         :now_utc, :message_type, :link, TRUE,
+                         NULL, :now_utc, :now_utc)
+                """), {"webhook_config_id": webhook_config_id, "now_utc": now_utc, **data})
+            else:
+                # Criando lead a partir de uma mensagem enviada pelo cliente (recebimento)
+                await conn.execute(text(f"""
+                    INSERT INTO {table_name}
+                        (webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id,
+                         mensagem_id, contato_id, telefone, labels, contato_nome, mensagem,
+                         message_type, link, pode_enviar_mensagem,
+                         ultima_mensagem_em, updated_at, created_at)
+                    VALUES
+                        (:webhook_config_id, :conta_id, :inbox_id, :inbox_nome, :conversa_id,
+                         :mensagem_id, :contato_id, :telefone, :labels, :contato_nome, :mensagem,
+                         :message_type, :link, TRUE,
+                         :now_utc, :now_utc, :now_utc)
+                """), {"webhook_config_id": webhook_config_id, "now_utc": now_utc, **data})
             logger.info(f"✅ Lead {phone_raw} inserido com sucesso em {table_name}.")
 
 

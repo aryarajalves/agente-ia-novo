@@ -196,3 +196,59 @@ async def test_users_auth_missing():
         
         res3 = await ac.post("/system/reset-database")
         assert res3.status_code == 401 # Unauthorized
+
+@pytest.mark.asyncio
+async def test_protect_super_admin_endpoints(client: AsyncClient):
+    # 1. Login para obter o token de administrador
+    admin_email = os.getenv("ADMIN_EMAIL", "aryarajmarketing@gmail.com")
+    admin_password = os.getenv("ADMIN_PASSWORD", "123456")
+    login_res = await client.post("/login", json={"email": admin_email, "password": admin_password})
+    token = login_res.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # 2. Tentar criar um usuário com cargo "Super Admin" via POST /users -> deve retornar 400
+    super_admin_data = {
+        "name": "Super Admin Malicioso",
+        "email": "malicious_super@example.com",
+        "password": "password123",
+        "role": "Super Admin",
+        "status": "ATIVO"
+    }
+    create_res = await client.post("/users", json=super_admin_data, headers=headers)
+    assert create_res.status_code == 400
+    assert "Não é permitido criar usuários com o cargo de Super Admin" in create_res.json()["detail"]
+    
+    # 3. Criar um usuário comum
+    normal_user_data = {
+        "name": "Usuário Normal",
+        "email": "normal_test@example.com",
+        "password": "password123",
+        "role": "Usuário",
+        "status": "ATIVO"
+    }
+    normal_create_res = await client.post("/users", json=normal_user_data, headers=headers)
+    assert normal_create_res.status_code == 200
+    user_id = normal_create_res.json()["id"]
+    
+    # 4. Tentar atualizar o usuário comum elevando-o para "Super Admin" via PUT /users/{id} -> deve retornar 400
+    update_data = {
+        "name": "Usuário Elevado",
+        "email": "normal_test@example.com",
+        "password": "password123",
+        "role": "Super Admin",
+        "status": "ATIVO"
+    }
+    update_res = await client.put(f"/users/{user_id}", json=update_data, headers=headers)
+    assert update_res.status_code == 400
+    assert "Não é permitido elevar outros usuários para o cargo de Super Admin" in update_res.json()["detail"]
+    
+    # 5. Criar o registro do Super Admin no banco via PUT /users/me
+    me_res = await client.put("/users/me", json={"name": "Aryaraj Super Test"}, headers=headers)
+    assert me_res.status_code == 200
+    db_super_id = me_res.json()["id"]
+    
+    # 6. Tentar deletar esse Super Admin recém-criado via DELETE /users/{id} -> deve retornar 400
+    delete_res = await client.delete(f"/users/{db_super_id}", headers=headers)
+    assert delete_res.status_code == 400
+    assert "O Super Admin do sistema não pode ser removido" in delete_res.json()["detail"]
+

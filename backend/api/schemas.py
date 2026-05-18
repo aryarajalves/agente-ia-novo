@@ -49,6 +49,18 @@ class KnowledgeBase(BaseModel):
     updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
+class GenerateQAFromTranscriptionRequest(BaseModel):
+    text: str
+    total_questions: Optional[int] = 5
+
+class GenerateChunksFromTranscriptionRequest(BaseModel):
+    text: str
+    chunk_size: Optional[int] = 1200
+    overlap: Optional[int] = 150
+
+class AddBatchKnowledgeItemsRequest(BaseModel):
+    items: List[KnowledgeItem]
+
 # --- AGENT & CONFIG SCHEMAS ---
 
 class AgentConfig(BaseModel):

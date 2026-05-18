@@ -1,7 +1,7 @@
 # Regras Globais do Projeto
 
-- **Idioma de Resposta:** Sempre que o agente (IA) responder no chat, deve utilizar obrigatoriamente a linguagem **Português do Brasil**.
-- **Tom de Voz:** Profissional, prestativo e técnico, mantendo a clareza e precisão nas respostas.
+- **Idioma de Resposta e Operações:** Sempre que o agente (IA) interagir no chat, executar chamadas de ferramentas ou realizar suas ações internas (pensamentos e descrições de ferramentas como toolAction e toolSummary), deve utilizar obrigatoriamente a linguagem **Português do Brasil**. O usuário lê todo o fluxo do agente em tempo real na interface, por isso o inglês é proibido em qualquer etapa da execução.
+- **Tom de Voz:** Profissional, prestativo e técnico, mantendo a clareza e precisão em português.
 
 - **Refatoração Segura (ERS):** 
   Esta regra é MANDATÓRIA para todas as atividades de refatoração no frontend e backend deste projeto.

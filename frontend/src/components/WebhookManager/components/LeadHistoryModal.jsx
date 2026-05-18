@@ -122,6 +122,16 @@ const LeadHistoryModal = ({
 
     return (
         <div className="premium-modal-overlay" style={{ zIndex: 1050 }}>
+            <style dangerouslySetInnerHTML={{ __html: `
+                @keyframes spin-reload {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                .loading-spin {
+                    animation: spin-reload 0.8s linear infinite;
+                    display: inline-block;
+                }
+            ` }} />
             <div
                 onClick={e => e.stopPropagation()}
                 className="premium-modal-content"
@@ -141,7 +151,45 @@ const LeadHistoryModal = ({
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="modal-close-btn" style={{ width: '32px', height: '32px' }}>✕</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button 
+                            onClick={fetchLeadHistory} 
+                            className={`modal-action-btn-reload ${loading ? 'loading-spin' : ''}`}
+                            title="Atualizar Histórico"
+                            disabled={loading}
+                            style={{ 
+                                width: '32px', 
+                                height: '32px', 
+                                borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: '#94a3b8',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.9rem',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.3s ease'
+                            }}
+                            onMouseOver={e => {
+                                if (!loading) {
+                                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)';
+                                    e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+                                    e.currentTarget.style.color = '#818cf8';
+                                }
+                            }}
+                            onMouseOut={e => {
+                                if (!loading) {
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                                    e.currentTarget.style.color = '#94a3b8';
+                                }
+                            }}
+                        >
+                            🔄
+                        </button>
+                        <button onClick={onClose} className="modal-close-btn" style={{ width: '32px', height: '32px' }}>✕</button>
+                    </div>
                 </div>
 
                 {/* Tabela de Disparos (Estilo Imagem 02/04) */}

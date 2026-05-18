@@ -1,14 +1,29 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useTranscription } from '../TranscriptionContext';
 import { useTranscriptionData } from '../hooks/useTranscriptionData';
+import { uploadManager } from '../../../api/uploadManager';
 
 const Header = () => {
     const { 
         loading, isRefreshing, selectedIds, 
-        setShowBulkDeleteModal, setIsBatchRagModalOpen, 
-        setShowManualModal 
+        setShowBulkDeleteModal, setIsBatchRagModalOpen 
     } = useTranscription();
     const { fetchTasks } = useTranscriptionData();
+    const fileInputRef = useRef(null);
+
+    const handleVideoUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        uploadManager.startUpload(null, file, {
+            language: 'pt',
+            summarize: true,
+            generate_qa: true
+        });
+
+        // Limpa o input de arquivo
+        e.target.value = '';
+    };
 
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -30,8 +45,15 @@ const Header = () => {
                 <button onClick={() => fetchTasks()} className="refresh-btn" disabled={isRefreshing}>
                     {isRefreshing ? '🎡 Atualizando...' : '🔄 Atualizar Agora'}
                 </button>
-                <button onClick={() => setShowManualModal(true)} className="create-btn">
-                    ➕ Nova Transcrição Manual
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    style={{ display: 'none' }} 
+                    accept="video/*,audio/*" 
+                    onChange={handleVideoUpload} 
+                />
+                <button onClick={() => fileInputRef.current.click()} className="create-btn" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}>
+                    📤 Upload de Vídeo
                 </button>
             </div>
         </div>

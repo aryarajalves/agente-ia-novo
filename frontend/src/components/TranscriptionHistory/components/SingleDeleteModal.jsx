@@ -2,29 +2,35 @@ import React, { useState } from 'react';
 import { useTranscription } from '../TranscriptionContext';
 import { api } from '../../../api/client';
 
-
-const BulkDeleteModal = () => {
-    const { showBulkDeleteModal, setShowBulkDeleteModal, selectedIds, setSelectedIds, setTasks } = useTranscription();
+const SingleDeleteModal = () => {
+    const { taskToDelete, setTaskToDelete, setTasks, setSelectedIds } = useTranscription();
     const [isDeleting, setIsDeleting] = useState(false);
 
-    if (!showBulkDeleteModal) return null;
+    if (!taskToDelete) return null;
 
     const handleConfirm = async () => {
         setIsDeleting(true);
         try {
             const response = await api.post('/transcription-tasks/bulk-delete', {
-                task_ids: Array.from(selectedIds)
+                task_ids: [taskToDelete.id]
             });
             if (response.ok) {
+                // Toast de sucesso
                 window.dispatchEvent(new CustomEvent('app:toast', { 
-                    detail: { message: `${selectedIds.size} transcrições excluídas com sucesso!`, type: 'success' } 
+                    detail: { message: 'Transcrição excluída com sucesso!', type: 'success' } 
                 }));
-                setTasks(prev => prev.filter(t => !selectedIds.has(t.id)));
-                setSelectedIds(new Set());
-                setShowBulkDeleteModal(false);
+                // Remove da lista
+                setTasks(prev => prev.filter(t => t.id !== taskToDelete.id));
+                // Limpa do selectedIds se estivesse selecionado
+                setSelectedIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(taskToDelete.id);
+                    return next;
+                });
+                setTaskToDelete(null);
             } else {
                 window.dispatchEvent(new CustomEvent('app:toast', { 
-                    detail: { message: 'Falha ao excluir os registros selecionados.', type: 'error' } 
+                    detail: { message: 'Falha ao excluir a transcrição.', type: 'error' } 
                 }));
             }
         } catch (error) {
@@ -48,14 +54,14 @@ const BulkDeleteModal = () => {
                 boxShadow: '0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(239, 68, 68, 0.1)'
             }}>
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🗑️</div>
-                <h2 style={{ color: 'white', marginBottom: '1rem', fontSize: '1.5rem', fontWeight: '600' }}>Excluir Registros</h2>
+                <h2 style={{ color: 'white', marginBottom: '1rem', fontSize: '1.5rem', fontWeight: '600' }}>Excluir Arquivo</h2>
                 <p style={{ color: '#94a3b8', marginBottom: '2rem', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                    Deseja realmente excluir <strong style={{ color: 'white' }}>{selectedIds.size}</strong> registros selecionados? Esta ação é irreversível e apagará os dados definitivamente.
+                    Deseja realmente excluir a transcrição de <strong style={{ color: 'white' }}>"{taskToDelete.filename}"</strong>? Esta ação é irreversível e apagará o registro definitivamente.
                 </p>
 
                 <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                     <button 
-                        onClick={() => setShowBulkDeleteModal(false)} 
+                        onClick={() => setTaskToDelete(null)} 
                         className="refresh-btn"
                         style={{
                             background: 'rgba(255,255,255,0.05)',
@@ -100,4 +106,4 @@ const BulkDeleteModal = () => {
     );
 };
 
-export default BulkDeleteModal;
+export default SingleDeleteModal;
