@@ -45,11 +45,13 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
                 break
 
     if (msg_clean_no_punct in common_greetings or is_ad) and is_first_msg:
+        resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
+
         return {
             "eh_saudacao": True,
             "precisa_esclarecimento": False,
             "id_agente_alvo": main_agent.id,
-            "resposta_direta": getattr(main_agent, 'initial_message', "Olá! Como posso ajudar?"),
+            "resposta_direta": resposta,
             "perguntas_extraidas": None,
             "data_extraida": None,
             "_model_used": "shortcut-logic"

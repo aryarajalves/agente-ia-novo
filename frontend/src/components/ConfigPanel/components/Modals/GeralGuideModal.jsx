@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 const GeralGuideModal = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
@@ -34,9 +35,9 @@ const GeralGuideModal = ({ isOpen, onClose }) => {
           tip: 'Use "High" apenas para tarefas complexas como análise jurídica ou código avançado.' },
     ];
 
-    return (
-        <div className="guide-modal-overlay" onClick={onClose}>
-            <div className="guide-modal-card" onClick={e => e.stopPropagation()}>
+    return ReactDOM.createPortal(
+        <div className="guide-modal-overlay">
+            <div className="guide-modal-card">
                 <div className="guide-modal-header">
                     <span className="guide-modal-title">📖 Guia das Configurações Gerais</span>
                     <button className="guide-modal-close" onClick={onClose}>✕</button>
@@ -54,7 +55,8 @@ const GeralGuideModal = ({ isOpen, onClose }) => {
                     ))}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

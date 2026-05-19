@@ -12,4 +12,6 @@ Este arquivo registra todas as alterações manuais de schema (ALTER TABLE) real
 | 2026-05-15 | scheduled_triggers, message_status | TODAS | create_trigger_tables.py | Criação das tabelas base para o sistema de disparos e follow-up, corrigindo erro de deleção de contatos. |
 | 2026-05-17 | webhook_configs | delete_labels | add_delete_labels_column.py | Adição de campo para substituir as etiquetas do Chatwoot no reset/auto-deleção do contato. |
 | 2026-05-17 | users | company_name, company_logo, company_logo_size | add_whitelabel_columns.py | Colunas de customização para a funcionalidade de White-label (marca branca). |
+| 2026-05-19 | agent_config, leads | qualification_labels, respostas_qualificacao | add_qualification_responses_column.py | Adição de colunas para suporte a qualificação de leads e armazenamento de respostas. |
+
 

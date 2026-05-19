@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS {table} (
     followup_step INTEGER DEFAULT 0,
     ultima_resposta_agente TEXT,
     ultima_resposta_agente_em TIMESTAMP,
+    respostas_qualificacao TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
@@ -58,7 +59,8 @@ async def ensure_leads_table(table_name: str):
             "inbox_id VARCHAR",
             "conversa_id VARCHAR",
             "contato_id VARCHAR",
-            "inbox_nome VARCHAR"
+            "inbox_nome VARCHAR",
+            "respostas_qualificacao TEXT"
         ]
         for mig in migrations:
             await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {mig}"))

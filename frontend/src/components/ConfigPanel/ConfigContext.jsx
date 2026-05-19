@@ -67,6 +67,8 @@ export const ConfigProvider = ({ children }) => {
     const [initialMessage, setInitialMessage] = useState('');
     const [initialQuestionMessage, setInitialQuestionMessage] = useState('');
     const [initialIgnoreMessage, setInitialIgnoreMessage] = useState([]);
+    const [qualificationQuestions, setQualificationQuestions] = useState([]);
+    const [qualificationLabels, setQualificationLabels] = useState([]);
     
     // Security
     const [securityBlacklist, setSecurityBlacklist] = useState('');
@@ -98,6 +100,9 @@ export const ConfigProvider = ({ children }) => {
 
     // Guides
     const [showGeralGuide, setShowGeralGuide] = useState(false);
+    const [showHabilidadesGuide, setShowHabilidadesGuide] = useState(false);
+    const [showSecurityGuide, setShowSecurityGuide] = useState(false);
+    const [showWhitelabelGuide, setShowWhitelabelGuide] = useState(false);
 
     // Advanced
     const [modelSettings, setModelSettings] = useState({});
@@ -144,6 +149,8 @@ export const ConfigProvider = ({ children }) => {
         initialMessage, setInitialMessage,
         initialQuestionMessage, setInitialQuestionMessage,
         initialIgnoreMessage, setInitialIgnoreMessage,
+        qualificationQuestions, setQualificationQuestions,
+        qualificationLabels, setQualificationLabels,
         securityBlacklist, setSecurityBlacklist,
         securityForbidden, setSecurityForbidden,
         securityDiscount, setSecurityDiscount,
@@ -167,6 +174,9 @@ export const ConfigProvider = ({ children }) => {
         uiChatTitle, setUiChatTitle,
         uiWelcomeMessage, setUiWelcomeMessage,
         showGeralGuide, setShowGeralGuide,
+        showHabilidadesGuide, setShowHabilidadesGuide,
+        showSecurityGuide, setShowSecurityGuide,
+        showWhitelabelGuide, setShowWhitelabelGuide,
         modelSettings, setModelSettings,
         configRole, setConfigRole
     };

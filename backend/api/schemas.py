@@ -111,6 +111,8 @@ class AgentConfig(BaseModel):
     initial_question_message: Optional[str] = None
     initial_ignore_message: Optional[str] = None
     inbox_capture_enabled: bool = True
+    qualification_questions: Optional[str] = None
+    qualification_labels: Optional[str] = None
     router_enabled: bool = False
     router_simple_model: str = "gpt-5-mini"
     router_simple_fallback_model: Optional[str] = None

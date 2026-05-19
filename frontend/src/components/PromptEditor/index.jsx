@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { PromptProvider, usePrompt } from './PromptContext';
 import PromptTextarea from './components/PromptTextarea';
 import OutlineSidebar from './components/OutlineSidebar';
@@ -60,12 +61,11 @@ const EditorContent = () => {
                 </header>
                 
                 {/* Modal de Salvamento de Rascunho */}
-                {showSaveModal && (
+                {showSaveModal && ReactDOM.createPortal(
                     <div className="draft-modal-overlay fade-in">
                         <div className="draft-modal-card">
                             <div className="modal-header">
                                 <h3>💾 Criar Versão de Rascunho</h3>
-                                <button onClick={() => setShowSaveModal(false)} className="close-x">×</button>
                             </div>
                             <div className="modal-body">
                                 <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1.5rem' }}>
@@ -102,7 +102,8 @@ const EditorContent = () => {
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
                 <div className="editor-content-split">
                     <PromptTextarea />

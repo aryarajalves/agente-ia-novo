@@ -34,7 +34,9 @@ logger = logging.getLogger(__name__)
 def broadcast_status(webhook_id, event_id, status, steps=None):
     """Envia atualização de status e passos via WebSocket de forma segura para workers."""
     try:
-        from core.websocket import manager
+        import os
+        import redis
+        
         payload = {
             "type": "status_update",
             "webhook_id": webhook_id,
@@ -43,16 +45,12 @@ def broadcast_status(webhook_id, event_id, status, steps=None):
             "steps": steps
         }
         
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(manager.broadcast(payload))
-            loop.close()
-        except Exception as e:
-            logger.error(f"Erro ao disparar broadcast: {e}")
-            
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        r = redis.Redis.from_url(redis_url, decode_responses=True)
+        r.publish("websocket_broadcast", json.dumps(payload))
+        r.close()
     except Exception as ws_err:
-        logger.error(f"Erro fatal no broadcast_status: {ws_err}")
+        logger.error(f"Erro ao disparar broadcast no worker: {ws_err}")
 
 def _add_step(db, event_id: int, step: str, detail: str = "", metadata: dict = None):
     event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
@@ -252,6 +250,8 @@ def _build_agent_config(db_agent):
         frequency_penalty=db_agent.frequency_penalty,
         safety_settings=db_agent.safety_settings,
         model_settings=_json.loads(db_agent.model_settings) if db_agent.model_settings else {},
+        qualification_questions=db_agent.qualification_questions,
+        qualification_labels=db_agent.qualification_labels,
     )
 
 # --- CELERY TASKS ---
@@ -583,6 +583,7 @@ def process_webhook_automation(self, event_id: int):
                         "contact_name": event.contato_nome,
                         "thread_id": event.conversa_id,
                         "session_id": session_id,
+                        "leads_table": config.leads_table if config else None,
                         "dias_desde_criacao": (get_now_utc() - (lead_created_at if lead_created_at.tzinfo else lead_created_at.replace(tzinfo=timezone.utc))).days if 'lead_created_at' in locals() and lead_created_at else 0
                     },
 

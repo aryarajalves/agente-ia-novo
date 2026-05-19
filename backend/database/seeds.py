@@ -70,6 +70,24 @@ async def seed_native_tools():
             })
         },
         {
+            "name": "lead_qualificado",
+            "description": (
+                "Chame esta ferramenta quando o usuário tiver respondido TODAS as perguntas de qualificação configuradas. "
+                "Registra o lead como qualificado e aciona as ações seguintes definidas pelo administrador. "
+                "NUNCA chame antes de coletar todas as respostas."
+            ),
+            "parameters_schema": json.dumps({
+                "type": "object",
+                "properties": {
+                    "respostas": {
+                        "type": "object",
+                        "description": "Objeto com as respostas coletadas. Chave = pergunta, Valor = resposta do usuário."
+                    }
+                },
+                "required": ["respostas"]
+            })
+        },
+        {
             "name": "registrar_duvida_sem_resposta",
             "description": "Chame esta ferramenta quando o conhecimento disponível não for suficiente para responder à dúvida do usuário. Isso notificará a equipe humana.",
             "parameters_schema": json.dumps({

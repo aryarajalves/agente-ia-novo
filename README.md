@@ -82,17 +82,24 @@ npm run test:frontend
 
 ---
 
+## ✨ Novidades da Versão (v1.6.8)
+
+Esta versão traz melhorias críticas no fluxo de automação, qualificação e suporte ao cliente:
+- **Qualificação de Leads Avançada:** O agente coleta de forma sequencial dados como Nome, E-mail e Empresa, acionando o pipeline ao concluir a qualificação.
+- **Integração Multitag Chatwoot:** Permite selecionar múltiplas etiquetas no frontend e sincronizá-las diretamente na conversa do contato no Chatwoot após a qualificação do lead.
+- **Protocolo Resiliente de Dúvidas (Inbox):** Respostas em dois turnos para dúvidas inexistentes na base. O agente informa que buscará a equipe (Turno 1) e confirma o registro na Inbox ao receber concordâncias curtas (Turno 2), impedindo loops infinitos e alucinações.
+
+---
+
 ## 📦 Deploy e Imagens Docker
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:1.5.7-backend ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:1.5.7-backend`
-
-
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.6.8 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.6.8`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:1.5.7-frontend ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:1.5.7-frontend`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.6.8 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.6.8`
 
 
 

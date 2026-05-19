@@ -16,7 +16,8 @@ const AgentFilters = () => {
     const [showBulkConfirm, setShowBulkConfirm] = React.useState(false);
     const [isDeleting, setIsDeleting] = React.useState(false);
 
-    const uniqueModels = [...new Set(agents.map(a => a.model))];
+    const getDisplayModel = (a) => a.router_enabled ? a.router_complex_model : a.model;
+    const uniqueModels = [...new Set(agents.map(getDisplayModel))].filter(Boolean);
     const isAllSelected = filteredAgents.length > 0 && selectedAgents.size === filteredAgents.length;
 
     const handleBulkDelete = async () => {

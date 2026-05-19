@@ -15,7 +15,7 @@ export const useConfigData = () => {
         setRagRetrievalCount, setRagTranslationEnabled, setRagMultiQueryEnabled,
         setRagRerankEnabled, setRagAgenticEvalEnabled, setRagParentExpansionEnabled,
         setInboxCaptureEnabled, setInitialMessage, setInitialQuestionMessage,
-        setInitialIgnoreMessage, setSecurityBlacklist, setSecurityForbidden,
+        setInitialIgnoreMessage, setQualificationQuestions, setQualificationLabels, setSecurityBlacklist, setSecurityForbidden,
         setSecurityDiscount, setSecurityComplexity, setSecurityPii,
         setSecurityValidatorIa, setSecurityBotProtection, setSecurityMaxMessages,
         setSecuritySemanticThreshold, setSecurityLoopCount, setRouterEnabled,
@@ -122,6 +122,23 @@ export const useConfigData = () => {
                             }
                         } catch (e) { console.error("Error processing ignore messages", e); }
 
+                        try {
+                            const qqData = configData.qualification_questions;
+                            if (qqData) {
+                                if (typeof qqData === 'string' && qqData.startsWith('[')) setQualificationQuestions(JSON.parse(qqData));
+                                else if (Array.isArray(qqData)) setQualificationQuestions(qqData);
+                            }
+                        } catch (e) { console.error("Error processing qualification questions", e); }
+
+                        try {
+                            const qlData = configData.qualification_labels;
+                            if (qlData) {
+                                if (typeof qlData === 'string' && qlData.startsWith('[')) setQualificationLabels(JSON.parse(qlData));
+                                else if (Array.isArray(qlData)) setQualificationLabels(qlData);
+                                else if (typeof qlData === 'string' && qlData.trim()) setQualificationLabels([qlData]);
+                            }
+                        } catch (e) { console.error("Error processing qualification labels", e); }
+
                         setSecurityBlacklist(configData.security_competitor_blacklist || '');
                         setSecurityForbidden(configData.security_forbidden_topics || '');
                         setSecurityDiscount(configData.security_discount_policy || '');
@@ -158,6 +175,7 @@ export const useConfigData = () => {
                     }
                 } else if (isNew) {
                     setSelectedModel("gpt-4o-mini");
+                    setQualificationLabels([]);
                 }
             } catch (err) {
                 console.error("Global load error:", err);

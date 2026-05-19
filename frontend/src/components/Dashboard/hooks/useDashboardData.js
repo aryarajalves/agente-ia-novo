@@ -44,7 +44,7 @@ export const useDashboardData = () => {
     useEffect(() => {
         let result = agents;
         if (searchTerm) result = result.filter(a => a.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        if (modelFilter) result = result.filter(a => a.model === modelFilter);
+        if (modelFilter) result = result.filter(a => (a.router_enabled ? a.router_complex_model : a.model) === modelFilter);
         setFilteredAgents(result);
     }, [searchTerm, modelFilter, agents, setFilteredAgents]);
 

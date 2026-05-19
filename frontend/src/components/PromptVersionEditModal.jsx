@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 const PromptVersionEditModal = ({ 
     editDraft, 
@@ -14,7 +15,7 @@ const PromptVersionEditModal = ({
 }) => {
     if (!editDraft) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div style={{
             position: 'fixed',
             top: 0,
@@ -52,16 +53,6 @@ const PromptVersionEditModal = ({
                     <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>
                         ✏️ Editar Rascunho
                     </h3>
-                    <button onClick={onCancel} className="guide-modal-close" style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        border: 'none',
-                        color: '#94a3b8',
-                        borderRadius: '50%',
-                        width: '32px',
-                        height: '32px',
-                        cursor: 'pointer',
-                        fontSize: '1.2rem'
-                    }}>×</button>
                 </div>
 
                 <div className="guide-modal-body" style={{ padding: '2rem', overflowY: 'auto' }}>
@@ -157,7 +148,8 @@ const PromptVersionEditModal = ({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

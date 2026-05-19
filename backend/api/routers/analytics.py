@@ -79,7 +79,7 @@ async def get_financial_report(
         items.append({
             "date": str(row.day),
             "agent_id": row.agent_id,
-            "agent_name": f"{row.agent_name or 'Sistema / IA Interna'} ({row.model_used or 'N/A'})",
+            "agent_name": f"{row.agent_name or 'Uso Interno do Sistema'} ({('Resposta Automática (sem IA)' if row.model_used == 'shortcut-logic' else row.model_used) or 'N/A'})",
             "total_messages": messages,
             "total_tokens": int(row.tokens or 0),
             "total_cost": cost,

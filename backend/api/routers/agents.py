@@ -76,6 +76,8 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         initial_question_message=config.initial_question_message,
         initial_ignore_message=config.initial_ignore_message,
         inbox_capture_enabled=config.inbox_capture_enabled,
+        qualification_questions=config.qualification_questions,
+        qualification_labels=config.qualification_labels,
         router_enabled=config.router_enabled,
         router_simple_model=config.router_simple_model,
         router_complex_model=config.router_complex_model,
@@ -83,7 +85,7 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         response_translation_enabled=config.response_translation_enabled,
         response_translation_fallback_lang=config.response_translation_fallback_lang or "portuguese"
     )
-    
+
     if config.tool_ids:
         res_tools = await db.execute(select(ToolModel).where(ToolModel.id.in_(config.tool_ids)))
         db_config.tools = res_tools.scalars().all()
@@ -153,6 +155,8 @@ async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None =
         initial_question_message=a.initial_question_message,
         initial_ignore_message=a.initial_ignore_message,
         inbox_capture_enabled=a.inbox_capture_enabled,
+        qualification_questions=a.qualification_questions,
+        qualification_labels=a.qualification_labels,
         router_enabled=a.router_enabled,
         router_simple_model=a.router_simple_model,
         router_complex_model=a.router_complex_model,
@@ -212,6 +216,8 @@ async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = De
     db_config.initial_question_message = config.initial_question_message
     db_config.initial_ignore_message = config.initial_ignore_message
     db_config.inbox_capture_enabled = config.inbox_capture_enabled
+    db_config.qualification_questions = config.qualification_questions
+    db_config.qualification_labels = config.qualification_labels
     db_config.router_enabled = config.router_enabled
     db_config.router_simple_model = config.router_simple_model
     db_config.router_complex_model = config.router_complex_model
@@ -532,3 +538,97 @@ async def list_finetuned_models(_: None = Depends(verify_api_key)):
     except Exception as e:
         logger.error(f"Erro ao buscar modelos fine-tuning: {e}")
         return [] # Retorna lista vazia para não quebrar o frontend
+
+@router.get("/agents/{agent_id}/chatwoot-labels")
+async def get_chatwoot_labels(
+    agent_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key)
+):
+    """Busca a lista de etiquetas disponíveis no Chatwoot associado ao agente, com fallback global."""
+    from models import WebhookConfigModel, WebhookEventModel
+    import httpx
+    import os
+
+    # 1. Buscar o webhook associado a este agente
+    result = await db.execute(
+        select(WebhookConfigModel)
+        .where(WebhookConfigModel.agent_id == agent_id)
+        .limit(1)
+    )
+    wh = result.scalars().first()
+    if not wh or not wh.chatwoot_url or not wh.chatwoot_api_token:
+        # Se não achou por agent_id, tentar buscar no secondary_agent_ids
+        result_sec = await db.execute(
+            select(WebhookConfigModel)
+            .where(WebhookConfigModel.secondary_agent_ids.like(f"%{agent_id}%"))
+            .limit(1)
+        )
+        wh = result_sec.scalars().first()
+
+    # 2. Definir URL, Token e conta_id com fallback global
+    cw_url = None
+    api_token = None
+    account_id = None
+
+    if wh and wh.chatwoot_url and wh.chatwoot_api_token:
+        cw_url = wh.chatwoot_url.rstrip("/")
+        api_token = wh.chatwoot_api_token
+    else:
+        cw_url = os.getenv("CHATWOOT_URL")
+        api_token = os.getenv("CHATWOOT_API_TOKEN")
+        account_id = os.getenv("CHATWOOT_ACCOUNT_ID")
+        if cw_url:
+            cw_url = cw_url.rstrip("/")
+
+    if not cw_url or not api_token:
+        return []
+
+    # 3. Determinar account_id (último evento ou perfil ou padrão)
+    if not account_id:
+        if wh:
+            evt_result = await db.execute(
+                select(WebhookEventModel.conta_id)
+                .where(WebhookEventModel.webhook_config_id == wh.id)
+                .where(WebhookEventModel.conta_id.isnot(None))
+                .order_by(WebhookEventModel.created_at.desc())
+                .limit(1)
+            )
+            db_account_id = evt_result.scalar()
+            if db_account_id:
+                account_id = db_account_id
+
+        if not account_id:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    prof_resp = await client.get(f"{cw_url}/api/v1/profile", headers={"api_access_token": api_token})
+                    if prof_resp.status_code == 200:
+                        profile_data = prof_resp.json()
+                        accounts = profile_data.get("accounts", [])
+                        if accounts:
+                            account_id = accounts[0].get("id")
+            except Exception as e:
+                logger.error(f"Erro ao buscar profile no Chatwoot para account_id: {e}")
+
+    if not account_id:
+        account_id = "1"
+
+    # 4. Buscar etiquetas
+    labels_url = f"{cw_url}/api/v1/accounts/{account_id}/labels"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(labels_url, headers={"api_access_token": api_token})
+            if resp.status_code == 200:
+                payload = resp.json()
+                # O Chatwoot retorna ou array direto ou objeto com "payload"
+                labels_data = payload.get("payload", payload) if isinstance(payload, dict) else payload
+                if isinstance(labels_data, list):
+                    return [l.get("title") for l in labels_data if isinstance(l, dict) and l.get("title")]
+                return []
+            else:
+                logger.error(f"Erro ao buscar labels do Chatwoot: Status {resp.status_code} - {resp.text}")
+                return []
+    except Exception as e:
+        logger.error(f"Exceção ao buscar labels do Chatwoot: {e}")
+        return []
+

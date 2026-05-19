@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { Link } from 'react-router-dom';
 import { DashboardProvider, useDashboard } from './DashboardContext';
 import { useDashboardData } from './hooks/useDashboardData';
@@ -9,7 +10,7 @@ import GlobalContextManager from '../GlobalContextManager';
 import './styles/Dashboard.css';
 
 const DashboardContent = () => {
-    const { activeTab, setActiveTab, loading } = useDashboard();
+    const { activeTab, setActiveTab, loading, toastState } = useDashboard();
     useDashboardData();
 
     if (loading) return (
@@ -21,6 +22,13 @@ const DashboardContent = () => {
 
     return (
         <div className="modern-dashboard fade-in">
+            {toastState && ReactDOM.createPortal(
+                <div key={toastState.id} className={`global-toast global-toast-${toastState.type}`}>
+                    <span className="global-toast-icon">{toastState.type === 'success' ? '✅' : '❌'}</span>
+                    <span>{toastState.message}</span>
+                </div>,
+                document.body
+            )}
             <header className="dashboard-header-flex">
                 <div>
                     <h1>Gerenciamento de Agentes</h1>

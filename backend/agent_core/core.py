@@ -16,7 +16,7 @@ from .logic.pre_router import run_pre_router_ai
 from .security import verify_output_safety, validate_response_ai
 from .memory import fetch_user_memory, update_user_memory
 from .tools.handlers.chatwoot import handle_chatwoot_handoff
-from .tools.handlers.internal import handle_date_calculator, handle_unanswered_question
+from .tools.handlers.internal import handle_date_calculator, handle_unanswered_question, handle_lead_qualified
 from .tools.handlers.google import handle_google_calendar
 
 logger = logging.getLogger(__name__)
@@ -124,10 +124,33 @@ async def process_message(
         "1. Seu 'CONHECIMENTO OFICIAL' é composto por: (a) SEU PRÓPRIO PROMPT DE SISTEMA (instruções/informações de produtos descritas acima neste prompt), (b) CONTEXTO RAG e (c) INSTRUÇÕES ADICIONAIS (Inbox). Se a informação estiver em QUALQUER um desses lugares, você DEVE responder com confiança.\n"
         "2. Se a informação necessária NÃO estiver em nenhum desses locais, você DEVE chamar a ferramenta 'registrar_duvida_sem_resposta' ANTES de responder.\n"
         "3. É PROIBIDO inventar nomes, prazos ou políticas que não constem no seu PROMPT DE SISTEMA, RAG ou Inbox.\n"
-        "4. Após registrar a dúvida, diga ao usuário que está verificando com a equipe, mas NUNCA invente uma resposta.\n"
+        "4. **PROTOCOLO DE RESPOSTA DA FERRAMENTA 'registrar_duvida_sem_resposta' (OBRIGATÓRIO):**\n"
+        "   - **Primeiro Turno (Acionamento da Ferramenta):** Ao chamar a ferramenta, sua resposta final para o usuário DEVE seguir estritamente este padrão: 'Vou verificar com a equipe e já te retorno certinho sobre: [pergunta do usuário reformulada de forma clara e direta].' E no final da mensagem, faça sempre alguma pergunta para o usuário como: 'Posso lhe ajudar com mais alguma dúvida?' ou similar.\n"
+        "   - **Segundo Turno (Confirmação do Usuário):** Se o usuário responder apenas com concordâncias/confirmações curtas (ex: 'ok', 'blz', 'tudo bem', 'beleza', 'certo', 'combinado', 'obrigado') após você ter dito que iria verificar com a equipe, você **DEVE APENAS** responder: 'Já salvei sua pergunta aqui para o nosso time analisar. Enquanto isso, como posso te ajudar com outro assunto agora?'. **É TERMINANTEMENTE PROIBIDO** perguntar se ele quer que você passe as informações que você tem agora, oferecer passar o que você sabe, ou perguntar se ele quer aguardar, pois você NÃO possui essa informação na sua base ou prompt. Apenas confirme o salvamento da pergunta e questione se há outro assunto em que possa ajudar."
     )
     system_prompt += strict_rules
 
+    # --- INJEÇÃO DE PERGUNTAS DE QUALIFICAÇÃO DE LEAD ---
+    raw_qq = getattr(config, 'qualification_questions', None)
+    if raw_qq:
+        try:
+            qq_list = json.loads(raw_qq) if isinstance(raw_qq, str) else raw_qq
+            if isinstance(qq_list, list) and qq_list:
+                qq_formatted = "\n".join(f"{i+1}. {q}" for i, q in enumerate(qq_list))
+                system_prompt += (
+                    "\n\n🎯 **QUALIFICAÇÃO DE LEAD — PROTOCOLO OBRIGATÓRIO:**\n"
+                    "Você DEVE coletar as seguintes informações em sequência com o usuário:\n"
+                    f"{qq_formatted}\n\n"
+                    "REGRAS INVIOLÁVEIS:\n"
+                    "- Faça UMA pergunta de qualificação por vez, aguarde a resposta antes de fazer a próxima.\n"
+                    "- Só avance para a próxima pergunta após receber a resposta da anterior.\n"
+                    "- Quando TODAS as respostas forem coletadas, chame IMEDIATAMENTE a ferramenta `lead_qualificado` passando todas as respostas.\n"
+                    "- Você PODE (e deve) responder a qualquer dúvida do usuário sobre o produto/serviço brevemente se ele perguntar, mas você deve OBRIGATORIAMENTE incluir a pergunta qualificatória pendente logo em seguida na mesma resposta.\n"
+                    "- Se o usuário tentar desviar do assunto sem fazer perguntas, redirecione de forma simpática e envie a pergunta de qualificação pendente.\n"
+                    "- Após chamar a ferramenta `lead_qualificado` e receber o retorno de sucesso, sua resposta final deve ser estritamente de conclusão e agradecimento simpático, sem repetir respostas ou detalhes sobre dúvidas que você já respondeu ou explicou em turnos anteriores do histórico."
+                )
+        except Exception:
+            pass
 
     messages = [{"role": "system", "content": system_prompt}]
 
@@ -217,6 +240,29 @@ async def process_message(
                         "pergunta": {"type": "string", "description": "A pergunta exata do usuário"}
                     },
                     "required": ["pergunta"]
+                }
+            }
+        })
+
+    # Adicionar ferramenta de qualificação de lead se configurada
+    if getattr(config, 'qualification_questions', None):
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": "lead_qualificado",
+                "description": (
+                    "Chame esta ferramenta quando o usuário responder com sucesso todas as perguntas de qualificação. "
+                    "Passe no dicionário de respostas as chaves representando cada pergunta e o valor respondido pelo usuário."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "respostas": {
+                            "type": "object",
+                            "description": "Objeto chave-valor contendo cada pergunta e a resposta fornecida pelo usuário"
+                        }
+                    },
+                    "required": ["respostas"]
                 }
             }
         })
@@ -341,6 +387,8 @@ async def process_message(
                         tool_result = await handle_unanswered_question(db, context_variables, json.dumps(tool_args), history, config.id)
                     elif tool_name == "google_calendar_manager":
                         tool_result = await handle_google_calendar(db, context_variables, tool_args)
+                    elif tool_name == "lead_qualificado":
+                        tool_result = await handle_lead_qualified(db, context_variables, json.dumps(tool_args), config.id)
                     elif target_tool:
                         # Webhooks externos
                         try:

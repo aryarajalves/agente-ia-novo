@@ -170,6 +170,8 @@ class AgentConfigModel(Base):
     
     handoff_enabled = Column(Boolean, default=False) # Permite que este agente use a ferramenta de handoff
     model_settings = Column(Text, default="{}") # JSON store for per-slot configurations (temperature, top_p, etc)
+    qualification_questions = Column(Text, nullable=True) # JSON array de perguntas para qualificação de lead
+    qualification_labels = Column(Text, nullable=True) # JSON array de etiquetas a serem aplicadas no Chatwoot
 
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -16,3 +16,4 @@ O repositório oficial do projeto é:
 5. Toda mensagem de commit (título e corpo) deve obrigatoriamente estar em **português do Brasil**.
 6. Toda mensagem de commit deve obrigatoriamente informar que o **Aryaraj** criou a funcionalidade (Ex: "Aryaraj criou a funcionalidade de [descrição]" ou "[Descrição] - Criado por Aryaraj").
 7. **Proibição de `.env`:** É terminantemente proibido enviar (commitar/push) arquivos `.env` ou qualquer arquivo contendo credenciais reais para o repositório. O `.gitignore` deve ser sempre respeitado e caso tente fazer um push de um `.env` por acidente, a operação deve ser abortada. Apenas o `.env.example` pode ser commitado.
+8. **Atualização do README.md:** Sempre que uma nova funcionalidade for adicionada, modificada ou uma grande atualização ocorrer, você DEVE obrigatoriamente atualizar o arquivo `README.md` na raiz do projeto com as novas informações, documentando o funcionamento e as atualizações para o usuário final.

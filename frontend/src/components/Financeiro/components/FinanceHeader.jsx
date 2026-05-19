@@ -56,15 +56,6 @@ const FinanceHeader = () => {
                 <div className="header-info">
                     <h1>Financeiro 💰</h1>
                     <p className="subtitle">Controle de gastos e inteligência de tokens</p>
-                    <div className="view-mode-toggle">
-                        <button
-                            id="btn-view-agents"
-                            className={viewMode === 'agents' ? 'active' : ''}
-                            onClick={() => handleToggle('agents')}
-                        >
-                            🤖 Agentes
-                        </button>
-                    </div>
                 </div>
             </div>
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const DashboardContext = createContext();
 
@@ -9,6 +9,19 @@ export const DashboardProvider = ({ children }) => {
     const [stats, setStats] = useState({ total_agents: 0, total_knowledge_bases: 0, total_interactions: 0, total_cost: 0.0 });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Global Toast
+    const [toastState, setToastState] = useState(null);
+
+    const showGlobalToast = (message, type = 'success') => {
+        setToastState({ message, type, id: Date.now() });
+    };
+
+    useEffect(() => {
+        if (!toastState) return;
+        const timer = setTimeout(() => setToastState(null), 3500);
+        return () => clearTimeout(timer);
+    }, [toastState]);
 
     // UI State
     const [activeTab, setActiveTab] = useState('agents');
@@ -39,7 +52,8 @@ export const DashboardProvider = ({ children }) => {
         selectionMode, setSelectionMode,
         searchTerm, setSearchTerm,
         modelFilter, setModelFilter,
-        toggleSelectAll
+        toggleSelectAll,
+        toastState, showGlobalToast
     };
 
     return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;
