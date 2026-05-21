@@ -89,6 +89,7 @@ async def test_handler_lead_qualified():
     
     # Mock do WebhookConfigModel
     mock_webhook = MagicMock()
+    mock_webhook.id = 1
     mock_webhook.chatwoot_url = "https://chatwoot.example.com"
     mock_webhook.chatwoot_api_token = "token_secreto_cw"
     
@@ -99,10 +100,13 @@ async def test_handler_lead_qualified():
     mock_webhook_result = MagicMock()
     mock_webhook_result.scalars.return_value.first.return_value = mock_webhook
     
+    mock_update_result = MagicMock()
+    mock_update_result.rowcount = 1
+    
     mock_db.execute.side_effect = [
-        MagicMock(),            # UPDATE da tabela leads
         mock_agent_result,      # SELECT AgentConfigModel
         mock_webhook_result,    # SELECT WebhookConfigModel
+        mock_update_result,     # UPDATE da tabela leads
     ]
     
     # Context variables
@@ -145,6 +149,71 @@ async def test_handler_lead_qualified():
         assert mock_db.execute.called
 
 @pytest.mark.asyncio
+async def test_handler_lead_qualified_creates_lead():
+    # Mock do DB session
+    mock_db = AsyncMock()
+    
+    # Mock do AgentConfigModel
+    mock_agent = MagicMock()
+    mock_agent.qualification_labels = '["Lead-Qualificado"]'
+    
+    # Mock do WebhookConfigModel
+    mock_webhook = MagicMock()
+    mock_webhook.id = 7
+    mock_webhook.chatwoot_url = "https://chatwoot.example.com"
+    mock_webhook.chatwoot_api_token = "token_secreto_cw"
+    
+    # Simular os retornos de execute do banco
+    mock_agent_result = MagicMock()
+    mock_agent_result.scalars.return_value.first.return_value = mock_agent
+    
+    mock_webhook_result = MagicMock()
+    mock_webhook_result.scalars.return_value.first.return_value = mock_webhook
+    
+    # Mock do resultado do UPDATE com rowcount = 0
+    mock_update_result = MagicMock()
+    mock_update_result.rowcount = 0
+    
+    mock_db.execute.side_effect = [
+        mock_agent_result,      # SELECT AgentConfigModel
+        mock_webhook_result,    # SELECT WebhookConfigModel
+        mock_update_result,     # UPDATE da tabela leads (retorna 0 rows)
+        MagicMock(),            # INSERT da tabela leads
+    ]
+    
+    # Context variables
+    context_vars = {
+        "leads_table": "leads_cliente_1",
+        "contact_phone": "558199999999",
+        "contact_name": "João Novo",
+        "conversation_id": 456,
+        "account_id": 12,
+    }
+    
+    tool_args = {
+        "respostas": {
+            "Qual seu nome?": "João Novo",
+        }
+    }
+    
+    with patch("chatwoot_utils.sync_conversation_labels", new_callable=AsyncMock) as mock_sync_labels:
+        result = await handle_lead_qualified(
+            db=mock_db,
+            context_variables=context_vars,
+            func_args_str=json.dumps(tool_args),
+            agent_id=1
+        )
+        
+        assert "sucesso" in result.lower()
+        # Valida que o execute foi chamado com o INSERT
+        calls = mock_db.execute.call_args_list
+        assert len(calls) == 4
+        # O último execute deve conter o comando INSERT
+        last_call_sql = str(calls[3][0][0])
+        assert "INSERT" in last_call_sql
+        assert "leads_cliente_1" in last_call_sql
+
+@pytest.mark.asyncio
 async def test_pre_router_greeting_without_qualification_questions(qualification_config):
     from agent_core.logic.pre_router import run_pre_router_ai
     
@@ -172,6 +241,7 @@ async def test_handler_lead_qualified_env_fallback():
     
     # Mock do WebhookConfigModel sem credenciais
     mock_webhook = MagicMock()
+    mock_webhook.id = 1
     mock_webhook.chatwoot_url = ""
     mock_webhook.chatwoot_api_token = ""
     
@@ -182,10 +252,13 @@ async def test_handler_lead_qualified_env_fallback():
     mock_webhook_result = MagicMock()
     mock_webhook_result.scalars.return_value.first.return_value = mock_webhook
     
+    mock_update_result = MagicMock()
+    mock_update_result.rowcount = 1
+    
     mock_db.execute.side_effect = [
-        MagicMock(),            # UPDATE da tabela leads
         mock_agent_result,      # SELECT AgentConfigModel
         mock_webhook_result,    # SELECT WebhookConfigModel
+        mock_update_result,     # UPDATE da tabela leads
     ]
     
     # Context variables sem account_id (para testar fallback de account_id do ambiente também)
@@ -251,4 +324,61 @@ async def test_unanswered_question_prompt_rules_injection(qualification_config):
         assert "Vou verificar com a equipe e já te retorno certinho sobre" in system_content
         assert "TERMINANTEMENTE PROIBIDO" in system_content
         assert "perguntar se ele quer que" in system_content
+
+
+@pytest.mark.asyncio
+async def test_qualification_prompt_injection_with_structured_questions(qualification_config):
+    # Definindo perguntas estruturadas (novos objetos)
+    qualification_config.qualification_questions = '[{"text": "Qual seu nome?", "instruction": "Validar se possui pelo menos sobrenome"}, {"text": "Qual seu email?", "instruction": ""}]'
+    
+    message = "Olá"
+    history = []
+    
+    with patch("agent_core.core.get_openai_client") as mock_get_client, \
+         patch("agent_core.core.run_pre_router_ai", new_callable=AsyncMock) as mock_pre_router:
+        
+        mock_pre_router.return_value = {"eh_saudacao": False, "id_agente_alvo": 1, "perguntas_extraidas": "Olá"}
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá! Qual seu nome?"))
+        
+        await process_message(message, history, qualification_config)
+        
+        called_args, called_kwargs = mock_client.chat.completions.create.call_args
+        messages = called_kwargs["messages"]
+        system_msg = next(m for m in messages if m["role"] == "system")
+        
+        assert "QUALIFICAÇÃO DE LEAD" in system_msg["content"]
+        assert "Qual seu nome?" in system_msg["content"]
+        assert "↳ Instrução de validação para esta pergunta: Validar se possui pelo menos sobrenome" in system_msg["content"]
+        assert "Qual seu email?" in system_msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_qualification_prompt_injection_mixed_questions(qualification_config):
+    # Mistura de string simples antiga e dicionário estruturado novo
+    qualification_config.qualification_questions = '["Qual sua empresa?", {"text": "Qual seu cargo?", "instruction": "Exigir cargo de gerência"}]'
+    
+    message = "Olá"
+    history = []
+    
+    with patch("agent_core.core.get_openai_client") as mock_get_client, \
+         patch("agent_core.core.run_pre_router_ai", new_callable=AsyncMock) as mock_pre_router:
+        
+        mock_pre_router.return_value = {"eh_saudacao": False, "id_agente_alvo": 1, "perguntas_extraidas": "Olá"}
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá!"))
+        
+        await process_message(message, history, qualification_config)
+        
+        called_args, called_kwargs = mock_client.chat.completions.create.call_args
+        messages = called_kwargs["messages"]
+        system_msg = next(m for m in messages if m["role"] == "system")
+        
+        assert "QUALIFICAÇÃO DE LEAD" in system_msg["content"]
+        assert "Qual sua empresa?" in system_msg["content"]
+        assert "Qual seu cargo?" in system_msg["content"]
+        assert "↳ Instrução de validação para esta pergunta: Exigir cargo de gerência" in system_msg["content"]
+
 

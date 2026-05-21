@@ -4,100 +4,8 @@ import { api } from '../../../api/client';
 import PromptEditor from '../../PromptEditor/index';
 import TemporalGuideModal from './Modals/TemporalGuideModal';
 import DeleteMessageModal from './Modals/DeleteMessageModal';
+import ChatwootLabelMultiSelect from './Shared/ChatwootLabelMultiSelect';
 
-const ChatwootLabelMultiSelect = ({ selected = [], options = [], onChange, accentColor = '#6366f1', placeholder = 'Buscar etiqueta...' }) => {
-    const [open, setOpen] = useState(false);
-    const [search, setSearch] = useState('');
-    const ref = useRef(null);
-
-    useEffect(() => {
-        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    const safeSelected = Array.isArray(selected) ? selected : [];
-    const safeOptions = options || [];
-
-    const filtered = safeOptions.filter(o => o && o.toLowerCase().includes(search.toLowerCase()));
-    const canAddCustom = search.trim() && !safeOptions.some(o => o.toLowerCase() === search.trim().toLowerCase());
-
-    return (
-        <div ref={ref} style={{ position: 'relative', marginTop: '0.5rem' }}>
-            <div
-                onClick={() => setOpen(o => !o)}
-                style={{ background: '#0f172a', border: `1px solid ${open ? accentColor + '66' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', padding: '0.5rem 0.75rem', cursor: 'pointer', minHeight: '42px', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', transition: 'border 0.15s' }}
-            >
-                {safeSelected.length === 0 ? (
-                    <span style={{ color: '#475569', fontSize: '0.82rem' }}>Nenhuma etiqueta selecionada</span>
-                ) : (
-                    safeSelected.map(lbl => (
-                        <span key={lbl} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: accentColor + '22', border: `1px solid ${accentColor}44`, borderRadius: '20px', padding: '2px 8px 2px 10px', fontSize: '0.75rem', color: accentColor, fontWeight: 600 }}>
-                            {lbl}
-                            <button type="button" onClick={e => { e.stopPropagation(); onChange(safeSelected.filter(x => x !== lbl)); }}
-                                style={{ background: 'none', border: 'none', color: accentColor, cursor: 'pointer', fontSize: '0.8rem', padding: 0, marginLeft: '3px' }}>✕</button>
-                        </span>
-                    ))
-                )}
-                <span style={{ marginLeft: 'auto', color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
-            </div>
-
-            {open && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#0f172a', border: `1px solid ${accentColor}44`, borderRadius: '8px', zIndex: 50, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
-                    <div style={{ padding: '0.4rem' }}>
-                        <input
-                            autoFocus
-                            type="text"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder={placeholder}
-                            onClick={e => e.stopPropagation()}
-                            style={{ width: '100%', boxSizing: 'border-box', background: '#1e293b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '0.45rem 0.7rem', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
-                        />
-                    </div>
-                    <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                        {filtered.length === 0 && !canAddCustom ? (
-                            <div style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#475569' }}>Nenhuma etiqueta encontrada</div>
-                        ) : filtered.map(opt => {
-                            const isSelected = safeSelected.includes(opt);
-                            return (
-                                <div
-                                    key={opt}
-                                    onClick={e => { e.stopPropagation(); onChange(isSelected ? safeSelected.filter(x => x !== opt) : [...safeSelected, opt]); }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0.75rem', cursor: 'pointer', background: isSelected ? accentColor + '18' : 'transparent', transition: 'background 0.1s' }}
-                                >
-                                    <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: `2px solid ${isSelected ? accentColor : '#334155'}`, background: isSelected ? accentColor : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.1s' }}>
-                                        {isSelected && <span style={{ color: '#0f172a', fontSize: '0.65rem', fontWeight: 900 }}>✓</span>}
-                                    </div>
-                                    <span style={{ fontSize: '0.82rem', color: isSelected ? '#fff' : '#94a3b8' }}>{opt}</span>
-                                </div>
-                            );
-                        })}
-                        {canAddCustom && (
-                            <div
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    const newLabel = search.trim();
-                                    onChange([...safeSelected, newLabel]);
-                                    setSearch('');
-                                }}
-                                style={{ padding: '0.6rem 0.75rem', cursor: 'pointer', borderTop: '1px dashed rgba(255,255,255,0.08)', color: accentColor, fontSize: '0.82rem', fontWeight: 600 }}
-                            >
-                                ➕ Adicionar "{search.trim()}"
-                            </div>
-                        )}
-                    </div>
-                    {safeSelected.length > 0 && (
-                        <div style={{ padding: '0.4rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.72rem', color: accentColor }}>{safeSelected.length} selecionada(s)</span>
-                            <button type="button" onClick={e => { e.stopPropagation(); onChange([]); }} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline' }}>Limpar todas</button>
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
 
 const TabPrompts = () => {
     const {
@@ -108,6 +16,7 @@ const TabPrompts = () => {
         initialIgnoreMessage, setInitialIgnoreMessage,
         qualificationQuestions, setQualificationQuestions,
         qualificationLabels, setQualificationLabels,
+        qualificationCriteria, setQualificationCriteria,
         dateAwareness, setDateAwareness,
         simulatedTime, setSimulatedTime,
         toolsList, selectedTools
@@ -116,6 +25,10 @@ const TabPrompts = () => {
     const [activeSubTab, setActiveSubTab] = useState('initial');
     const [showTemporalGuide, setShowTemporalGuide] = useState(false);
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, index: null, text: '' });
+    const [editingIndex, setEditingIndex] = useState(null);
+    const [editingText, setEditingText] = useState('');
+    const [editingInstruction, setEditingInstruction] = useState('');
+    const [deleteQModal, setDeleteQModal] = useState({ isOpen: false, index: null, text: '' });
 
     const isLeadQualificadoActive = toolsList.some(
         t => selectedTools.includes(t.id) && t.name === 'lead_qualificado'
@@ -162,13 +75,20 @@ const TabPrompts = () => {
         const input = document.getElementById('new-qualification-question');
         const val = input.value.trim();
         if (val) {
-            setQualificationQuestions([...qualificationQuestions, val]);
+            setQualificationQuestions([...qualificationQuestions, { text: val, instruction: '' }]);
             input.value = '';
         }
     };
 
-    const handleRemoveQualificationQuestion = (index) => {
-        setQualificationQuestions(qualificationQuestions.filter((_, i) => i !== index));
+    const handleRemoveQualificationQuestionClick = (index, text) => {
+        setDeleteQModal({ isOpen: true, index, text });
+    };
+
+    const confirmDeleteQualificationQuestion = () => {
+        if (deleteQModal.index !== null) {
+            setQualificationQuestions(qualificationQuestions.filter((_, i) => i !== deleteQModal.index));
+            setDeleteQModal({ isOpen: false, index: null, text: '' });
+        }
     };
 
     const handleMoveQuestion = (index, direction) => {
@@ -177,6 +97,36 @@ const TabPrompts = () => {
         if (target < 0 || target >= next.length) return;
         [next[index], next[target]] = [next[target], next[index]];
         setQualificationQuestions(next);
+    };
+
+    const handleStartEdit = (index, q) => {
+        setEditingIndex(index);
+        if (typeof q === 'string') {
+            setEditingText(q);
+            setEditingInstruction('');
+        } else {
+            setEditingText(q.text || '');
+            setEditingInstruction(q.instruction || '');
+        }
+    };
+
+    const handleSaveEdit = (index) => {
+        if (!editingText.trim()) return;
+        const next = [...qualificationQuestions];
+        next[index] = { 
+            text: editingText.trim(), 
+            instruction: editingInstruction.trim() 
+        };
+        setQualificationQuestions(next);
+        setEditingIndex(null);
+        setEditingText('');
+        setEditingInstruction('');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingIndex(null);
+        setEditingText('');
+        setEditingInstruction('');
     };
 
     const handleAddIgnoreMsg = () => {
@@ -211,6 +161,13 @@ const TabPrompts = () => {
                     messageText={deleteModal.text}
                     onConfirm={confirmDelete}
                     onCancel={() => setDeleteModal({ isOpen: false, index: null, text: '' })}
+                />
+                <DeleteMessageModal 
+                    isOpen={deleteQModal.isOpen} 
+                    messageText={deleteQModal.text}
+                    descriptionText="Você tem certeza que deseja apagar esta pergunta qualificatória?"
+                    onConfirm={confirmDeleteQualificationQuestion}
+                    onCancel={() => setDeleteQModal({ isOpen: false, index: null, text: '' })}
                 />
 
                 <div className="temporal-config-box">
@@ -331,24 +288,141 @@ const TabPrompts = () => {
                             {qualificationQuestions.length === 0 ? (
                                 <div className="empty-state">Nenhuma pergunta cadastrada. Adicione a primeira acima.</div>
                             ) : (
-                                qualificationQuestions.map((q, idx) => (
-                                    <div key={idx} className="ignore-msg-item" style={{ gap: '0.5rem' }}>
-                                        <span style={{
-                                            minWidth: '24px', height: '24px', borderRadius: '50%',
-                                            background: 'rgba(99,102,241,0.3)', color: '#a5b4fc',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '0.75rem', fontWeight: 700, flexShrink: 0
-                                        }}>{idx + 1}</span>
-                                        <div className="msg-text">{q}</div>
-                                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                            <button type="button" onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0}
-                                                className="delete-btn" style={{ opacity: idx === 0 ? 0.3 : 1, fontSize: '0.75rem' }}>▲</button>
-                                            <button type="button" onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === qualificationQuestions.length - 1}
-                                                className="delete-btn" style={{ opacity: idx === qualificationQuestions.length - 1 ? 0.3 : 1, fontSize: '0.75rem' }}>▼</button>
-                                            <button type="button" onClick={() => handleRemoveQualificationQuestion(idx)} className="delete-btn">🗑️</button>
+                                qualificationQuestions.map((q, idx) => {
+                                    const qText = typeof q === 'string' ? q : (q.text || '');
+                                    const qInstruction = typeof q === 'string' ? '' : (q.instruction || '');
+                                    const isEditing = editingIndex === idx;
+
+                                    return (
+                                        <div key={idx} className="ignore-msg-item" style={{ 
+                                            flexDirection: 'column', 
+                                            alignItems: 'stretch', 
+                                            gap: '0.5rem',
+                                            padding: '0.75rem',
+                                            background: isEditing ? 'rgba(99,102,241,0.05)' : 'rgba(255,255,255,0.02)',
+                                            border: isEditing ? '1px solid rgba(99,102,241,0.2)' : '1px solid rgba(255,255,255,0.05)',
+                                            borderRadius: '8px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                                                <span style={{
+                                                    minWidth: '24px', height: '24px', borderRadius: '50%',
+                                                    background: 'rgba(99,102,241,0.3)', color: '#a5b4fc',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: '0.75rem', fontWeight: 700, flexShrink: 0
+                                                }}>{idx + 1}</span>
+                                                
+                                                {isEditing ? (
+                                                    <input 
+                                                        type="text" 
+                                                        value={editingText}
+                                                        onChange={(e) => setEditingText(e.target.value)}
+                                                        style={{ 
+                                                            flex: 1, 
+                                                            background: '#0f172a', 
+                                                            border: '1px solid rgba(255,255,255,0.1)', 
+                                                            borderRadius: '6px', 
+                                                            padding: '0.4rem 0.6rem', 
+                                                            color: '#fff', 
+                                                            fontSize: '0.85rem' 
+                                                        }}
+                                                        autoFocus
+                                                        placeholder="Qual a pergunta qualificatória?"
+                                                        onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(idx)}
+                                                    />
+                                                ) : (
+                                                    <div 
+                                                        className="msg-text" 
+                                                        style={{ flex: 1, cursor: 'pointer', userSelect: 'none' }}
+                                                        onClick={() => handleStartEdit(idx, q)}
+                                                        title="Clique para editar pergunta e instrução"
+                                                    >
+                                                        {qText}
+                                                    </div>
+                                                )}
+
+                                                <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                                    {isEditing ? (
+                                                        <>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => handleSaveEdit(idx)} 
+                                                                className="delete-btn" 
+                                                                style={{ color: '#10b981', fontSize: '0.9rem', fontWeight: 'bold' }}
+                                                                title="Salvar alteração"
+                                                            >
+                                                                ✓
+                                                            </button>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={handleCancelEdit} 
+                                                                className="delete-btn" 
+                                                                style={{ color: '#ef4444', fontSize: '0.9rem', fontWeight: 'bold' }}
+                                                                title="Cancelar"
+                                                            >
+                                                                ✗
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <button type="button" onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0}
+                                                                className="delete-btn" style={{ opacity: idx === 0 ? 0.3 : 1, fontSize: '0.75rem' }}>▲</button>
+                                                            <button type="button" onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === qualificationQuestions.length - 1}
+                                                                className="delete-btn" style={{ opacity: idx === qualificationQuestions.length - 1 ? 0.3 : 1, fontSize: '0.75rem' }}>▼</button>
+                                                            <button type="button" onClick={() => handleRemoveQualificationQuestionClick(idx, qText)} className="delete-btn">🗑️</button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Accordion de instrução opcional */}
+                                            {isEditing && (
+                                                <div style={{ 
+                                                    marginTop: '0.25rem', 
+                                                    paddingLeft: '2rem', 
+                                                    display: 'flex', 
+                                                    flexDirection: 'column', 
+                                                    gap: '0.3rem',
+                                                    animation: 'fadeIn 0.2s ease'
+                                                }}>
+                                                    <label style={{ fontSize: '0.72rem', color: '#a5b4fc', fontWeight: '600' }}>
+                                                        Instrução para o Agente (Opcional):
+                                                    </label>
+                                                    <textarea
+                                                        value={editingInstruction}
+                                                        onChange={(e) => setEditingInstruction(e.target.value)}
+                                                        placeholder="Ex: Aceite apenas se o usuário digitar um e-mail válido contendo @. Se não, peça para digitar novamente."
+                                                        style={{
+                                                            background: '#0f172a',
+                                                            border: '1px solid rgba(255,255,255,0.08)',
+                                                            borderRadius: '6px',
+                                                            padding: '0.4rem 0.6rem',
+                                                            color: '#cbd5e1',
+                                                            fontSize: '0.78rem',
+                                                            minHeight: '50px',
+                                                            resize: 'vertical'
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {/* Exibe a instrução atual se existir e não estiver editando */}
+                                            {!isEditing && qInstruction && (
+                                                <div style={{ 
+                                                    paddingLeft: '2rem', 
+                                                    fontSize: '0.78rem', 
+                                                    color: '#64748b',
+                                                    fontStyle: 'italic',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    marginTop: '-0.2rem'
+                                                }}>
+                                                    <span style={{ color: '#818cf8', fontWeight: 'bold' }}>↳ Instrução:</span> {qInstruction}
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             )}
                         </div>
 
@@ -370,6 +444,23 @@ const TabPrompts = () => {
                                     accentColor="#6366f1"
                                 />
                             )}
+                        </div>
+
+                        <div className="form-section" style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem' }}>
+                            <span className="section-label">🔥 Diretrizes e Critérios do Lead Scoring</span>
+                            <p className="subtab-tip" style={{ marginBottom: '1rem' }}>
+                                Defina as regras de negócio e critérios que a IA utilizará para pontuar o lead (de 0 a 13) e classificá-lo em Quente 🔥, Morno ⚡ ou Frio ❄️ com base nas respostas dadas.
+                            </p>
+                            <textarea
+                                placeholder="Ex: Avalie o lead com base nos seguintes critérios:
+- Se ele tem orçamento maior que R$ 5.000 para investir em mentoria, atribua +5 pontos.
+- Se ele quer começar imediatamente, atribua +4 pontos.
+- Se ele já tentou outras soluções sem sucesso, atribua +4 pontos.
+Classifique como Quente 🔥 se a pontuação for >= 9, Morno ⚡ se for de 5 a 8, e Frio ❄️ se for < 5."
+                                value={qualificationCriteria || ''}
+                                onChange={(e) => setQualificationCriteria(e.target.value)}
+                                style={{ minHeight: '180px' }}
+                            />
                         </div>
                     </div>
                 )}

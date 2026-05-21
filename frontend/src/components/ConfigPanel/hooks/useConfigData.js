@@ -15,7 +15,7 @@ export const useConfigData = () => {
         setRagRetrievalCount, setRagTranslationEnabled, setRagMultiQueryEnabled,
         setRagRerankEnabled, setRagAgenticEvalEnabled, setRagParentExpansionEnabled,
         setInboxCaptureEnabled, setInitialMessage, setInitialQuestionMessage,
-        setInitialIgnoreMessage, setQualificationQuestions, setQualificationLabels, setSecurityBlacklist, setSecurityForbidden,
+        setInitialIgnoreMessage, setQualificationQuestions, setQualificationLabels, setQualificationCriteria, setSecurityBlacklist, setSecurityForbidden,
         setSecurityDiscount, setSecurityComplexity, setSecurityPii,
         setSecurityValidatorIa, setSecurityBotProtection, setSecurityMaxMessages,
         setSecuritySemanticThreshold, setSecurityLoopCount, setRouterEnabled,
@@ -138,6 +138,8 @@ export const useConfigData = () => {
                                 else if (typeof qlData === 'string' && qlData.trim()) setQualificationLabels([qlData]);
                             }
                         } catch (e) { console.error("Error processing qualification labels", e); }
+                        
+                        setQualificationCriteria(configData.qualification_criteria || '');
 
                         setSecurityBlacklist(configData.security_competitor_blacklist || '');
                         setSecurityForbidden(configData.security_forbidden_topics || '');
@@ -176,6 +178,7 @@ export const useConfigData = () => {
                 } else if (isNew) {
                     setSelectedModel("gpt-4o-mini");
                     setQualificationLabels([]);
+                    setQualificationCriteria('');
                 }
             } catch (err) {
                 console.error("Global load error:", err);

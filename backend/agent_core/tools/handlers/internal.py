@@ -60,34 +60,18 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
         
         logger.info(f"Lead qualificado identificado para agente {agent_id}. Respostas: {json.dumps(respostas, ensure_ascii=False)}")
         
-        # 2. Salvar no banco de dados na coluna respostas_qualificacao do lead correspondente
         leads_table = context_variables.get("leads_table")
         phone = context_variables.get("contact_phone")
         
-        if db and leads_table and phone:
-            from sqlalchemy import text
-            respostas_str = json.dumps(respostas, ensure_ascii=False)
-            update_query = f"""
-                UPDATE {leads_table} SET 
-                    respostas_qualificacao = :respostas,
-                    labels = CASE 
-                        WHEN labels IS NULL OR labels = '' THEN 'qualificado'
-                        WHEN labels NOT LIKE '%qualificado%' THEN labels || ',qualificado'
-                        ELSE labels
-                    END,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE telefone = :phone
-            """
-            await db.execute(text(update_query), {"respostas": respostas_str, "phone": phone})
-            await db.commit()
-            logger.info(f"Respostas de qualificação salvas na tabela {leads_table} para o telefone {phone}")
-            
-        # 3. Adicionar as etiquetas do Chatwoot
+        agent = None
+        wh = None
+        to_add = []
+        
         if db:
+            # Buscar o agente para obter as etiquetas configuradas
             agent_res = await db.execute(select(AgentConfigModel).where(AgentConfigModel.id == agent_id))
             agent = agent_res.scalars().first()
             
-            to_add = []
             if agent and agent.qualification_labels:
                 try:
                     to_add = json.loads(agent.qualification_labels)
@@ -102,7 +86,7 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
             if "qualificado" not in to_add:
                 to_add.append("qualificado")
                 
-            # Buscar webhook para credenciais
+            # Buscar webhook para credenciais e ID da config
             wh_res = await db.execute(
                 select(WebhookConfigModel)
                 .where(WebhookConfigModel.agent_id == agent_id)
@@ -116,7 +100,93 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                     .limit(1)
                 )
                 wh = wh_sec_res.scalars().first()
+        
+        # 2. Salvar no banco de dados na coluna respostas_qualificacao do lead correspondente
+        if db and leads_table and phone:
+            from sqlalchemy import text
+            from lead_scoring_service import calculate_lead_score
+            
+            # Calcular o score e a classificação usando a IA
+            score_data = await calculate_lead_score(db, agent_id, respostas)
+            lead_score = score_data.get("lead_score", 0)
+            lead_classification = score_data.get("lead_classification", "Frio ❄️")
+            lead_justification = score_data.get("lead_justification", "")
+            
+            respostas_str = json.dumps(respostas, ensure_ascii=False)
+            
+            # Tentar fazer o UPDATE primeiro
+            update_query = f"""
+                UPDATE {leads_table} SET 
+                    respostas_qualificacao = :respostas,
+                    lead_score = :lead_score,
+                    lead_classification = :lead_classification,
+                    lead_justification = :lead_justification,
+                    labels = CASE 
+                        WHEN labels IS NULL OR labels = '' THEN :initial_labels
+                        WHEN labels NOT LIKE '%qualificado%' THEN labels || ',' || :initial_labels
+                        ELSE labels
+                    END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE telefone = :phone
+            """
+            initial_labels = ",".join(to_add)
+            result = await db.execute(text(update_query), {
+                "respostas": respostas_str,
+                "phone": phone,
+                "initial_labels": initial_labels,
+                "lead_score": lead_score,
+                "lead_classification": lead_classification,
+                "lead_justification": lead_justification
+            })
+            
+            # Se nenhuma linha foi atualizada (rowcount é 0 ou None), criamos o lead
+            if result is None or getattr(result, "rowcount", 0) == 0:
+                logger.info(f"Lead com telefone {phone} não encontrado na tabela {leads_table}. Criando novo lead...")
                 
+                # Campos extras
+                conta_id = context_variables.get("account_id") or context_variables.get("conta_id")
+                inbox_id = context_variables.get("inbox_id")
+                inbox_nome = context_variables.get("inbox_nome")
+                conversa_id = context_variables.get("conversation_id") or context_variables.get("conversa_id")
+                mensagem_id = context_variables.get("mensagem_id")
+                contato_id = context_variables.get("contact_id") or context_variables.get("contato_id")
+                contato_nome = context_variables.get("contact_name") or context_variables.get("contato_nome")
+                
+                insert_query = f"""
+                    INSERT INTO {leads_table} (
+                        webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id,
+                        mensagem_id, contato_id, telefone, labels, contato_nome,
+                        respostas_qualificacao, lead_score, lead_classification, lead_justification,
+                        pode_enviar_mensagem, updated_at, created_at
+                    ) VALUES (
+                        :webhook_config_id, :conta_id, :inbox_id, :inbox_nome, :conversa_id,
+                        :mensagem_id, :contato_id, :telefone, :labels, :contato_nome,
+                        :respostas, :lead_score, :lead_classification, :lead_justification,
+                        TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                """
+                await db.execute(text(insert_query), {
+                    "webhook_config_id": wh.id if wh else None,
+                    "conta_id": str(conta_id) if conta_id is not None else None,
+                    "inbox_id": str(inbox_id) if inbox_id is not None else None,
+                    "inbox_nome": str(inbox_nome) if inbox_nome is not None else None,
+                    "conversa_id": str(conversa_id) if conversa_id is not None else None,
+                    "mensagem_id": str(mensagem_id) if mensagem_id is not None else None,
+                    "contato_id": str(contato_id) if contato_id is not None else None,
+                    "telefone": phone,
+                    "labels": initial_labels,
+                    "contato_nome": contato_nome,
+                    "respostas": respostas_str,
+                    "lead_score": lead_score,
+                    "lead_classification": lead_classification,
+                    "lead_justification": lead_justification
+                })
+                
+            await db.commit()
+            logger.info(f"Respostas de qualificação e Lead Score processados com sucesso na tabela {leads_table} para o telefone {phone}")
+            
+        # 3. Adicionar as etiquetas do Chatwoot
+        if db:
             account_id = context_variables.get("account_id")
             conversation_id = context_variables.get("conversation_id")
             

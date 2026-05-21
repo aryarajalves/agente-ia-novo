@@ -172,6 +172,7 @@ class AgentConfigModel(Base):
     model_settings = Column(Text, default="{}") # JSON store for per-slot configurations (temperature, top_p, etc)
     qualification_questions = Column(Text, nullable=True) # JSON array de perguntas para qualificação de lead
     qualification_labels = Column(Text, nullable=True) # JSON array de etiquetas a serem aplicadas no Chatwoot
+    qualification_criteria = Column(Text, nullable=True) # Diretrizes e critérios do lead scoring
 
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -334,6 +335,7 @@ class WebhookConfigModel(Base):
     allowed_contacts = Column(Text, nullable=True)  # JSON array of phone numbers; empty = all allowed
     chatwoot_url = Column(String, nullable=True)        # Ex: https://app.chatwoot.com
     chatwoot_api_token = Column(String, nullable=True)  # User access token
+    chatwoot_inbox_id = Column(String, nullable=True)   # ID do inbox específico para filtrar
     labels_on_message = Column(Text, nullable=True)     # JSON array: etiquetas adicionadas em toda msg
     delete_keywords = Column(Text, nullable=True)       # JSON array: palavras que disparam deleção
     delete_message = Column(Text, nullable=True)        # Mensagem enviada antes de deletar o contato

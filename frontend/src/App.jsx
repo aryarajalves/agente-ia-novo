@@ -18,6 +18,7 @@ import SupportDashboard from './components/SupportDashboard/index';
 import PublicSupportView from './components/PublicSupportView';
 import PublicQuestionsView from './components/PublicQuestionsView';
 import WebhookManager from './components/WebhookManager/index';
+import LeadScoring from './components/LeadScoring/index';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('admin_token'));
@@ -67,6 +68,7 @@ function App() {
                         <Route path="/tools" element={<ToolsManager standalone={true} />} />
                         <Route path="/financeiro" element={<Financeiro />} />
                         <Route path="/integrations" element={<IntegrationsPanel />} />
+                        <Route path="/lead-scoring" element={<LeadScoring />} />
                       </>
                     )}
 

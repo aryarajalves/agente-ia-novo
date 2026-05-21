@@ -14,20 +14,21 @@ const TabWhitelabel = () => {
         showWhitelabelGuide, setShowWhitelabelGuide
     } = useConfig();
 
+
     const getSnippet = () => {
-        return `<script 
-  src="${API_URL}/static/widget.js" 
-  data-agent-id="${id}"
-  data-title="${uiChatTitle}"
-  data-primary-color="${uiPrimaryColor}"
-  data-header-color="${uiHeaderColor}"
-  data-welcome="${initialMessage || uiWelcomeMessage}"
-></script>`;
+        return `<script \n  src="${API_URL}/static/widget.js" \n  data-agent-id="${id}"\n  data-title="${uiChatTitle}"\n  data-primary-color="${uiPrimaryColor}"\n  data-header-color="${uiHeaderColor}"\n  data-welcome="${initialMessage || uiWelcomeMessage}"\n></script>`;
     };
 
     const handleCopySnippet = () => {
-        navigator.clipboard.writeText(getSnippet());
-        alert('Código copiado para a área de transferência!');
+        navigator.clipboard.writeText(getSnippet()).then(() => {
+            window.dispatchEvent(new CustomEvent('app:toast', {
+                detail: { message: '✅ Código copiado para a área de transferência!', type: 'success' }
+            }));
+        }).catch(() => {
+            window.dispatchEvent(new CustomEvent('app:toast', {
+                detail: { message: '❌ Erro ao copiar o código.', type: 'error' }
+            }));
+        });
     };
 
     return (
@@ -44,17 +45,43 @@ const TabWhitelabel = () => {
                 <span className="section-label">Personalização do Chat Widget</span>
                 <div className="color-grid">
                     <div className="color-item">
-                        <label>Cor Primária (Botão e Balões)</label>
+                        <label className="color-field-label">Cor Primária (Botão e Balões)</label>
                         <div className="color-input-wrapper">
-                            <input type="color" value={uiPrimaryColor} onChange={(e) => setUiPrimaryColor(e.target.value)} />
-                            <input type="text" value={uiPrimaryColor} onChange={(e) => setUiPrimaryColor(e.target.value)} />
+                            <input
+                                type="color"
+                                className="color-swatch"
+                                value={uiPrimaryColor}
+                                onChange={(e) => setUiPrimaryColor(e.target.value)}
+                                title="Escolha a cor primária"
+                            />
+                            <input
+                                type="text"
+                                className="color-hex-input"
+                                value={uiPrimaryColor}
+                                onChange={(e) => setUiPrimaryColor(e.target.value)}
+                                placeholder="#6366f1"
+                                maxLength={7}
+                            />
                         </div>
                     </div>
                     <div className="color-item">
-                        <label>Cor do Cabeçalho</label>
+                        <label className="color-field-label">Cor do Cabeçalho</label>
                         <div className="color-input-wrapper">
-                            <input type="color" value={uiHeaderColor} onChange={(e) => setUiHeaderColor(e.target.value)} />
-                            <input type="text" value={uiHeaderColor} onChange={(e) => setUiHeaderColor(e.target.value)} />
+                            <input
+                                type="color"
+                                className="color-swatch"
+                                value={uiHeaderColor}
+                                onChange={(e) => setUiHeaderColor(e.target.value)}
+                                title="Escolha a cor do cabeçalho"
+                            />
+                            <input
+                                type="text"
+                                className="color-hex-input"
+                                value={uiHeaderColor}
+                                onChange={(e) => setUiHeaderColor(e.target.value)}
+                                placeholder="#0f172a"
+                                maxLength={7}
+                            />
                         </div>
                     </div>
                 </div>
@@ -73,8 +100,16 @@ const TabWhitelabel = () => {
             <div className="form-section">
                 <span className="section-label">Código de Instalação</span>
                 <div className="snippet-box">
-                    <pre>{getSnippet()}</pre>
-                    <button type="button" onClick={handleCopySnippet} className="copy-btn">📋 Copiar Código</button>
+                    <pre className="snippet-code">{getSnippet()}</pre>
+                    <button
+                        type="button"
+                        onClick={handleCopySnippet}
+                        className="copy-btn-floating"
+                        title="Copiar código de instalação"
+                        id="whitelabel-copy-btn"
+                    >
+                        📋 Copiar
+                    </button>
                 </div>
                 <p className="snippet-tip">Copie e cole este código antes da tag <code>&lt;/body&gt;</code> do seu site.</p>
             </div>

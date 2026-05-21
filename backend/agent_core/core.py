@@ -136,7 +136,18 @@ async def process_message(
         try:
             qq_list = json.loads(raw_qq) if isinstance(raw_qq, str) else raw_qq
             if isinstance(qq_list, list) and qq_list:
-                qq_formatted = "\n".join(f"{i+1}. {q}" for i, q in enumerate(qq_list))
+                qq_lines = []
+                for i, q in enumerate(qq_list):
+                    if isinstance(q, dict):
+                        text = q.get("text", "")
+                        instruction = q.get("instruction", "")
+                        line = f"{i+1}. {text}"
+                        if instruction:
+                            line += f"\n   ↳ Instrução de validação para esta pergunta: {instruction}"
+                    else:
+                        line = f"{i+1}. {q}"
+                    qq_lines.append(line)
+                qq_formatted = "\n".join(qq_lines)
                 system_prompt += (
                     "\n\n🎯 **QUALIFICAÇÃO DE LEAD — PROTOCOLO OBRIGATÓRIO:**\n"
                     "Você DEVE coletar as seguintes informações em sequência com o usuário:\n"
@@ -149,8 +160,33 @@ async def process_message(
                     "- Se o usuário tentar desviar do assunto sem fazer perguntas, redirecione de forma simpática e envie a pergunta de qualificação pendente.\n"
                     "- Após chamar a ferramenta `lead_qualificado` e receber o retorno de sucesso, sua resposta final deve ser estritamente de conclusão e agradecimento simpático, sem repetir respostas ou detalhes sobre dúvidas que você já respondeu ou explicou em turnos anteriores do histórico."
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Erro ao injetar perguntas de qualificação no prompt: {e}")
+
+    # --- INJEÇÃO DE DIRETRIZES DE SEGURANÇA E COMPORTAMENTO (PROATIVA) ---
+    security_rules = ""
+    lang_complexity = getattr(config, 'security_language_complexity', 'standard') or 'standard'
+    if lang_complexity == 'simple':
+        security_rules += "\n- **Estilo de Linguagem Simples (OBRIGATÓRIO):** Use respostas curtas, linguagem muito simples, clara e sem jargões técnicos ou comerciais complexos."
+    elif lang_complexity == 'technical':
+        security_rules += "\n- **Estilo de Linguagem Técnico (OBRIGATÓRIO):** Use respostas precisas, formais, completas e termos técnicos adequados."
+    elif lang_complexity == 'standard':
+        security_rules += "\n- **Estilo de Linguagem Padrão (OBRIGATÓRIO):** Escreva de forma natural, coloquial, amigável e fluida."
+
+    forbidden_topics = getattr(config, 'security_forbidden_topics', None)
+    if forbidden_topics:
+        security_rules += f"\n- **TÓPICOS PROIBIDOS (NÃO FALE SOBRE ISSO):** Você está expressamente proibido de discutir, responder ou comentar sobre os seguintes temas: {forbidden_topics}. Caso o usuário pergunte algo sobre esses temas, desvie educadamente ou diga que não pode ajudar com esse assunto específico."
+
+    competitor_blacklist = getattr(config, 'security_competitor_blacklist', None)
+    if competitor_blacklist:
+        security_rules += f"\n- **CONCORRENTES PROIBIDOS (BLACKLIST):** É estritamente proibido citar, comparar ou validar os seguintes concorrentes: {competitor_blacklist}. Se o usuário mencionar algum deles, ignore a menção, mude de assunto ou foque exclusivamente nos nossos diferenciais, sem pronunciar ou confirmar o nome do concorrente."
+
+    discount_policy = getattr(config, 'security_discount_policy', None)
+    if discount_policy:
+        security_rules += f"\n- **POLÍTICA DE DESCONTOS (REGRAS RÍGIDAS DE PRECIFICAÇÃO):** Você deve seguir rigorosamente a seguinte regra para descontos ou condições especiais: {discount_policy}. NUNCA ofereça, confirme ou invente qualquer desconto ou condição que viole ou não esteja prevista nesta política."
+
+    if security_rules:
+        system_prompt += "\n\n### DIRETRIZES DE SEGURANÇA E ESTILO (SEGUIR À RISCA):\n" + security_rules
 
     messages = [{"role": "system", "content": system_prompt}]
 
@@ -389,6 +425,13 @@ async def process_message(
                         tool_result = await handle_google_calendar(db, context_variables, tool_args)
                     elif tool_name == "lead_qualificado":
                         tool_result = await handle_lead_qualified(db, context_variables, json.dumps(tool_args), config.id)
+                    elif tool_name == "transferir_robo":
+                        tool_result = await handle_chatwoot_handoff(db, context_variables, target_tool, False, tool_args, history, config.id)
+                        tool_calls_log.append({
+                            "name": "chatwoot:sincronizacao_etiquetas",
+                            "args": json.dumps({"is_human": False}, ensure_ascii=False),
+                            "output": tool_result
+                        })
                     elif target_tool:
                         # Webhooks externos
                         try:
@@ -442,8 +485,23 @@ async def process_message(
     # Remove tags residuais que a IA possa ter 'vazado' (Ex: {ferramenta}{...})
     last_response = re.sub(r'\{[a-zA-Z0-9_-]+\}\s*\{.*?\}', '', last_response).strip()
     last_response = re.sub(r'\{[a-zA-Z0-9_-]+\}', '', last_response).strip()
-    
     final_content = verify_output_safety(last_response, config)
+
+    # Auditoria por IA (Double-Check)
+    if getattr(config, 'security_validator_ia', False):
+        try:
+            if on_step:
+                on_step("🛡️ Iniciando Auditoria por IA", "Verificando se a resposta gerada viola as diretrizes de segurança.")
+            audit = await validate_response_ai(final_content, config)
+            if not audit.get("is_safe", True):
+                if on_step:
+                    on_step("🚨 Bloqueio por Segurança", f"Resposta bloqueada. Motivo: {audit.get('reason')}")
+                final_content = "Desculpe, não posso ajudar com este tema específico. Como posso te ajudar com outro assunto?"
+            else:
+                if on_step:
+                    on_step("🛡️ Auditoria por IA Concluída", "A resposta gerada foi considerada segura.")
+        except Exception as e_audit:
+            logger.error(f"Erro ao processar auditoria de IA no core: {e_audit}")
 
     # 7.1 Mensagem de Primeira Pergunta (Append)
     # Se for a primeira mensagem da história e houver uma mensagem de pergunta configurada,

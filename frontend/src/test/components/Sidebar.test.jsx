@@ -73,6 +73,7 @@ describe('Sidebar Component', () => {
             expect(screen.getByText('Bases de Conhecimento')).toBeInTheDocument();
             expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
             expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
+            expect(screen.getByText('Lead Scoring')).toBeInTheDocument();
             expect(screen.getByText('Financeiro')).toBeInTheDocument();
             expect(screen.getByText('Integrações')).toBeInTheDocument();
             expect(screen.getByText('Gestão de Usuários')).toBeInTheDocument();
@@ -87,6 +88,7 @@ describe('Sidebar Component', () => {
             expect(screen.getByText('Bases de Conhecimento')).toBeInTheDocument();
             expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
             expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
+            expect(screen.getByText('Lead Scoring')).toBeInTheDocument();
             expect(screen.getByText('Financeiro')).toBeInTheDocument();
             expect(screen.getByText('Integrações')).toBeInTheDocument();
             expect(screen.queryByText('Gestão de Usuários')).not.toBeInTheDocument();
@@ -101,6 +103,7 @@ describe('Sidebar Component', () => {
             expect(screen.queryByText('Bases de Conhecimento')).not.toBeInTheDocument();
             expect(screen.queryByText('Suporte Humano')).not.toBeInTheDocument();
             expect(screen.queryByText('Inbox de Dúvidas')).not.toBeInTheDocument();
+            expect(screen.queryByText('Lead Scoring')).not.toBeInTheDocument();
             expect(screen.queryByText('Financeiro')).not.toBeInTheDocument();
             expect(screen.queryByText('Integrações')).not.toBeInTheDocument();
             expect(screen.queryByText('Gestão de Usuários')).not.toBeInTheDocument();

@@ -68,6 +68,7 @@ async def db_engine():
         # Ativar a extensão pgvector antes de tentar criar as tabelas
         if "postgresql" in DATABASE_URL:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield test_engine
     await test_engine.dispose()

@@ -13,5 +13,8 @@ Este arquivo registra todas as alterações manuais de schema (ALTER TABLE) real
 | 2026-05-17 | webhook_configs | delete_labels | add_delete_labels_column.py | Adição de campo para substituir as etiquetas do Chatwoot no reset/auto-deleção do contato. |
 | 2026-05-17 | users | company_name, company_logo, company_logo_size | add_whitelabel_columns.py | Colunas de customização para a funcionalidade de White-label (marca branca). |
 | 2026-05-19 | agent_config, leads | qualification_labels, respostas_qualificacao | add_qualification_responses_column.py | Adição de colunas para suporte a qualificação de leads e armazenamento de respostas. |
+| 2026-05-19 | webhook_configs | chatwoot_inbox_id | add_chatwoot_inbox_id_column.py | Adição de suporte para filtrar webhooks do Chatwoot por ID do Inbox. |
+| 2026-05-21 | agent_config, leads | qualification_criteria, lead_score, lead_classification, lead_justification | add_lead_score_columns.py | Colunas para suporte a Lead Scoring (critérios, pontuação, classificação e justificativa). |
+
 
 

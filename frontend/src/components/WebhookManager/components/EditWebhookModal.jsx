@@ -9,7 +9,7 @@ import {
 } from './Common/ContactSections';
 import MemorySection from './Common/MemorySection';
 import DeleteKeywordsSection from './Common/DeleteKeywordsSection';
-import AgentMultiSelect from '../../AgentMultiSelect.jsx';
+import AgentTabSection from './Common/AgentTabSection';
 import { normalizeContact } from '../utils/helpers';
 
 const EditWebhookModal = ({
@@ -113,7 +113,6 @@ const EditWebhookModal = ({
                         <span className="header-icon">{isCreateMode ? '✨' : '✏️'}</span>
                         <span className="header-title">{isCreateMode ? 'Nova Integração' : 'Editar Integração'}</span>
                     </div>
-                    <button onClick={onClose} className="modal-close-btn">✕</button>
                 </div>
 
                 <div className="modal-body-wrapper">
@@ -272,38 +271,12 @@ const EditWebhookModal = ({
                             )}
 
                             {editTab === 'agente' && (
-                                <div className="tab-pane animate-fade-in">
-                                    <div className="form-group-premium">
-                                        <label className="premium-label">🤖 Agente Principal *</label>
-                                        <select value={safeEditForm.agent_id} onChange={e => setEditForm({ ...safeEditForm, agent_id: e.target.value })} className="premium-input">
-                                            <option value="">Selecione um agente...</option>
-                                            {agentsList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {safeEditForm.agent_id && (
-                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '16px', border: '1px solid var(--wh-border)', margin: '1rem 0' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', alignItems: 'center' }}>
-                                                <span className="premium-label" style={{ margin: 0 }}>Contexto do Agente</span>
-                                                <button type="button" onClick={() => handleGenerateDescription(safeEditForm.agent_id)} className="btn-action-edit" style={{ padding: '0.3rem 0.75rem', fontSize: '0.7rem' }}>✨ Sincronizar IA</button>
-                                            </div>
-                                            <p style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
-                                                {agentsList.find(a => String(a.id) === String(safeEditForm.agent_id))?.description || 'Sem descrição.'}
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    <div className="form-group-premium" style={{ marginTop: '1rem' }}>
-                                        <label className="premium-label">👥 Agentes Secundários</label>
-                                        <AgentMultiSelect
-                                            selected={safeEditForm.secondary_agent_ids || []}
-                                            options={agentsList}
-                                            onChange={vals => setEditForm({ ...safeEditForm, secondary_agent_ids: vals })}
-                                            accentColor="#8b5cf6"
-                                            placeholder="Adicionar agentes..."
-                                        />
-                                    </div>
-                                </div>
+                                <AgentTabSection
+                                    safeEditForm={safeEditForm}
+                                    setEditForm={setEditForm}
+                                    agentsList={agentsList}
+                                    handleGenerateDescription={handleGenerateDescription}
+                                />
                             )}
 
                             {editTab === 'filtros' && (
@@ -369,6 +342,27 @@ const EditWebhookModal = ({
 
                             {editTab === 'chatwoot' && (
                                 <div className="tab-pane animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                    {/* Configuração do ID do Inbox */}
+                                    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#3b82f622', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>📥</div>
+                                            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#fff' }}>Filtro de Inbox</h4>
+                                        </div>
+                                        <div className="form-group-premium">
+                                            <label className="premium-label">ID do Inbox Chatwoot</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Ex: 4 (Deixe vazio para processar todos)" 
+                                                value={safeEditForm.chatwoot_inbox_id || ''} 
+                                                onChange={e => setEditForm({ ...safeEditForm, chatwoot_inbox_id: e.target.value })} 
+                                                className="premium-input" 
+                                            />
+                                            <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                Processa apenas mensagens recebidas deste Inbox específico. Útil para separar inboxes no mesmo Chatwoot.
+                                            </p>
+                                        </div>
+                                    </div>
+
                                     <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
                                         <label className="premium-label">🏷️ Etiquetas Automáticas</label>
                                         {!labelsLoading && labelsList.length > 0 ? (

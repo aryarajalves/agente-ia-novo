@@ -114,19 +114,19 @@ const TabHabilidades = () => {
                             }}
                         >
                             <option value="">Escolher Ferramenta...</option>
-                            {toolsList.filter(t => !t.webhook_url && !selectedTools.includes(t.id)).length > 0 && (
+                            {toolsList.filter(t => !t.webhook_url && t.name !== 'transferir_robo' && !selectedTools.includes(t.id)).length > 0 && (
                                 <optgroup label="📅 Ferramentas Nativas">
                                     {toolsList
-                                        .filter(t => !t.webhook_url && !selectedTools.includes(t.id))
+                                        .filter(t => !t.webhook_url && t.name !== 'transferir_robo' && !selectedTools.includes(t.id))
                                         .map(tool => (
                                             <option key={tool.id} value={tool.id}>📅 {tool.name}</option>
                                         ))}
                                 </optgroup>
                             )}
-                            {toolsList.filter(t => t.webhook_url && !selectedTools.includes(t.id)).length > 0 && (
+                            {toolsList.filter(t => t.webhook_url && t.name !== 'transferir_robo' && !selectedTools.includes(t.id)).length > 0 && (
                                 <optgroup label="🔗 Ferramentas Externas (Webhooks)">
                                     {toolsList
-                                        .filter(t => t.webhook_url && !selectedTools.includes(t.id))
+                                        .filter(t => t.webhook_url && t.name !== 'transferir_robo' && !selectedTools.includes(t.id))
                                         .map(tool => (
                                             <option key={tool.id} value={tool.id}>🔗 {tool.name}</option>
                                         ))}
@@ -137,16 +137,24 @@ const TabHabilidades = () => {
                     </div>
 
                     <div className="selected-chips-container">
-                        {selectedTools.length === 0 && <p className="empty-msg">Nenhuma ferramenta vinculada.</p>}
-                        {selectedTools.map(toolId => {
+                        {selectedTools.filter(toolId => {
                             const tool = toolsList.find(t => t.id === toolId);
-                            return (
-                                <div key={toolId} className="tool-chip">
-                                    <span>{tool?.webhook_url ? '🔗' : '📅'} {tool ? tool.name : `ID: ${toolId}`}</span>
-                                    <button onClick={() => setSelectedTools(selectedTools.filter(id => id !== toolId))}>✕</button>
-                                </div>
-                            );
-                        })}
+                            return tool?.name !== 'transferir_robo';
+                        }).length === 0 && <p className="empty-msg">Nenhuma ferramenta vinculada.</p>}
+                        {selectedTools
+                            .filter(toolId => {
+                                const tool = toolsList.find(t => t.id === toolId);
+                                return tool?.name !== 'transferir_robo';
+                            })
+                            .map(toolId => {
+                                const tool = toolsList.find(t => t.id === toolId);
+                                return (
+                                    <div key={toolId} className="tool-chip">
+                                        <span>{tool?.webhook_url ? '🔗' : '📅'} {tool ? tool.name : `ID: ${toolId}`}</span>
+                                        <button onClick={() => setSelectedTools(selectedTools.filter(id => id !== toolId))}>✕</button>
+                                    </div>
+                                );
+                            })}
                     </div>
                 </div>
             </div>

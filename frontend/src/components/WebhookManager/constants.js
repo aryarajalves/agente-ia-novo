@@ -11,6 +11,7 @@ export const INITIAL_FORM_STATE = {
     allowed_contacts: [], 
     chatwoot_url: '', 
     chatwoot_api_token: '', 
+    chatwoot_inbox_id: '', 
     labels_on_message: [], 
     delete_keywords: [], 
     delete_message: '', 

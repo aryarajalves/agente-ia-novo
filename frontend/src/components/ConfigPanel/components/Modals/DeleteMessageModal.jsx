@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 
-const DeleteMessageModal = ({ isOpen, onConfirm, onCancel, messageText }) => {
+const DeleteMessageModal = ({ isOpen, onConfirm, onCancel, messageText, descriptionText = "Você tem certeza que deseja apagar esta mensagem de anúncio?" }) => {
     if (!isOpen) return null;
 
     return ReactDOM.createPortal(
@@ -12,7 +12,7 @@ const DeleteMessageModal = ({ isOpen, onConfirm, onCancel, messageText }) => {
                 </div>
                 <div className="guide-modal-body" style={{ textAlign: 'center', padding: '2.5rem' }}>
                     <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '1.5rem' }}>
-                        Você tem certeza que deseja apagar esta mensagem de anúncio?
+                        {descriptionText}
                     </p>
                     <div style={{ 
                         background: 'rgba(0, 0, 0, 0.2)', 

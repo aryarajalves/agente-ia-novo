@@ -141,9 +141,13 @@ def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, c
                         error_detail = f"Status {resp.status_code}: {resp.text[:200]}\nURL: {full_url}"
                         _add_step(db, event_id, f"❌ Erro no envio (Parte {i+1})", error_detail)
                         success = False
+                        _toggle_typing_indicator(config, account_id, conversation_id, "off")
+                        break
             except Exception as http_err:
                 _add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Erro: {str(http_err)}")
                 success = False
+                _toggle_typing_indicator(config, account_id, conversation_id, "off")
+                break
             
             _toggle_typing_indicator(config, account_id, conversation_id, "off")
 
@@ -229,7 +233,7 @@ def _build_agent_config(db_agent):
         security_discount_policy=db_agent.security_discount_policy,
         security_language_complexity=db_agent.security_language_complexity,
         security_pii_filter=db_agent.security_pii_filter,
-        security_bot_protection=False,
+        security_bot_protection=db_agent.security_bot_protection,
         security_max_messages_per_session=db_agent.security_max_messages_per_session,
         security_semantic_threshold=db_agent.security_semantic_threshold,
         security_loop_count=db_agent.security_loop_count,
@@ -241,6 +245,7 @@ def _build_agent_config(db_agent):
         ui_welcome_message=db_agent.ui_welcome_message,
         router_enabled=db_agent.router_enabled,
         router_simple_model=db_agent.router_simple_model,
+        router_simple_fallback_model=db_agent.router_simple_fallback_model,
         router_complex_model=db_agent.router_complex_model,
         handoff_enabled=db_agent.handoff_enabled,
         response_translation_enabled=db_agent.response_translation_enabled,
@@ -292,11 +297,17 @@ def process_media_content_task(webhook_config_id: int, event_id: int):
             return
 
         extracted_text = media_result.get("text", "")
+        model_used = media_result.get("model") or "desconhecido"
         event.mensagem = extracted_text
         event.status = "media_ready" 
         db.commit()
         
-        _add_step(db, event_id, "✅ Conteúdo Extraído", extracted_text[:200] + "...")
+        _add_step(
+            db, 
+            event_id, 
+            "✅ Conteúdo Extraído", 
+            f"Modelo de transcrição utilizado: {model_used}\n\nConteúdo: {extracted_text[:200]}..."
+        )
         
     except Exception as e:
         logger.error(f"Erro na task de mídia imediata: {e}")
@@ -487,6 +498,20 @@ def process_webhook_automation(self, event_id: int):
             nonlocal mensagem
             image_url = event.link if event.message_type == "image" else None
             async with async_session() as async_db:
+                # --- BOT DEFENSE (ANTI-LOOP & MESSAGES LIMIT) ---
+                if getattr(db_agent, 'security_bot_protection', False):
+                    from agent_core.bot_defense import verify_bot_defense
+                    bot_defense_paused = await verify_bot_defense(
+                        db=db,
+                        event=event,
+                        config=config,
+                        agent_config=db_agent,
+                        session_id=session_id,
+                        message=mensagem
+                    )
+                    if bot_defense_paused:
+                        return {"ignored_by_defense": True}
+
                 secondary_agents = []
                 if config.secondary_agent_ids:
                     try:
@@ -504,6 +529,17 @@ def process_webhook_automation(self, event_id: int):
                 db.commit()
                 
                 pre_router_result = await run_pre_router_ai(mensagem, history, db_agent, secondary_agents)
+                
+                # Log visual de anúncio na pipeline (apenas se for a primeira mensagem)
+                is_first_msg = not history or len(history) == 0
+                if is_first_msg:
+                    eh_anuncio = pre_router_result.get("eh_anuncio", False)
+                    detalhe = pre_router_result.get("detalhe_anuncio")
+                    if eh_anuncio:
+                        _add_step(db, event_id, "📢 Anúncio Detectado", f"A primeira mensagem foi identificada como anúncio ({detalhe}). Enviando a mensagem de saudação.")
+                    else:
+                        _add_step(db, event_id, "📢 Anúncio Não Detectado", "A primeira mensagem não corresponde a nenhum anúncio cadastrado. A pipeline prosseguirá normalmente.")
+                    db.commit()
                 
                 pr_model = pre_router_result.get("_model_used", db_agent.model or "gpt-4o-mini")
                 pr_usage = pre_router_result.get("_usage", {})
@@ -614,6 +650,25 @@ def process_webhook_automation(self, event_id: int):
             logger.error(f"❌ Erro crítico na execução da IA: {ai_err}")
             _add_step(db, event_id, "❌ Falha na IA", f"Ocorreu um erro ao processar a mensagem com o agente: {str(ai_err)}")
             raise ai_err
+
+        # Se foi ignorado pelo Bot Defense, encerramos a pipeline aqui
+        if isinstance(result, dict) and result.get("ignored_by_defense"):
+            event.status = "ignored"
+            db.commit()
+            _add_step(db, event_id, "🛡️ Pipeline Ignorado pelo Bot Defense", "Processamento interrompido devido a proteção anti-loop/limite de mensagens.")
+            
+            # Limpar debounce no redis
+            try:
+                import redis as redis_lib
+                _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
+                phone = event.telefone
+                wid = config.id
+                _redis_local.delete(f"webhook:debounce:id:{wid}:{phone}")
+                _redis_local.delete(f"webhook:debounce:text:{wid}:{phone}")
+                logger.info(f"🧹 Limpeza de debounce concluída após Bot Defense para {phone}")
+            except Exception as redis_err:
+                logger.error(f"Erro ao limpar redis no Bot Defense: {redis_err}")
+            return
 
         actual_debug = result.get("debug", {}) if isinstance(result, dict) else {}
         resolved_prompt = actual_debug.get("resolved_prompt") or db_agent.system_prompt
@@ -731,8 +786,9 @@ def process_webhook_automation(self, event_id: int):
         
         response_delay = getattr(config, 'response_delay_seconds', 0) or 0
         
+        send_success = True
         if response_text and event.conversa_id and event.conta_id:
-            _send_chatwoot_message(
+            send_success = _send_chatwoot_message(
                 db, event_id, event.conversa_id, event.conta_id, response_text, config,
                 split_paragraphs=True, delay=response_delay
             )
@@ -745,13 +801,17 @@ def process_webhook_automation(self, event_id: int):
                 )
             _add_step(db, event_id, "⚠️ Resposta Vazia - Enviando Fallback",
                       f"O agente não gerou conteúdo. Mensagem padrão enviada ao cliente: {fallback_msg[:100]}")
-            _send_chatwoot_message(db, event_id, event.conversa_id, event.conta_id, fallback_msg, config)
+            send_success = _send_chatwoot_message(db, event_id, event.conversa_id, event.conta_id, fallback_msg, config)
         else:
             _add_step(db, event_id, "⚠️ Resposta Vazia", "O agente gerou uma resposta vazia e não há dados de conversa válidos.")
+            send_success = False
 
-        event.status = "completed"
+        event.status = "completed" if send_success else "error"
         db.commit()
-        _add_step(db, event_id, "🏁 Pipeline Finalizado", "Processamento concluído com sucesso.")
+        if send_success:
+            _add_step(db, event_id, "🏁 Pipeline Finalizado", "Processamento concluído com sucesso.")
+        else:
+            _add_step(db, event_id, "❌ Pipeline Finalizado com Falha no Envio", "O processamento foi concluído, mas o envio da mensagem falhou.")
 
         try:
             import redis as redis_lib

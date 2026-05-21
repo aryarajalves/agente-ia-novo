@@ -4,12 +4,7 @@ from unittest.mock import MagicMock, patch
 # Mock all external dependencies before they are imported
 mock_openai = MagicMock()
 sys.modules["openai"] = mock_openai
-sys.modules["tiktoken"] = MagicMock()
-sys.modules["sqlalchemy"] = MagicMock()
-sys.modules["sqlalchemy.ext.asyncio"] = MagicMock()
-sys.modules["database"] = MagicMock()
-sys.modules["models"] = MagicMock()
-sys.modules["s3_service"] = MagicMock()
+
 
 import asyncio
 import pytest

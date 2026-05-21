@@ -273,6 +273,18 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                         history.append({"role": "assistant", "content": pe.agent_response})
                         seen_msgs.add(resp_clean)
             
+            # Desduplicação inteligente para evitar mensagens repetidas consecutivas idênticas
+            deduped_history = []
+            for msg in history:
+                if not deduped_history:
+                    deduped_history.append(msg)
+                else:
+                    last_msg = deduped_history[-1]
+                    if msg.get("role") == last_msg.get("role") and msg.get("content", "").strip() == last_msg.get("content", "").strip():
+                        continue
+                    deduped_history.append(msg)
+            history = deduped_history
+
             # Truncamento final de segurança para respeitar a janela
             if len(history) > db_agent.context_window:
                 history = history[-db_agent.context_window:]

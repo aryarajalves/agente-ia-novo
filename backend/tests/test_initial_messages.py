@@ -48,6 +48,46 @@ async def test_ad_shortcut_case_insensitive():
     result = await run_pre_router_ai("quero saber mais sobre o laser day", [], config)
     assert result["eh_saudacao"] is True
     assert result["resposta_direta"] == config.initial_message
+    assert result["eh_anuncio"] is True
+
+@pytest.mark.asyncio
+async def test_ad_shortcut_similarity_high():
+    config = MockConfig()
+    
+    # Anúncio cadastrado: "Quero saber mais sobre o Laser Day" (7 palavras)
+    # Mensagem recebida: "quero saber mais sobre o laser" (6 palavras)
+    # Palavras em comum: "quero", "saber", "mais", "sobre", "o", "laser" (6 comuns)
+    # Similaridade: 6/6 = 100% das palavras da mensagem batem com as do anúncio.
+    result = await run_pre_router_ai("quero saber mais sobre o laser", [], config)
+    assert result["eh_saudacao"] is True
+    assert result["resposta_direta"] == config.initial_message
+    assert result["eh_anuncio"] is True
+    assert "Similaridade:" in result["detalhe_anuncio"]
+
+@pytest.mark.asyncio
+async def test_ad_shortcut_similarity_low():
+    config = MockConfig()
+    
+    # Mensagem recebida: "quero comprar pão e saber mais" (6 palavras)
+    # Anúncio: "Quero saber mais sobre o Laser Day"
+    # Palavras em comum: "quero", "saber", "mais" (3 comuns)
+    # Similaridade: 3/6 = 50% das palavras da mensagem batem com o anúncio.
+    # Deve ser classificado como NÃO anúncio (similaridade < 60%)
+    # Como não há api key no mock de testes e não é shortcut, ele vai tentar bater no mock de openai se continuar,
+    # então vamos validar apenas que run_pre_router_ai não retorna eh_anuncio=True.
+    # Para o teste passar sem mockar openai, podemos desativar a chave de API no ambiente de teste temporariamente.
+    import os
+    original_key = os.environ.get("OPENAI_API_KEY")
+    if "OPENAI_API_KEY" in os.environ:
+        del os.environ["OPENAI_API_KEY"]
+    try:
+        result = await run_pre_router_ai("quero comprar pão e saber mais", [], config)
+        assert result["eh_saudacao"] is False
+        assert result["eh_anuncio"] is False
+    finally:
+        if original_key:
+            os.environ["OPENAI_API_KEY"] = original_key
+
 
 @pytest.mark.asyncio
 async def test_initial_question_append():

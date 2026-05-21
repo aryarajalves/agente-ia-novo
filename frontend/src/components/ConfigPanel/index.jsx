@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import './styles/Base.css';
 import './styles/Navigation.css';
 import './styles/Forms.css';
@@ -29,6 +30,25 @@ const ConfigPanelContent = ({ agentId, onClose, onSaveSuccess }) => {
     // Use custom hooks for data fetching and saving
     useConfigData(agentId);
     const { handleSave } = useConfigSave(onClose, onSaveSuccess);
+
+    // Toast local para eventos do ConfigPanel (ex: copiar snippet)
+    const [localToast, setLocalToast] = useState(null);
+
+    useEffect(() => {
+        const handleToast = (e) => {
+            const { message, type } = e.detail || {};
+            if (!message) return;
+            setLocalToast({ message, type: type || 'success', id: Date.now() });
+        };
+        window.addEventListener('app:toast', handleToast);
+        return () => window.removeEventListener('app:toast', handleToast);
+    }, []);
+
+    useEffect(() => {
+        if (!localToast) return;
+        const t = setTimeout(() => setLocalToast(null), 3500);
+        return () => clearTimeout(t);
+    }, [localToast]);
 
     const tabs = [
         { id: 'geral', label: 'Geral', icon: '⚙️' },
@@ -143,6 +163,15 @@ const ConfigPanelContent = ({ agentId, onClose, onSaveSuccess }) => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Toast via Portal */}
+            {localToast && ReactDOM.createPortal(
+                <div key={localToast.id} className={`global-toast global-toast-${localToast.type}`}>
+                    <span className="global-toast-icon">{localToast.type === 'success' ? '✅' : '❌'}</span>
+                    <span>{localToast.message}</span>
+                </div>,
+                document.body
             )}
         </div>
     );

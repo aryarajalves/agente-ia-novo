@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from api.limiter import limiter
-from api.routers import auth, agents, knowledge, analytics, media, sessions, tools, variables, feedback, chat, tester, integrations, support, inbox
+from api.routers import auth, agents, knowledge, analytics, media, sessions, tools, variables, feedback, chat, tester, integrations, support, inbox, leads
 from fastapi import WebSocket, WebSocketDisconnect
 from core.websocket import manager
 
@@ -104,6 +104,7 @@ app.include_router(tester.router)
 app.include_router(integrations.router)
 app.include_router(support.router)
 app.include_router(inbox.router)
+app.include_router(leads.router)
 
 # --- WEBSOCKET ---
 @app.websocket("/ws/events")

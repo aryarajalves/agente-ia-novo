@@ -37,3 +37,7 @@
   - Resposta: Sim, deve fechar os outros ao abrir um novo.
 - [ ] [NOVO] Deseja que a automação de retorno ao robô envie um log específico para o painel de histórico do agente informando que a IA reassumiu o controle?
 - [ ] [NOVO] Quem é o 'Mateus' mencionado nos testes? Ele é um membro da equipe de suporte, um vendedor ou outra função? Precisamos dessa informação para alimentar a base de conhecimento do agente e evitar alucinações.
+- [x] [NOVO] Ao qualificar um lead, deseja que a etiqueta específica configurada no agente (qualification_labels) seja gravada na coluna 'labels' da tabela local de leads (banco do ZapVoice), em vez de gravar apenas o valor estático 'qualificado'?
+  - Resposta: Sim, o contato deve ser criado ou atualizado no banco do ZapVoice (tabela local de leads) com as etiquetas de qualificação configuradas no agente.
+
+

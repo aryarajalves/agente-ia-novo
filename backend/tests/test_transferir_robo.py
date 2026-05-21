@@ -60,8 +60,8 @@ async def test_transferir_robo_automation(mock_config):
         "conversation_id": "100"
     }
 
-    with patch("agent.get_openai_client") as mock_get_client, \
-         patch("agent.search_knowledge_base", new_callable=AsyncMock) as mock_rag, \
+    with patch("agent_core.core.get_openai_client") as mock_get_client, \
+         patch("rag_service.search_knowledge_base", new_callable=AsyncMock) as mock_rag, \
          patch("httpx.AsyncClient.get") as mock_get, \
          patch("httpx.AsyncClient.post") as mock_post:
         

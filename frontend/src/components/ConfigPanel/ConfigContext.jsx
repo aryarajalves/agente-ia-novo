@@ -69,6 +69,7 @@ export const ConfigProvider = ({ children }) => {
     const [initialIgnoreMessage, setInitialIgnoreMessage] = useState([]);
     const [qualificationQuestions, setQualificationQuestions] = useState([]);
     const [qualificationLabels, setQualificationLabels] = useState([]);
+    const [qualificationCriteria, setQualificationCriteria] = useState('');
     
     // Security
     const [securityBlacklist, setSecurityBlacklist] = useState('');
@@ -151,6 +152,7 @@ export const ConfigProvider = ({ children }) => {
         initialIgnoreMessage, setInitialIgnoreMessage,
         qualificationQuestions, setQualificationQuestions,
         qualificationLabels, setQualificationLabels,
+        qualificationCriteria, setQualificationCriteria,
         securityBlacklist, setSecurityBlacklist,
         securityForbidden, setSecurityForbidden,
         securityDiscount, setSecurityDiscount,

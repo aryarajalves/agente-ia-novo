@@ -54,6 +54,7 @@ class WebhookConfigCreate(BaseModel):
     allowed_contacts: List[str] = []
     chatwoot_url: Optional[str] = None
     chatwoot_api_token: Optional[str] = None
+    chatwoot_inbox_id: Optional[str] = None
     labels_on_message: List[str] = []
     delete_keywords: List[str] = []
     delete_message: Optional[str] = None
@@ -94,6 +95,7 @@ class WebhookConfigResponse(BaseModel):
     allowed_contacts: Union[List[str], Any, None] = []
     chatwoot_url: Optional[str] = None
     chatwoot_api_token: Optional[str] = None
+    chatwoot_inbox_id: Optional[str] = None
     labels_on_message: Union[List[str], Any, None] = []
     delete_keywords: Union[List[str], Any, None] = []
     delete_message: Optional[str] = None
@@ -149,6 +151,7 @@ class WebhookConfigUpdate(BaseModel):
     allowed_contacts: Optional[List[str]] = None
     chatwoot_url: Optional[str] = None
     chatwoot_api_token: Optional[str] = None
+    chatwoot_inbox_id: Optional[str] = None
     labels_on_message: Optional[List[str]] = None
     delete_keywords: Optional[List[str]] = None
     delete_message: Optional[str] = None
@@ -403,6 +406,11 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
     }
     
     logger.info(f"📩 Webhook: {config.name} | De: {phone} | Msg: {extracted['mensagem'][:30]}... | Account: {extracted['conta_id']} | Inbox: {extracted['inbox_id']} | Conv: {extracted['conversa_id']} | Contact: {extracted['contato_id']}")
+
+    # Filtro por ID do Inbox do Chatwoot (se configurado)
+    if config.chatwoot_inbox_id and str(extracted.get("inbox_id") or "").strip() != str(config.chatwoot_inbox_id).strip():
+        logger.info(f"⏭️ Webhook ignorado: inbox_id '{extracted.get('inbox_id')}' não corresponde ao configurado '{config.chatwoot_inbox_id}'")
+        return {"ok": True, "status": "ignored_inbox"}
 
     # --- FILTRO DE MENSAGENS DE SAÍDA (ECHO) ---
     # Se a mensagem for de saída (enviada pelo bot ou pelo agente), não criamos um evento de automação.

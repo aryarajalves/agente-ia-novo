@@ -305,3 +305,78 @@ def test_async_engine_pool_pre_ping():
     )
 
 
+# ---------------------------------------------------------------------------
+# Test 8 — _send_chatwoot_message aborts on failure
+# ---------------------------------------------------------------------------
+
+def test_send_chatwoot_message_aborts_on_failure():
+    """
+    If a part of a fragmented response fails to send (either via non-200 response or exception),
+    _send_chatwoot_message must immediately break the loop and not try to send subsequent parts.
+    """
+    import webhook_tasks as wt
+    from unittest.mock import MagicMock, patch
+
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.chatwoot_url = "http://chatwoot.test"
+    mock_config.chatwoot_api_token = "tok"
+
+    # We will test two cases: non-200 response, and exception.
+    
+    # Case A: Non-200 status code on the first request
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_resp.text = "Internal Server Error"
+
+    with patch("webhook_tasks.httpx.Client") as mock_client_cls, \
+         patch("webhook_tasks._add_step") as mock_add_step, \
+         patch("webhook_tasks._toggle_typing_indicator") as mock_toggle:
+        
+        mock_client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client.post.return_value = mock_resp
+
+        # Send fragmented content
+        result = wt._send_chatwoot_message(
+            db=mock_db,
+            event_id=1,
+            conversation_id="42",
+            account_id="1",
+            content="Parte 1\n\nParte 2",
+            config=mock_config,
+            split_paragraphs=True,
+            delay=0
+        )
+
+        assert result is False
+        # Verify that post was only called once, and the loop broke
+        assert mock_client.post.call_count == 1
+
+    # Case B: Exception (e.g. read timeout) on the first request
+    with patch("webhook_tasks.httpx.Client") as mock_client_cls, \
+         patch("webhook_tasks._add_step") as mock_add_step, \
+         patch("webhook_tasks._toggle_typing_indicator") as mock_toggle:
+        
+        mock_client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client.post.side_effect = Exception("The read operation timed out")
+
+        # Send fragmented content
+        result = wt._send_chatwoot_message(
+            db=mock_db,
+            event_id=1,
+            conversation_id="42",
+            account_id="1",
+            content="Parte 1\n\nParte 2",
+            config=mock_config,
+            split_paragraphs=True,
+            delay=0
+        )
+
+        assert result is False
+        # Verify that post was only called once, and the loop broke
+        assert mock_client.post.call_count == 1
+
+
+

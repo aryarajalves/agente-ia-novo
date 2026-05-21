@@ -176,6 +176,14 @@ const Sidebar = ({ onLogout }) => {
                                             <span className="nav-label">Inbox de Dúvidas</span>
                                             <div className="active-indicator"></div>
                                         </NavLink>
+                                        <NavLink
+                                            to="/lead-scoring"
+                                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                        >
+                                            <span className="nav-icon">🔥</span>
+                                            <span className="nav-label">Lead Scoring</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
                                     </div>
 
                                     <div className="nav-section">

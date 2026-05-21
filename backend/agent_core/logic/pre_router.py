@@ -35,14 +35,33 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
         except:
             ignore_messages = [initial_ignore]
     
-    # Check for direct match in ignore list (Ads) - only for first message
+    # Check for match in ignore list (Ads) - only for first message
     is_ad = False
+    similarity_info = None
     if is_first_msg:
+        import re
         for ad_text in ignore_messages:
-            if ad_text.lower().strip() == msg_clean:
+            ad_clean = ad_text.lower().strip()
+            # 1. Comparação exata
+            if ad_clean == msg_clean:
                 is_ad = True
-                print(f"📢 [AD DETECTED] Mensagem idêntica a um anúncio configurado. Usando initial_message.")
+                similarity_info = f"Exata: '{ad_text}'"
+                logger.info(f"📢 [AD DETECTED] Mensagem idêntica a um anúncio configurado: {similarity_info}")
                 break
+            
+            # 2. Comparação por similaridade de palavras (mínimo 60%)
+            msg_words = re.findall(r'\b\w+\b', msg_clean)
+            ad_words = re.findall(r'\b\w+\b', ad_clean)
+            
+            if msg_words and ad_words:
+                ad_set = set(ad_words)
+                matches = sum(1 for w in msg_words if w in ad_set)
+                pct = matches / len(msg_words)
+                if pct >= 0.60:
+                    is_ad = True
+                    similarity_info = f"Similaridade: {pct*100:.1f}% com '{ad_text}'"
+                    logger.info(f"📢 [AD DETECTED] Mensagem similar ao anúncio configurado: {similarity_info}")
+                    break
 
     if (msg_clean_no_punct in common_greetings or is_ad) and is_first_msg:
         resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
@@ -54,12 +73,21 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
             "resposta_direta": resposta,
             "perguntas_extraidas": None,
             "data_extraida": None,
+            "eh_anuncio": is_ad,
+            "detalhe_anuncio": similarity_info,
             "_model_used": "shortcut-logic"
         }
 
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return {"eh_saudacao": False, "id_agente_alvo": main_agent.id, "perguntas_extraidas": message}
+        return {
+            "eh_saudacao": False, 
+            "id_agente_alvo": main_agent.id, 
+            "perguntas_extraidas": message,
+            "eh_anuncio": False,
+            "detalhe_anuncio": None
+        }
         
     client = openai.AsyncOpenAI(api_key=api_key)
     
@@ -146,6 +174,8 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
                 "total_tokens": response.usage.total_tokens
             }
         if not result.get("id_agente_alvo"): result["id_agente_alvo"] = main_agent.id
+        result["eh_anuncio"] = result.get("eh_anuncio", False)
+        result["detalhe_anuncio"] = result.get("detalhe_anuncio", None)
         return result
     except Exception as e:
         logger.error(f"Erro no Pre-Router: {e}")
@@ -156,5 +186,7 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
             "perguntas_extraidas": message,
             "resposta_direta": None,
             "resposta_esclarecimento": None,
-            "data_extraida": None
+            "data_extraida": None,
+            "eh_anuncio": False,
+            "detalhe_anuncio": None
         }
