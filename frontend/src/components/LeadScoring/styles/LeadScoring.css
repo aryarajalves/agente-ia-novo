@@ -542,36 +542,3 @@
   animation: spin 0.8s linear infinite;
 }
 
-/* Toast Global (fallback) */
-.global-toast {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  z-index: 9999;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-  animation: slideInUp 0.3s ease-out;
-  color: #fff;
-  font-weight: 500;
-  font-size: 0.9rem;
-}
-
-.global-toast-success {
-  border-left: 4px solid var(--success-color);
-}
-
-.global-toast-error {
-  border-left: 4px solid var(--error-color);
-}
-
-@keyframes slideInUp {
-  from { transform: translateY(50px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}

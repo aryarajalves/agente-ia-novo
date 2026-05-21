@@ -104,8 +104,9 @@ async def test_handler_lead_qualified():
     mock_update_result.rowcount = 1
     
     mock_db.execute.side_effect = [
-        mock_agent_result,      # SELECT AgentConfigModel
+        mock_agent_result,      # SELECT AgentConfigModel (no handle_lead_qualified)
         mock_webhook_result,    # SELECT WebhookConfigModel
+        mock_agent_result,      # SELECT AgentConfigModel (dentro de calculate_lead_score)
         mock_update_result,     # UPDATE da tabela leads
     ]
     
@@ -175,8 +176,9 @@ async def test_handler_lead_qualified_creates_lead():
     mock_update_result.rowcount = 0
     
     mock_db.execute.side_effect = [
-        mock_agent_result,      # SELECT AgentConfigModel
+        mock_agent_result,      # SELECT AgentConfigModel (no handle_lead_qualified)
         mock_webhook_result,    # SELECT WebhookConfigModel
+        mock_agent_result,      # SELECT AgentConfigModel (dentro de calculate_lead_score)
         mock_update_result,     # UPDATE da tabela leads (retorna 0 rows)
         MagicMock(),            # INSERT da tabela leads
     ]
@@ -207,9 +209,9 @@ async def test_handler_lead_qualified_creates_lead():
         assert "sucesso" in result.lower()
         # Valida que o execute foi chamado com o INSERT
         calls = mock_db.execute.call_args_list
-        assert len(calls) == 4
+        assert len(calls) == 5
         # O último execute deve conter o comando INSERT
-        last_call_sql = str(calls[3][0][0])
+        last_call_sql = str(calls[4][0][0])
         assert "INSERT" in last_call_sql
         assert "leads_cliente_1" in last_call_sql
 
@@ -256,8 +258,9 @@ async def test_handler_lead_qualified_env_fallback():
     mock_update_result.rowcount = 1
     
     mock_db.execute.side_effect = [
-        mock_agent_result,      # SELECT AgentConfigModel
+        mock_agent_result,      # SELECT AgentConfigModel (no handle_lead_qualified)
         mock_webhook_result,    # SELECT WebhookConfigModel
+        mock_agent_result,      # SELECT AgentConfigModel (dentro de calculate_lead_score)
         mock_update_result,     # UPDATE da tabela leads
     ]
     

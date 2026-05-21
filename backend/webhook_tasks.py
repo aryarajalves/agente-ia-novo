@@ -257,6 +257,7 @@ def _build_agent_config(db_agent):
         model_settings=_json.loads(db_agent.model_settings) if db_agent.model_settings else {},
         qualification_questions=db_agent.qualification_questions,
         qualification_labels=db_agent.qualification_labels,
+        initial_question_message=db_agent.initial_question_message,
     )
 
 # --- CELERY TASKS ---

@@ -116,34 +116,71 @@ def check_window_expiry():
                 continue
 
             try:
-                cutoff = datetime.utcnow() - timedelta(hours=24)
-                expired = db.execute(_text(f"""
-                    SELECT id, conta_id, conversa_id, telefone
-                    FROM {leads_table}
-                    WHERE ultima_mensagem_em < :cutoff
-                      AND (window_close_processed IS NULL OR window_close_processed = FALSE)
-                      AND conversa_id IS NOT NULL
-                      AND conta_id IS NOT NULL
-                """), {"cutoff": cutoff}).fetchall()
+                # Compara usando a data atual UTC para evitar problemas de fuso horário.
+                # timezone('utc', now()) funciona no Postgres.
+                # Em SQLite (usado em testes locais ou memória em alguns casos), timezone() não existe,
+                # então usamos um fallback seguro (detectando o dialeto ou usando datetime.utcnow() no Python)
+                is_sqlite = db.bind.dialect.name == "sqlite"
+                if is_sqlite:
+                    cutoff = datetime.utcnow() - timedelta(hours=24)
+                    query = f"""
+                        SELECT id, conta_id, conversa_id, telefone
+                        FROM {leads_table}
+                        WHERE ultima_mensagem_em < :cutoff
+                          AND (window_close_processed IS NULL OR window_close_processed = FALSE)
+                          AND conversa_id IS NOT NULL
+                          AND conta_id IS NOT NULL
+                    """
+                    params = {"cutoff": cutoff}
+                else:
+                    query = f"""
+                        SELECT id, conta_id, conversa_id, telefone
+                        FROM {leads_table}
+                        WHERE ultima_mensagem_em < (timezone('utc', now()) - INTERVAL '24 hours')
+                          AND (window_close_processed IS NULL OR window_close_processed = FALSE)
+                          AND conversa_id IS NOT NULL
+                          AND conta_id IS NOT NULL
+                    """
+                    params = {}
+
+                expired = db.execute(_text(query), params).fetchall()
 
                 if not expired:
                     continue
 
                 processed_ids = []
                 for lead_id, conta_id, conversa_id, telefone in expired:
+                    success = False
                     try:
                         labels_url = f"{cw_url}/api/v1/accounts/{conta_id}/conversations/{conversa_id}/labels"
                         headers = {"api_access_token": cw_token}
                         with httpx.Client(timeout=8) as client:
                             cur = client.get(labels_url, headers=headers)
-                            current_labels = cur.json().get("payload", []) if cur.status_code == 200 else []
-                            updated = [l for l in current_labels if l not in labels_to_remove]
-                            if len(updated) < len(current_labels):
-                                client.post(labels_url, json={"labels": updated}, headers=headers)
-                                logger.info(f"[WindowExpiry] Removidas etiquetas {labels_to_remove} de {telefone} (conversa {conversa_id})")
+                            
+                            if cur.status_code == 404:
+                                logger.info(f"[WindowExpiry] Conversa {conversa_id} não encontrada (404) para lead {lead_id}, marcando como processado.")
+                                success = True
+                            elif cur.status_code == 200:
+                                current_labels = cur.json().get("payload", [])
+                                updated = [l for l in current_labels if l not in labels_to_remove]
+                                
+                                if len(updated) < len(current_labels):
+                                    post_resp = client.post(labels_url, json={"labels": updated}, headers=headers)
+                                    if post_resp.status_code in (200, 201):
+                                        logger.info(f"[WindowExpiry] Removidas etiquetas {labels_to_remove} de {telefone} (conversa {conversa_id})")
+                                        success = True
+                                    else:
+                                        logger.warning(f"[WindowExpiry] Erro ao remover etiquetas no Chatwoot (POST retornou {post_resp.status_code}) para lead {lead_id}")
+                                else:
+                                    logger.info(f"[WindowExpiry] Conversa {conversa_id} do lead {lead_id} já não possui etiquetas {labels_to_remove}")
+                                    success = True
+                            else:
+                                logger.warning(f"[WindowExpiry] Erro ao buscar etiquetas no Chatwoot (GET retornou {cur.status_code}) para lead {lead_id}")
                     except Exception as e:
-                        logger.warning(f"[WindowExpiry] Erro no lead {lead_id}: {e}")
-                    processed_ids.append(lead_id)
+                        logger.warning(f"[WindowExpiry] Exceção de rede/API no lead {lead_id}: {e}")
+                    
+                    if success:
+                        processed_ids.append(lead_id)
 
                 if processed_ids:
                     db.execute(_text(f"UPDATE {leads_table} SET window_close_processed = TRUE WHERE id = ANY(:ids)"), {"ids": processed_ids})

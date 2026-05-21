@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL, AGENT_API_KEY } from '../../config';
+import DeleteMessageModal from '../ConfigPanel/components/Modals/DeleteMessageModal';
 
 const LeadScoring = () => {
     const [leads, setLeads] = useState([]);
@@ -10,6 +11,8 @@ const LeadScoring = () => {
     const [expandedLeadIds, setExpandedLeadIds] = useState(new Set());
     const [recalculatingIds, setRecalculatingIds] = useState(new Set());
     const [toast, setToast] = useState(null);
+    const [deleteLeadModal, setDeleteLeadModal] = useState({ isOpen: false, lead: null });
+    const [deletingLeadIds, setDeletingLeadIds] = useState(new Set());
 
     // Sistema de feedback por toast
     const showToast = (message, type = 'success') => {
@@ -114,6 +117,55 @@ const LeadScoring = () => {
             const newRecalculating = new Set(recalculatingIds);
             newRecalculating.delete(leadUniqueId);
             setRecalculatingIds(newRecalculating);
+        }
+    };
+
+    // Efeito para adicionar blur no body quando o modal estiver aberto
+    useEffect(() => {
+        if (deleteLeadModal.isOpen) {
+            document.body.classList.add('modal-open-blur');
+        } else {
+            document.body.classList.remove('modal-open-blur');
+        }
+        return () => document.body.classList.remove('modal-open-blur');
+    }, [deleteLeadModal.isOpen]);
+
+    // Deletar a qualificação do lead (desqualificação parcial)
+    const handleDeleteLead = async () => {
+        const lead = deleteLeadModal.lead;
+        if (!lead) return;
+        const leadUniqueId = `${lead.leads_table}_${lead.id}`;
+        if (deletingLeadIds.has(leadUniqueId)) return;
+
+        try {
+            const newDeleting = new Set(deletingLeadIds);
+            newDeleting.add(leadUniqueId);
+            setDeletingLeadIds(newDeleting);
+
+            const token = localStorage.getItem('admin_token');
+            const response = await fetch(`${API_URL}/leads/${lead.leads_table}/${lead.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-API-Key': AGENT_API_KEY
+                }
+            });
+
+            if (response.ok) {
+                setLeads(prevLeads => prevLeads.filter(item => !(item.id === lead.id && item.leads_table === lead.leads_table)));
+                showToast(`Qualificação do contato ${lead.contato_nome || 'Lead'} removida com sucesso!`, "success");
+            } else {
+                const errData = await response.json();
+                showToast(errData.detail || "Erro ao remover qualificação do lead.", "error");
+            }
+        } catch (error) {
+            console.error("Erro ao deletar qualificação do lead:", error);
+            showToast("Erro de rede ao remover qualificação.", "error");
+        } finally {
+            const newDeleting = new Set(deletingLeadIds);
+            newDeleting.delete(leadUniqueId);
+            setDeletingLeadIds(newDeleting);
+            setDeleteLeadModal({ isOpen: false, lead: null });
         }
     };
 
@@ -269,12 +321,55 @@ const LeadScoring = () => {
                                                 📥 {lead.inbox_nome}
                                             </span>
                                         )}
+                                        {lead.agent_name && (
+                                            <span className="inbox-badge" style={{
+                                                background: 'rgba(99, 102, 241, 0.15)',
+                                                color: '#a5b4fc',
+                                                border: '1px solid rgba(99, 102, 241, 0.25)'
+                                            }}>
+                                                🤖 {lead.agent_name}
+                                            </span>
+                                        )}
                                         <span className="date-badge">
                                             {formatDate(lead.updated_at || lead.created_at)}
                                         </span>
                                     </div>
 
-                                    <div className="lead-actions-summary">
+                                    <div className="lead-actions-summary" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <button 
+                                            type="button"
+                                            className="btn-trash"
+                                            disabled={deletingLeadIds.has(leadUniqueId)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteLeadModal({ isOpen: true, lead });
+                                            }}
+                                            style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: '#ef4444',
+                                                fontSize: '1rem',
+                                                padding: '0.5rem',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s',
+                                                opacity: deletingLeadIds.has(leadUniqueId) ? 0.5 : 1
+                                            }}
+                                            onMouseOver={(e) => {
+                                                if (!deletingLeadIds.has(leadUniqueId)) {
+                                                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                                                }
+                                            }}
+                                            onMouseOut={(e) => {
+                                                e.currentTarget.style.background = 'transparent';
+                                            }}
+                                            title="Remover qualificação do lead"
+                                        >
+                                            🗑️
+                                        </button>
                                         <button className={`btn-chevron ${isExpanded ? 'expanded' : ''}`}>
                                             ▼
                                         </button>
@@ -362,6 +457,14 @@ const LeadScoring = () => {
                     })}
                 </div>
             )}
+
+            <DeleteMessageModal
+                isOpen={deleteLeadModal.isOpen}
+                descriptionText="Você tem certeza que deseja remover a qualificação deste contato? As respostas, score e etiqueta de qualificado serão apagados."
+                messageText={deleteLeadModal.lead?.contato_nome || ''}
+                onConfirm={handleDeleteLead}
+                onCancel={() => setDeleteLeadModal({ isOpen: false, lead: null })}
+            />
 
             {/* Notificação Toast */}
             {toast && (

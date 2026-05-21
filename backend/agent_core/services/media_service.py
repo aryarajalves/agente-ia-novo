@@ -105,102 +105,102 @@ async def process_media_content(url: str, message_type: str, api_key: str, chatw
                 logger.error(f"Falha na conversão de áudio: {conv_err}")
                 return {"error": f"Erro ao processar áudio: {conv_err}", "text": ""}
             
-            # 1. Tentar Whisper-1 primeiro (ASR dedicado)
-            temp_audio_path = None
-            whisper_success = False
-            transcription = ""
+            gpt_audio_success = False
+            raw_text = ""
             
+            # 1. Tentar gpt-4o-audio-preview primeiro (Multimodal Chat)
             try:
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_audio_file:
-                    temp_audio_file.write(converted_audio)
-                    temp_audio_path = temp_audio_file.name
+                audio_b64 = base64.b64encode(converted_audio).decode('utf-8')
+                logger.info(f"📤 Enviando áudio (Base64 length: {len(audio_b64)}) para gpt-4o-audio-preview...")
                 
-                logger.info(f"📤 Enviando áudio para Whisper-1...")
-                with open(temp_audio_path, "rb") as audio_file:
-                    transcript = await client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file,
-                        response_format="json",
-                        prompt="Transcrição fiel do áudio no idioma original. Mantenha a pontuação natural."
-                    )
-                
-                transcription = transcript.text.strip()
-                
-                # Filtro contra alucinações comuns do Whisper em áudios silenciosos
-                hallucinations = [
-                    "Thank you.", "Thank you", "Thanks for watching.", "Keep watching", 
-                    "Subscribe to my channel", "Please subscribe", "We feel lucky", "I'll see you in the next one"
-                ]
-                if transcription in hallucinations or len(transcription) < 2:
-                    logger.info(f"🚫 Alucinação detectada e filtrada no Whisper: '{transcription}'")
-                    transcription = ""
-                
-                whisper_success = True
-                logger.info(f"✅ Transcrição obtida com sucesso via Whisper-1")
-                return {
-                    "text": transcription,
-                    "model": "whisper-1",
-                    "usage": {}
-                }
-            except Exception as whisper_err:
-                logger.warning(f"⚠️ Falha na transcrição via Whisper-1: {whisper_err}. Iniciando fallback para gpt-audio...")
-            finally:
-                if temp_audio_path and os.path.exists(temp_audio_path):
-                    try:
-                        os.remove(temp_audio_path)
-                    except Exception as rm_err:
-                        logger.error(f"Não foi possível remover arquivo temporário {temp_audio_path}: {rm_err}")
-            
-            # 2. Fallback para GPT-Audio (Multimodal Chat)
-            if not whisper_success:
-                try:
-                    audio_b64 = base64.b64encode(converted_audio).decode('utf-8')
-                    logger.info(f"📤 Enviando áudio (Base64 length: {len(audio_b64)}) para gpt-audio...")
-                    
-                    response = await client.chat.completions.create(
-                        model="gpt-audio",
-                        modalities=["text"],
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Você é um transcritor automático de áudio extremamente fiel. "
-                                    "Sua única tarefa é ouvir o áudio fornecido e transcrever exatamente o que é falado, "
-                                    "sem adicionar saudações, explicações, comentários ou formatações conversacionais de bate-papo. "
-                                    "Se o áudio contiver apenas silêncio ou ruído, responda com uma string vazia."
-                                )
-                            },
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "input_audio",
-                                        "input_audio": {
-                                            "data": audio_b64,
-                                            "format": "mp3"
-                                        }
+                response = await client.chat.completions.create(
+                    model="gpt-4o-audio-preview",
+                    modalities=["text"],
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "Você é um transcritor automático de áudio extremamente fiel. "
+                                "Sua única tarefa é ouvir o áudio fornecido e transcrever exatamente o que é falado, "
+                                "sem adicionar saudações, explicações, comentários ou formatações conversacionais de bate-papo. "
+                                "Se o áudio contiver apenas silêncio ou ruído, responda com uma string vazia."
+                            )
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": audio_b64,
+                                        "format": "mp3"
                                     }
-                                ]
-                            }
-                        ]
-                    )
+                                }
+                            ]
+                        }
+                    ]
+                )
+                
+                raw_text = response.choices[0].message.content or ""
+                
+                # Validar se o texto retornado não é uma alucinação conversacional
+                if is_conversational_hallucination(raw_text):
+                    logger.warning(f"🚫 Detectada alucinação conversacional do gpt-4o-audio-preview: '{raw_text}'. Descartando resultado.")
+                    raise Exception("O gpt-4o-audio-preview gerou uma resposta conversacional em vez de uma transcrição fiel.")
+                
+                gpt_audio_success = True
+                logger.info(f"✅ Transcrição obtida com sucesso via gpt-4o-audio-preview")
+                return {
+                    "text": raw_text.strip(),
+                    "model": "gpt-4o-audio-preview",
+                    "usage": response.usage.to_dict() if hasattr(response, 'usage') else {}
+                }
+            except Exception as gpt_audio_err:
+                logger.warning(f"⚠️ Falha na transcrição via gpt-4o-audio-preview: {gpt_audio_err}. Iniciando fallback para Whisper-1...")
+            
+            # 2. Fallback para Whisper-1 (ASR dedicado)
+            if not gpt_audio_success:
+                temp_audio_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_audio_file:
+                        temp_audio_file.write(converted_audio)
+                        temp_audio_path = temp_audio_file.name
                     
-                    raw_text = response.choices[0].message.content or ""
+                    logger.info(f"📤 Enviando áudio para Whisper-1...")
+                    with open(temp_audio_path, "rb") as audio_file:
+                        transcript = await client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file,
+                            response_format="json",
+                            prompt="Transcrição fiel do áudio no idioma original. Mantenha a pontuação natural."
+                        )
                     
-                    # Validar se o texto retornado não é uma alucinação conversacional
-                    if is_conversational_hallucination(raw_text):
-                        logger.warning(f"🚫 Detectada alucinação conversacional do gpt-audio: '{raw_text}'. Descartando resultado.")
-                        raise Exception("O gpt-audio gerou uma resposta conversacional em vez de uma transcrição fiel.")
+                    transcription = transcript.text.strip()
                     
-                    logger.info(f"✅ Transcrição obtida via fallback gpt-audio")
+                    # Filtro contra alucinações comuns do Whisper em áudios silenciosos
+                    hallucinations = [
+                        "Thank you.", "Thank you", "Thanks for watching.", "Keep watching", 
+                        "Subscribe to my channel", "Please subscribe", "We feel lucky", "I'll see you in the next one"
+                    ]
+                    if transcription in hallucinations or len(transcription) < 2:
+                        logger.info(f"🚫 Alucinação detectada e filtrada no Whisper: '{transcription}'")
+                        transcription = ""
+                    
+                    logger.info(f"✅ Transcrição obtida via fallback Whisper-1")
                     return {
-                        "text": raw_text.strip(),
-                        "model": "gpt-audio",
-                        "usage": response.usage.to_dict() if hasattr(response, 'usage') else {}
+                        "text": transcription,
+                        "model": "whisper-1",
+                        "usage": {}
                     }
-                except Exception as gpt_audio_err:
-                    logger.error(f"❌ Falha crítica: Whisper-1 e gpt-audio falharam. Erro gpt-audio: {gpt_audio_err}")
-                    return {"error": f"Erro na transcrição de áudio: {gpt_audio_err}", "text": ""}
+                except Exception as whisper_err:
+                    logger.error(f"❌ Falha crítica: gpt-4o-audio-preview e Whisper-1 falharam. Erro Whisper-1: {whisper_err}")
+                    return {"error": f"Erro na transcrição de áudio: {whisper_err}", "text": ""}
+                finally:
+                    if temp_audio_path and os.path.exists(temp_audio_path):
+                        try:
+                            os.remove(temp_audio_path)
+                        except Exception as rm_err:
+                            logger.error(f"Não foi possível remover arquivo temporário {temp_audio_path}: {rm_err}")
 
         elif message_type == "image":
             logger.info(f"🖼️ Iniciando análise de imagem via GPT-4o-Vision...")

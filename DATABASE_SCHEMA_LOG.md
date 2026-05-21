@@ -15,6 +15,9 @@ Este arquivo registra todas as alterações manuais de schema (ALTER TABLE) real
 | 2026-05-19 | agent_config, leads | qualification_labels, respostas_qualificacao | add_qualification_responses_column.py | Adição de colunas para suporte a qualificação de leads e armazenamento de respostas. |
 | 2026-05-19 | webhook_configs | chatwoot_inbox_id | add_chatwoot_inbox_id_column.py | Adição de suporte para filtrar webhooks do Chatwoot por ID do Inbox. |
 | 2026-05-21 | agent_config, leads | qualification_criteria, lead_score, lead_classification, lead_justification | add_lead_score_columns.py | Colunas para suporte a Lead Scoring (critérios, pontuação, classificação e justificativa). |
+| 2026-05-21 | TODAS (Leads) | qualified_by_agent_id | add_qualified_by_agent_id_column.py | Coluna para rastrear qual agente realizou a qualificação do lead. |
+| 2026-05-21 | user_invites | TODAS | create_user_invites_table.py | Criação da tabela de convites de usuários expiráveis. |
+
 
 
 

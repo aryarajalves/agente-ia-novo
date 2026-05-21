@@ -121,6 +121,7 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                     lead_score = :lead_score,
                     lead_classification = :lead_classification,
                     lead_justification = :lead_justification,
+                    qualified_by_agent_id = :qualified_by_agent_id,
                     labels = CASE 
                         WHEN labels IS NULL OR labels = '' THEN :initial_labels
                         WHEN labels NOT LIKE '%qualificado%' THEN labels || ',' || :initial_labels
@@ -136,7 +137,8 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                 "initial_labels": initial_labels,
                 "lead_score": lead_score,
                 "lead_classification": lead_classification,
-                "lead_justification": lead_justification
+                "lead_justification": lead_justification,
+                "qualified_by_agent_id": agent_id
             })
             
             # Se nenhuma linha foi atualizada (rowcount é 0 ou None), criamos o lead
@@ -154,12 +156,12 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                 
                 insert_query = f"""
                     INSERT INTO {leads_table} (
-                        webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id,
+                        webhook_config_id, qualified_by_agent_id, conta_id, inbox_id, inbox_nome, conversa_id,
                         mensagem_id, contato_id, telefone, labels, contato_nome,
                         respostas_qualificacao, lead_score, lead_classification, lead_justification,
                         pode_enviar_mensagem, updated_at, created_at
                     ) VALUES (
-                        :webhook_config_id, :conta_id, :inbox_id, :inbox_nome, :conversa_id,
+                        :webhook_config_id, :qualified_by_agent_id, :conta_id, :inbox_id, :inbox_nome, :conversa_id,
                         :mensagem_id, :contato_id, :telefone, :labels, :contato_nome,
                         :respostas, :lead_score, :lead_classification, :lead_justification,
                         TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -167,6 +169,7 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                 """
                 await db.execute(text(insert_query), {
                     "webhook_config_id": wh.id if wh else None,
+                    "qualified_by_agent_id": agent_id,
                     "conta_id": str(conta_id) if conta_id is not None else None,
                     "inbox_id": str(inbox_id) if inbox_id is not None else None,
                     "inbox_nome": str(inbox_nome) if inbox_nome is not None else None,

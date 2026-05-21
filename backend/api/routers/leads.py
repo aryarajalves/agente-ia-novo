@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,14 @@ from lead_scoring_service import calculate_lead_score
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Leads"])
+
+def to_brasilia_time(dt: datetime) -> datetime:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    tz_brasilia = timezone(timedelta(hours=-3))
+    return dt.astimezone(tz_brasilia)
 
 @router.get("/leads/qualified")
 async def list_qualified_leads(db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
@@ -36,18 +45,33 @@ async def list_qualified_leads(db: AsyncSession = Depends(get_db), _: None = Dep
         # 2. Consultar cada tabela
         for table in tables_to_query:
             try:
+                has_agent_col = True
                 # Cria um savepoint para esta iteração do loop, evitando que erros em uma tabela abortem toda a transação
-                async with db.begin_nested():
-                    query = text(f"""
-                        SELECT 
-                            id, webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id, contato_id,
-                            telefone, labels, contato_nome, respostas_qualificacao, lead_score,
-                            lead_classification, lead_justification, updated_at, created_at
-                        FROM {table}
-                        WHERE respostas_qualificacao IS NOT NULL AND respostas_qualificacao != ''
-                    """)
-                    db_leads = await db.execute(query)
-                    rows = db_leads.fetchall()
+                try:
+                    async with db.begin_nested():
+                        query = text(f"""
+                            SELECT 
+                                id, webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id, contato_id,
+                                telefone, labels, contato_nome, respostas_qualificacao, lead_score,
+                                lead_classification, lead_justification, updated_at, created_at, qualified_by_agent_id
+                            FROM {table}
+                            WHERE respostas_qualificacao IS NOT NULL AND respostas_qualificacao != ''
+                        """)
+                        db_leads = await db.execute(query)
+                        rows = db_leads.fetchall()
+                except Exception:
+                    has_agent_col = False
+                    async with db.begin_nested():
+                        query = text(f"""
+                            SELECT 
+                                id, webhook_config_id, conta_id, inbox_id, inbox_nome, conversa_id, contato_id,
+                                telefone, labels, contato_nome, respostas_qualificacao, lead_score,
+                                lead_classification, lead_justification, updated_at, created_at
+                            FROM {table}
+                            WHERE respostas_qualificacao IS NOT NULL AND respostas_qualificacao != ''
+                        """)
+                        db_leads = await db.execute(query)
+                        rows = db_leads.fetchall()
                 
                 for row in rows:
                     lead_dict = {
@@ -65,9 +89,10 @@ async def list_qualified_leads(db: AsyncSession = Depends(get_db), _: None = Dep
                         "lead_score": row[11] if row[12] is not None else None, # Só retorna se foi classificado
                         "lead_classification": row[12],
                         "lead_justification": row[13],
-                        "updated_at": row[14].isoformat() if row[14] else None,
-                        "created_at": row[15].isoformat() if row[15] else None,
-                        "leads_table": table
+                        "updated_at": to_brasilia_time(row[14]).isoformat() if row[14] else None,
+                        "created_at": to_brasilia_time(row[15]).isoformat() if row[15] else None,
+                        "leads_table": table,
+                        "qualified_by_agent_id": row[16] if has_agent_col else None
                     }
                     
                     # Tentar decodificar as respostas de qualificação
@@ -98,6 +123,28 @@ async def list_qualified_leads(db: AsyncSession = Depends(get_db), _: None = Dep
                     else:
                         lead_dict["chatwoot_conversation_url"] = None
                         
+                    # 3b. Obter nome do agente qualificador
+                    agent_name = "Não Identificado"
+                    agent_id = lead_dict["qualified_by_agent_id"]
+                    
+                    if not agent_id and lead_dict["webhook_config_id"]:
+                        wh_res = await db.execute(
+                            select(WebhookConfigModel.agent_id)
+                            .where(WebhookConfigModel.id == lead_dict["webhook_config_id"])
+                        )
+                        agent_id = wh_res.scalar()
+                        
+                    if agent_id:
+                        agent_config_res = await db.execute(
+                            text("SELECT name FROM agent_config WHERE id = :agent_id"),
+                            {"agent_id": agent_id}
+                        )
+                        ac_row = agent_config_res.fetchone()
+                        if ac_row:
+                            agent_name = ac_row[0]
+                            
+                    lead_dict["agent_name"] = agent_name
+                    
                     all_leads.append(lead_dict)
             except Exception as e:
                 # O begin_nested() faz rollback automático se houver exceção, mantendo a transação ativa
@@ -210,3 +257,67 @@ async def recalculate_lead_score_api(
     except Exception as e:
         logger.error(f"Erro ao recalcular score do lead {lead_id} na API: {e}")
         raise HTTPException(status_code=500, detail=f"Erro interno ao recalcular score: {str(e)}")
+
+@router.delete("/leads/{table_name}/{lead_id}")
+async def delete_qualified_lead(
+    table_name: str,
+    lead_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key)
+):
+    """
+    Remove a qualificação de um lead (desqualificação parcial).
+    Zera as respostas, score, classificação, justificativa e agente qualificador no banco de dados,
+    e remove a etiqueta "qualificado" das labels.
+    """
+    logger.info(f"Removendo qualificação do lead {lead_id} na tabela {table_name}...")
+    try:
+        # 1. Verificar se a tabela é válida para evitar injeção de SQL básico
+        res_tables = await db.execute(text("SELECT DISTINCT leads_table FROM webhook_configs"))
+        valid_tables = [r[0] for r in res_tables.fetchall() if r[0]]
+        valid_tables.append("leads")
+        
+        if table_name not in valid_tables:
+            raise HTTPException(status_code=400, detail="Tabela de leads inválida.")
+
+        # 2. Buscar o lead correspondente
+        query = text(f"SELECT labels FROM {table_name} WHERE id = :lead_id")
+        res = await db.execute(query, {"lead_id": lead_id})
+        lead_row = res.fetchone()
+        
+        if not lead_row:
+            raise HTTPException(status_code=404, detail="Lead não encontrado.")
+            
+        labels_str = lead_row[0] or ""
+        
+        # 3. Remover a etiqueta "qualificado"
+        labels_list = [l.strip() for l in labels_str.split(",") if l.strip()]
+        if "qualificado" in labels_list:
+            labels_list.remove("qualificado")
+        new_labels_str = ",".join(labels_list)
+        
+        # 4. Atualizar o banco de dados limpando a qualificação
+        update_query = text(f"""
+            UPDATE {table_name} SET
+                respostas_qualificacao = NULL,
+                lead_score = NULL,
+                lead_classification = NULL,
+                lead_justification = NULL,
+                qualified_by_agent_id = NULL,
+                labels = :labels,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :lead_id
+        """)
+        await db.execute(update_query, {
+            "labels": new_labels_str,
+            "lead_id": lead_id
+        })
+        await db.commit()
+        
+        return {"success": True, "message": "Qualificação de lead removida com sucesso."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao remover qualificação do lead {lead_id} na API: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno ao remover qualificação: {str(e)}")
+

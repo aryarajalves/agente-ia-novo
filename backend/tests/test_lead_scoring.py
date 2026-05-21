@@ -235,3 +235,82 @@ async def test_recalculate_lead_score_api(client: AsyncClient, db_session: Async
     # Cleanup tabela temporária
     await db_session.execute(text("DROP TABLE IF EXISTS leads_recalc_test"))
     await db_session.commit()
+
+@pytest.mark.asyncio
+async def test_delete_qualified_lead_api(client: AsyncClient, db_session: AsyncSession):
+    # 1. Configurar webhook e tabela de leads
+    webhook = WebhookConfigModel(
+        name="Webhook Teste Delete",
+        token="teste-token-delete",
+        leads_table="leads_delete_test",
+        is_active=True,
+        chatwoot_url="https://chatwoot-teste.com"
+    )
+    db_session.add(webhook)
+    await db_session.commit()
+    await db_session.refresh(webhook)
+
+    await db_session.execute(text("""
+        CREATE TABLE IF NOT EXISTS leads_delete_test (
+            id SERIAL PRIMARY KEY,
+            webhook_config_id INTEGER,
+            qualified_by_agent_id INTEGER,
+            conta_id INTEGER,
+            inbox_id INTEGER,
+            inbox_nome VARCHAR(255),
+            conversa_id INTEGER,
+            contato_id INTEGER,
+            telefone VARCHAR(50),
+            labels TEXT,
+            contato_nome VARCHAR(255),
+            respostas_qualificacao TEXT,
+            lead_score INTEGER,
+            lead_classification VARCHAR(50),
+            lead_justification TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    await db_session.commit()
+
+    # Inserir lead com qualificações
+    await db_session.execute(text("""
+        INSERT INTO leads_delete_test (
+            id, webhook_config_id, qualified_by_agent_id, conta_id, inbox_id, conversa_id, contato_id,
+            telefone, contato_nome, respostas_qualificacao, lead_score, lead_classification, lead_justification, labels
+        ) VALUES (
+            77, :wh_id, 1, 1, 2, 101, 202,
+            '+5581999998888', 'Lead Delete', '{"resp": "ok"}', 10, 'Quente 🔥', 'Justificativa antiga', 'tag1,qualificado,tag2'
+        )
+    """), {"wh_id": webhook.id})
+    await db_session.commit()
+
+    # 2. Chamar endpoint DELETE
+    response = await client.delete("/leads/leads_delete_test/77")
+
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["success"] is True
+
+    # 3. Validar no banco de dados se os dados de qualificação foram removidos (parcialmente) e o label foi atualizado
+    db_res = await db_session.execute(text("""
+        SELECT respostas_qualificacao, lead_score, lead_classification, lead_justification, qualified_by_agent_id, labels
+        FROM leads_delete_test WHERE id = 77
+    """))
+    row = db_res.fetchone()
+    assert row[0] is None
+    assert row[1] is None
+    assert row[2] is None
+    assert row[3] is None
+    assert row[4] is None
+    
+    # O "qualificado" deve ter sido removido, sobrando "tag1,tag2"
+    labels_list = [l.strip() for l in row[5].split(",") if l.strip()]
+    assert "qualificado" not in labels_list
+    assert "tag1" in labels_list
+    assert "tag2" in labels_list
+
+    # Cleanup
+    await db_session.execute(text("DROP TABLE IF EXISTS leads_delete_test"))
+    await db_session.commit()
+

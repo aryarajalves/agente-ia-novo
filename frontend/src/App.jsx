@@ -13,6 +13,7 @@ import IntegrationsPanel from './components/IntegrationsPanel';
 import PublicChat from './components/PublicChat';
 import SharedHistory from './components/SharedHistory';
 import Login from './components/Login';
+import Register from './components/Register';
 import UserManagement from './components/UserManagement';
 import SupportDashboard from './components/SupportDashboard/index';
 import PublicSupportView from './components/PublicSupportView';
@@ -22,6 +23,23 @@ import LeadScoring from './components/LeadScoring/index';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('admin_token'));
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    const handleToast = (e) => {
+      const { message, type } = e.detail || {};
+      if (!message) return;
+      setToast({ message, type: type || 'success', id: Date.now() });
+    };
+    window.addEventListener('app:toast', handleToast);
+    return () => window.removeEventListener('app:toast', handleToast);
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
@@ -45,6 +63,7 @@ function App() {
         <Route path="/login" element={
           isAuthenticated ? <Navigate to="/" /> : <Login onLogin={() => setIsAuthenticated(true)} />
         } />
+        <Route path="/register/:token" element={<Register />} />
         <Route path="*" element={
           !isAuthenticated ? <Navigate to="/login" /> : (
             <div className="app-layout">
@@ -86,6 +105,12 @@ function App() {
           )
         } />
       </Routes>
+      {toast && (
+        <div className={`global-toast global-toast-${toast.type}`}>
+          <span className="global-toast-icon">{toast.type === 'success' ? '✅' : '❌'}</span>
+          <span>{toast.message}</span>
+        </div>
+      )}
     </BrowserRouter>
   );
 }

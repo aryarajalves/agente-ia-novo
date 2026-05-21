@@ -18,7 +18,6 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
     
     # --- ATALHO PROGRAMÁTICO PARA SAUDAÇÃO CURTA E ANÚNCIOS ---
     msg_clean = message.lower().strip()
-    msg_clean_no_punct = msg_clean.replace("?", "").replace("!", "")
     is_first_msg = not history or len(history) == 0
     
     # Lista de saudações comuns
@@ -38,33 +37,59 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
     # Check for match in ignore list (Ads) - only for first message
     is_ad = False
     similarity_info = None
-    if is_first_msg:
+    cleaned_message = message
+    
+    if is_first_msg and ignore_messages:
         import re
-        for ad_text in ignore_messages:
-            ad_clean = ad_text.lower().strip()
-            # 1. Comparação exata
-            if ad_clean == msg_clean:
+        # Ordena anúncios pelo tamanho descendente para remover correspondências mais longas primeiro
+        sorted_ads = sorted(ignore_messages, key=len, reverse=True)
+        for ad_text in sorted_ads:
+            ad_clean = ad_text.strip()
+            if not ad_clean:
+                continue
+                
+            # Busca insensível a maiúsculas/minúsculas para remover a parte do anúncio
+            pattern = re.compile(re.escape(ad_clean), re.IGNORECASE)
+            if pattern.search(cleaned_message):
                 is_ad = True
-                similarity_info = f"Exata: '{ad_text}'"
-                logger.info(f"📢 [AD DETECTED] Mensagem idêntica a um anúncio configurado: {similarity_info}")
-                break
-            
-            # 2. Comparação por similaridade de palavras (mínimo 60%)
+                similarity_info = f"Contém anúncio: '{ad_text}'"
+                cleaned_message = pattern.sub("", cleaned_message)
+                logger.info(f"📢 [AD DETECTED] Removido trecho do anúncio: '{ad_text}'")
+                
+        # Se não detectou por substring, testa a similaridade por palavras da mensagem inteira
+        if not is_ad:
             msg_words = re.findall(r'\b\w+\b', msg_clean)
-            ad_words = re.findall(r'\b\w+\b', ad_clean)
-            
-            if msg_words and ad_words:
-                ad_set = set(ad_words)
-                matches = sum(1 for w in msg_words if w in ad_set)
-                pct = matches / len(msg_words)
-                if pct >= 0.60:
-                    is_ad = True
-                    similarity_info = f"Similaridade: {pct*100:.1f}% com '{ad_text}'"
-                    logger.info(f"📢 [AD DETECTED] Mensagem similar ao anúncio configurado: {similarity_info}")
-                    break
+            for ad_text in ignore_messages:
+                ad_clean = ad_text.lower().strip()
+                ad_words = re.findall(r'\b\w+\b', ad_clean)
+                
+                if msg_words and ad_words:
+                    ad_set = set(ad_words)
+                    matches = sum(1 for w in msg_words if w in ad_set)
+                    pct = matches / len(msg_words)
+                    if pct >= 0.60:
+                        is_ad = True
+                        similarity_info = f"Similaridade: {pct*100:.1f}% com '{ad_text}'"
+                        cleaned_message = ""
+                        logger.info(f"📢 [AD DETECTED] Mensagem similar ao anúncio configurado: {similarity_info}")
+                        break
 
-    if (msg_clean_no_punct in common_greetings or is_ad) and is_first_msg:
+    cleaned_message = cleaned_message.strip()
+    
+    # Limpa pontuação para identificar se restou apenas saudação ou se a mensagem ficou vazia
+    msg_clean_no_punct = cleaned_message.lower().strip()
+    for char in ["?", "!", ".", ",", ";", ":", "-", "_", "(", ")", "[", "]", "{", "}"]:
+        msg_clean_no_punct = msg_clean_no_punct.replace(char, "")
+    msg_clean_no_punct = msg_clean_no_punct.strip()
+
+    if (msg_clean_no_punct in common_greetings or msg_clean_no_punct == "") and is_first_msg:
         resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
+        
+        # Se houver pergunta inicial configurada, envia ela no final
+        init_q_msg = getattr(main_agent, 'initial_question_message', None)
+        if init_q_msg and resposta:
+            if not resposta.endswith(init_q_msg):
+                resposta = f"{resposta}\n\n{init_q_msg}"
 
         return {
             "eh_saudacao": True,
@@ -77,6 +102,9 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
             "detalhe_anuncio": similarity_info,
             "_model_used": "shortcut-logic"
         }
+
+    # Se a mensagem contém algo além de saudação/anúncio, usamos o conteúdo limpo no processamento
+    message = cleaned_message
 
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -174,8 +202,8 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
                 "total_tokens": response.usage.total_tokens
             }
         if not result.get("id_agente_alvo"): result["id_agente_alvo"] = main_agent.id
-        result["eh_anuncio"] = result.get("eh_anuncio", False)
-        result["detalhe_anuncio"] = result.get("detalhe_anuncio", None)
+        result["eh_anuncio"] = result.get("eh_anuncio", False) or is_ad
+        result["detalhe_anuncio"] = result.get("detalhe_anuncio", None) or similarity_info
         return result
     except Exception as e:
         logger.error(f"Erro no Pre-Router: {e}")
@@ -187,6 +215,6 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
             "resposta_direta": None,
             "resposta_esclarecimento": None,
             "data_extraida": None,
-            "eh_anuncio": False,
-            "detalhe_anuncio": None
+            "eh_anuncio": is_ad,
+            "detalhe_anuncio": similarity_info
         }

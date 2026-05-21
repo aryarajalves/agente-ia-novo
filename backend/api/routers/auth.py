@@ -5,8 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 
-from models import UserModel
-from api.schemas import LoginRequest, UserCreate, UserUpdate
+import uuid
+from datetime import datetime, timezone, timedelta
+from models import UserModel, UserInviteModel
+from api.schemas import LoginRequest, UserCreate, UserUpdate, UserInviteCreate, UserInviteResponse, UserRegister
 from api.deps import get_db, verify_api_key, get_current_user
 from api.services.auth_service import (
     get_password_hash, 
@@ -225,4 +227,104 @@ async def reset_database(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/users/invites", response_model=UserInviteResponse, dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def create_invite(invite: UserInviteCreate, db: AsyncSession = Depends(get_db)):
+    # Criar expiração baseada em validity_hours
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=invite.validity_hours)
+    token = str(uuid.uuid4())
+    
+    db_invite = UserInviteModel(
+        token=token,
+        role=invite.role,
+        expires_at=expires_at,
+        is_used=False
+    )
+    db.add(db_invite)
+    await db.commit()
+    await db.refresh(db_invite)
+    return db_invite
+
+@router.get("/users/invites", response_model=List[UserInviteResponse], dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def get_invites(db: AsyncSession = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(UserInviteModel)
+        .where(UserInviteModel.is_used == False)
+        .where(UserInviteModel.expires_at > now)
+        .order_by(UserInviteModel.id.desc())
+    )
+    invites = result.scalars().all()
+    return invites
+
+@router.delete("/users/invites/{token}", dependencies=[Depends(verify_api_key), Depends(get_current_user)])
+async def delete_invite(token: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserInviteModel).where(UserInviteModel.token == token))
+    db_invite = result.scalar_one_or_none()
+    if not db_invite:
+        raise HTTPException(status_code=404, detail="Convite não encontrado")
+    
+    await db.delete(db_invite)
+    await db.commit()
+    return {"success": True}
+
+@router.get("/users/invites/validate/{token}")
+async def validate_invite(token: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserInviteModel).where(UserInviteModel.token == token))
+    db_invite = result.scalar_one_or_none()
+    if not db_invite:
+        raise HTTPException(status_code=404, detail="Convite inválido ou não encontrado")
+    
+    if db_invite.is_used:
+        raise HTTPException(status_code=400, detail="Este convite já foi utilizado")
+        
+    expires_at_utc = db_invite.expires_at.replace(tzinfo=timezone.utc) if db_invite.expires_at.tzinfo is None else db_invite.expires_at
+    if expires_at_utc < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Este convite expirou")
+        
+    return {
+        "valid": True,
+        "role": db_invite.role,
+        "expires_at": db_invite.expires_at
+    }
+
+@router.post("/users/register/{token}")
+async def register_user(token: str, reg: UserRegister, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserInviteModel).where(UserInviteModel.token == token))
+    db_invite = result.scalar_one_or_none()
+    if not db_invite:
+        raise HTTPException(status_code=404, detail="Convite inválido ou não encontrado")
+    
+    if db_invite.is_used:
+        raise HTTPException(status_code=400, detail="Este convite já foi utilizado")
+        
+    expires_at_utc = db_invite.expires_at.replace(tzinfo=timezone.utc) if db_invite.expires_at.tzinfo is None else db_invite.expires_at
+    if expires_at_utc < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Este convite expirou")
+        
+    # Verificar se o e-mail já está em uso
+    email_result = await db.execute(select(UserModel).where(UserModel.email == reg.email))
+    existing_user = email_result.scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Este e-mail já está em uso")
+        
+    # Criar usuário
+    hashed_password = get_password_hash(reg.password)
+    db_user = UserModel(
+        name=reg.name,
+        email=reg.email,
+        password=hashed_password,
+        role=db_invite.role,
+        status="ATIVO"
+    )
+    db.add(db_user)
+    
+    # Marcar convite como usado
+    db_invite.is_used = True
+    
+    await db.commit()
+    await db.refresh(db_user)
+    
+    return {"success": True, "user_id": db_user.id}
+
 

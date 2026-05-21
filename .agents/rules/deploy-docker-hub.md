@@ -2,7 +2,7 @@
 
 Toda vez que for fazer deploy em produção, o agente deve obrigatoriamente realizar o build e o push das imagens do projeto para o Docker Hub.
 
-**IMPORTANTE: ÚLTIMA VERSÃO CRIADA:** `1.6.8`
+**IMPORTANTE: ÚLTIMA VERSÃO CRIADA:** `1.6.9`
 > *O agente DEVE atualizar este número aqui no arquivo de regra sempre que uma nova versão for publicada, para saber exatamente qual será a próxima.*
 
 ---

@@ -82,9 +82,23 @@ npm run test:frontend
 
 ---
 
-## ✨ Novidades da Versão (v1.7.0)
+## ✨ Novidades da Versão (v1.9.0)
 
-Esta versão traz melhorias críticas no fluxo de automação, qualificação, suporte e segurança:
+Esta versão traz o novo fluxo de convites para novos usuários e melhorias de segurança:
+- **Fluxo Premium de Convites de Usuários**: Substituição do cadastro direto de novos usuários por um link de convite expirável.
+- **Validade do Link de Convite Editável**: Opções fixas de validade (7 horas, 14 horas, 24 horas e 48 horas) selecionáveis na criação do convite.
+- **Visualização e Revogação Manual de Convites**: Nova aba "Convites Pendentes" adicionada na Gestão de Usuários, com a tabela de links de convites ativos gerados, opção de copiar o link novamente e de revogá-los manualmente através de um popup Premium de confirmação.
+- **Formulário de Registro de Convidado Elegante**: Tela pública `/register/:token` com Glassmorphism, input de exibição/ocultação de senha (olho para exibir) e redirecionamento pós-cadastro para a tela de login.
+- **Tratamento de Validação de E-mail Duplicado**: Se o convidado tentar se registrar usando um e-mail já existente no banco de dados, o sistema apresenta um erro amigável na tela de registro ("Este e-mail já está em uso"), mantendo o link de convite válido para que o convidado possa tentar com outro e-mail sem invalidá-lo prematuramente.
+
+### Novidades Anteriores (v1.8.0)
+- **Exclusão Parcial de Leads (Desqualificação)**: Permite desqualificar leads diretamente da listagem clicando no ícone de lixeira, abrindo um modal Premium de confirmação. A ação limpa as respostas de qualificação, score, justificativa, classificação e remove a tag `"qualificado"` do contato, sem deletar o contato do banco.
+- **Identificação do Agente Qualificador**: Exibe um badge com o nome do agente robô responsável pela qualificação do lead no cabeçalho do card de lead qualificado (`🤖 Agente: Nome`).
+- **Fuso Horário de Brasília**: Todas as datas de listagem e alteração de leads na tela de Lead Scoring são convertidas na API para o fuso horário de Brasília (`America/Sao_Paulo` / UTC-3).
+- **Maximização das Diretrizes de Lead Scoring**: Inclusão de botão "Maximizar" ao lado do campo de texto de Diretrizes que abre um editor amplo em tela cheia (85% da largura da tela) com sincronização em tempo real e backdrop blur Premium.
+
+### Novidades Anteriores (v1.7.0)
+- **Tratamento e Remoção de Anúncios e Pergunta Inicial no Primeiro Contato**: Remoção automática e case-insensitive de mensagens de anúncios cadastrados (`ignore_messages`) na primeira interação de um lead. Se o lead enviar anúncio + uma pergunta, o robô responde à pergunta utilizando a IA e anexa a pergunta de início de atendimento (`initial_question_message`) no final da mensagem. Se o lead enviar apenas o anúncio (ou anúncio + saudação simples), o robô responde com a saudação padrão e anexa a pergunta inicial no final.
 - **Tratamento Estrito de Erro de Envio no Webhook**: Casos de falha ou timeout de rede com a API do Chatwoot no envio de respostas agora marcam o status do evento de webhook como `error` (e não mais `completed`). Isso evita que envios malsucedidos contaminem o histórico de contexto do agente.
 - **Desduplicação Consecutiva no Histórico de Contexto**: Implementação de filtragem automática no histórico do chat para remover mensagens consecutivas idênticas com o mesmo role e conteúdo. Isso impede que a IA alucine ou faça recapitulações indesejadas causadas por loops ou re-disparos de mensagens no banco.
 - **Qualificação de Leads Avançada:** O agente coleta de forma sequencial dados como Nome, E-mail e Empresa, acionando o pipeline ao concluir a qualificação.
@@ -96,18 +110,21 @@ Esta versão traz melhorias críticas no fluxo de automação, qualificação, s
   - **Proteção Anti-Loop (Bot Defense):** Novo serviço que limita o máximo de interações e detecta loops semânticos por similaridade de cosseno de embeddings de mensagens anteriores do lead, pausando a automação e aplicando etiquetas de handoff no Chatwoot.
 - **Aba Whitelabel Customizada (Premium):** Alinhamento perfeito dos seletores de cores e inputs hexadecimais na mesma linha, design flutuante e responsivo para o botão de copiar snippet na caixa de código de instalação (snippet box), toast de feedback nativo (`app:toast`) ao copiar o código para a área de transferência, e remoção completa do botão de testar widget.
 - **Ocultação de Habilidade no Frontend (Fluxo de Suporte):** Ocultação da ferramenta nativa `transferir_robo` na interface do dropdown de Habilidades nas configurações do Agente, mantendo-a totalmente integrada e acionável por meio do painel de Atendimento Humano (ao fechar/resolver o ticket para retornar o controle ao robô), com suporte robusto e tratamento nativo da sincronização de etiquetas Chatwoot mapeado na pipeline do backend.
+- **Priorização do GPT-4o-Audio no Motor de Mídia**: O backend agora tenta transcrever arquivos de áudio enviados pelo cliente final usando o modelo premium de áudio `gpt-4o-audio-preview` com codificação base64, garantindo uma transcrição de altíssima fidelidade. Caso ocorra alguma falha ou alucinação, o pipeline de transcrição realiza um fallback automático e transparente para o `whisper-1`.
+- **Resiliência e Tolerância a Falhas na Automação de Expiração de Janela 24h**: Ajuste na tarefa periódica `check_window_expiry` para ignorar erros de API ou timeouts com o Chatwoot sem afetar futuras execuções. A verificação do fuso horário agora é imune a conflitos entre bancos de dados PostgreSQL e SQLite local utilizando timezone nativo do banco.
+- **Exibição Dinâmica e Premium de Etiquetas Chatwoot**: Integração visual no modal de contatos do Webhook Manager que parseia e renderiza as etiquetas (tags) sincronizadas do Chatwoot ao lado do telefone de cada contato na lista e na visão de accordion expandido com badges em estilo Glassmorphism Premium.
 
 ---
 
 ## 📦 Deploy e Imagens Docker
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.0 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.0`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.6.9 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.6.9`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.0 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.0`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.6.9 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.6.9`
 
 
 

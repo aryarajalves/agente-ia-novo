@@ -5,6 +5,7 @@ import PromptEditor from '../../PromptEditor/index';
 import TemporalGuideModal from './Modals/TemporalGuideModal';
 import DeleteMessageModal from './Modals/DeleteMessageModal';
 import ChatwootLabelMultiSelect from './Shared/ChatwootLabelMultiSelect';
+import LeadScoringCriteriaModal from './Modals/LeadScoringCriteriaModal';
 
 
 const TabPrompts = () => {
@@ -25,6 +26,7 @@ const TabPrompts = () => {
     const [activeSubTab, setActiveSubTab] = useState('initial');
     const [showTemporalGuide, setShowTemporalGuide] = useState(false);
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, index: null, text: '' });
+    const [isCriteriaModalOpen, setIsCriteriaModalOpen] = useState(false);
     const [editingIndex, setEditingIndex] = useState(null);
     const [editingText, setEditingText] = useState('');
     const [editingInstruction, setEditingInstruction] = useState('');
@@ -63,13 +65,13 @@ const TabPrompts = () => {
     }, [id, isNew, isLeadQualificadoActive]);
 
     useEffect(() => {
-        if (showTemporalGuide || deleteModal.isOpen) {
+        if (showTemporalGuide || deleteModal.isOpen || isCriteriaModalOpen) {
             document.body.classList.add('modal-open-blur');
         } else {
             document.body.classList.remove('modal-open-blur');
         }
         return () => document.body.classList.remove('modal-open-blur');
-    }, [showTemporalGuide, deleteModal.isOpen]);
+    }, [showTemporalGuide, deleteModal.isOpen, isCriteriaModalOpen]);
 
     const handleAddQualificationQuestion = () => {
         const input = document.getElementById('new-qualification-question');
@@ -168,6 +170,12 @@ const TabPrompts = () => {
                     descriptionText="Você tem certeza que deseja apagar esta pergunta qualificatória?"
                     onConfirm={confirmDeleteQualificationQuestion}
                     onCancel={() => setDeleteQModal({ isOpen: false, index: null, text: '' })}
+                />
+                <LeadScoringCriteriaModal
+                    isOpen={isCriteriaModalOpen}
+                    onClose={() => setIsCriteriaModalOpen(false)}
+                    value={qualificationCriteria}
+                    onChange={(val) => setQualificationCriteria(val)}
                 />
 
                 <div className="temporal-config-box">
@@ -447,7 +455,37 @@ const TabPrompts = () => {
                         </div>
 
                         <div className="form-section" style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem' }}>
-                            <span className="section-label">🔥 Diretrizes e Critérios do Lead Scoring</span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <span className="section-label" style={{ margin: 0 }}>🔥 Diretrizes e Critérios do Lead Scoring</span>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setIsCriteriaModalOpen(true)} 
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        color: '#cbd5e1',
+                                        padding: '0.4rem 0.8rem',
+                                        borderRadius: '8px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                                    }}
+                                >
+                                    🔍 Maximizar
+                                </button>
+                            </div>
                             <p className="subtab-tip" style={{ marginBottom: '1rem' }}>
                                 Defina as regras de negócio e critérios que a IA utilizará para pontuar o lead (de 0 a 13) e classificá-lo em Quente 🔥, Morno ⚡ ou Frio ❄️ com base nas respostas dadas.
                             </p>

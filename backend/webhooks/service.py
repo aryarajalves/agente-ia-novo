@@ -17,6 +17,7 @@ LEADS_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS {table} (
     id SERIAL PRIMARY KEY,
     webhook_config_id INTEGER,
+    qualified_by_agent_id INTEGER,
     conta_id VARCHAR,
     inbox_id VARCHAR,
     inbox_nome VARCHAR,
@@ -66,7 +67,8 @@ async def ensure_leads_table(table_name: str):
             "respostas_qualificacao TEXT",
             "lead_score INTEGER",
             "lead_classification VARCHAR(50)",
-            "lead_justification TEXT"
+            "lead_justification TEXT",
+            "qualified_by_agent_id INTEGER"
         ]
         for mig in migrations:
             await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {mig}"))

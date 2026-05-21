@@ -29,7 +29,7 @@ async def test_greeting_shortcut():
     # Test "Oi"
     result = await run_pre_router_ai("Oi", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == config.initial_message
+    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
 
 @pytest.mark.asyncio
 async def test_ad_shortcut():
@@ -38,7 +38,7 @@ async def test_ad_shortcut():
     # Test Ad Message exactly as configured
     result = await run_pre_router_ai("Quero saber mais sobre o Laser Day", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == config.initial_message
+    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
 
 @pytest.mark.asyncio
 async def test_ad_shortcut_case_insensitive():
@@ -47,7 +47,7 @@ async def test_ad_shortcut_case_insensitive():
     # Test Ad Message with different case
     result = await run_pre_router_ai("quero saber mais sobre o laser day", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == config.initial_message
+    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
     assert result["eh_anuncio"] is True
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_ad_shortcut_similarity_high():
     # Similaridade: 6/6 = 100% das palavras da mensagem batem com as do anúncio.
     result = await run_pre_router_ai("quero saber mais sobre o laser", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == config.initial_message
+    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
     assert result["eh_anuncio"] is True
     assert "Similaridade:" in result["detalhe_anuncio"]
 
@@ -182,3 +182,75 @@ async def test_greeting_in_history_warm_clarification():
     assert "como posso" in result["resposta_esclarecimento"].lower() or "ajudar" in result["resposta_esclarecimento"].lower() or "olá" in result["resposta_esclarecimento"].lower() or "oi" in result["resposta_esclarecimento"].lower()
     assert "cancelar" not in result["resposta_esclarecimento"].lower()
     assert "testar o chat" not in result["resposta_esclarecimento"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ad_with_question_integration():
+    config = MockConfig()
+    
+    # Simula o fluxo:
+    # 1. Usuário envia "Quero saber mais sobre o Laser Day. Como funciona o curso?"
+    # 2. pre_router identifica o anúncio, remove o trecho "Quero saber mais sobre o Laser Day"
+    #    e o restante é enviado no processamento.
+    # 3. No final, a resposta do agente deve ter a initial_question_message anexada.
+    
+    # Mock do OpenAI para o pre_router e o process_message
+    from agent_core.core import get_openai_client
+    import agent_core.core as core_module
+    
+    mock_client = AsyncMock()
+    mock_completion = AsyncMock()
+    mock_completion.choices = [MagicMock(message=MagicMock(content="O curso é online e vitalício.", tool_calls=None))]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    core_module.get_openai_client = MagicMock(return_value=mock_client)
+    
+    # Para o pre-router de fato rodar (quando não entra no atalho programático), 
+    # ele precisa da API key e da chamada OpenAI mockada.
+    # Vamos mockar o client.chat.completions.create em pre_router.py também.
+    import agent_core.logic.pre_router as pre_router_module
+    
+    mock_pr_client = AsyncMock()
+    mock_pr_completion = AsyncMock()
+    # A resposta da IA do pre-router deve indicar que não é saudação e extrair a pergunta
+    mock_pr_completion.choices = [MagicMock(message=MagicMock(content=json.dumps({
+        "eh_saudacao": False,
+        "precisa_esclarecimento": False,
+        "resposta_direta": None,
+        "resposta_esclarecimento": None,
+        "id_agente_alvo": 1,
+        "perguntas_extraidas": "Como funciona o curso?",
+        "data_extraida": None
+    }), tool_calls=None))]
+    mock_pr_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_pr_client.chat.completions.create.return_value = mock_pr_completion
+    
+    # Mock do get_openai_client ou do client dentro de pre_router_module (que é instanciado via openai.AsyncOpenAI)
+    original_async_openai = pre_router_module.openai.AsyncOpenAI
+    pre_router_module.openai.AsyncOpenAI = MagicMock(return_value=mock_pr_client)
+    
+    try:
+        import os
+        os.environ["OPENAI_API_KEY"] = "mock-key" # Garante que passa da checagem da API key
+        
+        pr_result = await run_pre_router_ai("Quero saber mais sobre o Laser Day. Como funciona o curso?", [], config)
+        
+        # Validamos que detectou o anúncio e removeu
+        assert pr_result["eh_anuncio"] is True
+        assert pr_result["eh_saudacao"] is False
+        assert pr_result["perguntas_extraidas"] == "Como funciona o curso?"
+        
+        # 2. Agora testamos process_message com a pergunta extraída
+        result = await process_message(pr_result["perguntas_extraidas"], [], config)
+        
+        # Validamos que respondeu à dúvida e anexou a pergunta inicial no final
+        assert "O curso é online e vitalício." in result["content"]
+        assert config.initial_question_message in result["content"]
+        assert result["content"].endswith(config.initial_question_message)
+        
+    finally:
+        pre_router_module.openai.AsyncOpenAI = original_async_openai
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
+

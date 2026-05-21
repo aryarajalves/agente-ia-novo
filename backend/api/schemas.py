@@ -26,6 +26,25 @@ class UserUpdate(BaseModel):
     company_logo: Optional[str] = None
     company_logo_size: Optional[str] = None
 
+class UserInviteCreate(BaseModel):
+    role: str = "Usuário"
+    validity_hours: int = 24
+
+class UserInviteResponse(BaseModel):
+    id: int
+    token: str
+    role: str
+    expires_at: datetime
+    is_used: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class UserRegister(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
 # --- KNOWLEDGE BASE SCHEMAS ---
 
 class KnowledgeItem(BaseModel):

@@ -214,4 +214,85 @@ describe('LeadScoring Component', () => {
         expect(screen.getByText('13')).toBeInTheDocument();
         expect(screen.getByText('Justificativa recalculada atualizada!')).toBeInTheDocument();
     });
+
+    it('deve exibir o badge do agente qualificador quando presente nos dados do lead', async () => {
+        const mockLeadsWithAgent = [
+            {
+                ...mockLeadsData[0],
+                agent_name: 'Robô de Vendas Premium'
+            }
+        ];
+
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => mockLeadsWithAgent
+        });
+
+        render(<LeadScoring />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Alice Silva')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText('🤖 Robô de Vendas Premium')).toBeInTheDocument();
+    });
+
+    it('deve abrir o modal de confirmação ao clicar na lixeira e remover o lead após confirmação', async () => {
+        global.fetch = vi.fn()
+            .mockImplementation((url, options) => {
+                if (url.includes('/leads/qualified')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => mockLeadsData
+                    });
+                }
+                if (url.includes('/leads/leads_alice/1') && options?.method === 'DELETE') {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({ success: true, message: "Qualificação removida" })
+                    });
+                }
+                return Promise.reject(new Error('URL não mockada'));
+            });
+
+        render(<LeadScoring />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Alice Silva')).toBeInTheDocument();
+        });
+
+        // O botão de lixeira está dentro do cabeçalho
+        const deleteBtn = screen.getAllByTitle('Remover qualificação do lead')[0];
+        expect(deleteBtn).toBeInTheDocument();
+
+        // Clicar na lixeira
+        fireEvent.click(deleteBtn);
+
+        // O modal de confirmação (DeleteMessageModal) deve estar visível
+        expect(screen.getByText(/Você tem certeza que deseja remover a qualificação deste contato/i)).toBeInTheDocument();
+        expect(screen.getByText('Alice Silva')).toBeInTheDocument();
+
+        // Clicar no botão de confirmar no modal (exclusão)
+        const confirmBtn = screen.getByRole('button', { name: /Sim, Apagar/i });
+        fireEvent.click(confirmBtn);
+
+        // Validar que o fetch DELETE foi acionado
+        await waitFor(() => {
+            expect(global.fetch).toHaveBeenCalledWith(
+                'http://test-api.com/leads/leads_alice/1',
+                {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'Bearer test-token',
+                        'X-API-Key': 'test-key'
+                    }
+                }
+            );
+        });
+
+        // O lead deve ter sido removido da tela
+        await waitFor(() => {
+            expect(screen.queryByText('Alice Silva')).not.toBeInTheDocument();
+        });
+    });
 });

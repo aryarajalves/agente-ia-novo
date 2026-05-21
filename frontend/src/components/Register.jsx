@@ -1,48 +1,255 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 
-const Login = ({ onLogin }) => {
+const Register = () => {
+    const { token } = useParams();
+    const navigate = useNavigate();
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [validating, setValidating] = useState(true);
+    const [inviteInfo, setInviteInfo] = useState(null);
+    const [validationError, setValidationError] = useState('');
+    const [submitError, setSubmitError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+
+    useEffect(() => {
+        validateToken();
+    }, [token]);
+
+    const validateToken = async () => {
+        try {
+            setValidating(true);
+            setValidationError('');
+            const res = await api.get(`/users/invites/validate/${token}`);
+            const data = await res.json();
+            
+            if (res.ok && data.valid) {
+                setInviteInfo(data);
+            } else {
+                setValidationError(data.detail || 'Este convite é inválido ou expirou.');
+            }
+        } catch (err) {
+            setValidationError('Erro de conexão ao validar o convite.');
+        } finally {
+            setValidating(false);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        setError('');
+        setSubmitError('');
 
         try {
-            const res = await api.post('/login', { email, password });
+            const res = await api.post(`/users/register/${token}`, {
+                name,
+                email,
+                password
+            });
             const data = await res.json();
-            if (res.ok && data.token) {
-                localStorage.setItem('admin_token', data.token);
-                if (data.user) {
-                    localStorage.setItem('user_name', data.user.name);
-                    localStorage.setItem('user_role', data.user.role);
-                }
-                onLogin();
+
+            if (res.ok && data.success) {
+                window.dispatchEvent(new CustomEvent('app:toast', {
+                    detail: { message: 'Conta criada com sucesso! Faça login.', type: 'success' }
+                }));
+                navigate('/login');
             } else {
-                setError(data.detail || 'Email ou senha inválidos');
+                setSubmitError(data.detail || 'Erro ao realizar o cadastro. Tente novamente.');
             }
         } catch (err) {
-            setError('Erro de conexão com o servidor');
+            setSubmitError('Erro de conexão com o servidor.');
         } finally {
             setLoading(false);
         }
     };
 
+    if (validating) {
+        return (
+            <div className="login-page">
+                <div className="login-box fade-in">
+                    <div className="login-header">
+                        <div className="brand-logo">🤖</div>
+                        <h1>Validando...</h1>
+                        <p>Por favor, aguarde enquanto validamos o seu convite.</p>
+                    </div>
+                    <div className="loading-spinner"></div>
+                </div>
+                <style>{`
+                    .login-page {
+                        height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: radial-gradient(circle at top left, #1e293b, #0f172a);
+                        color: white;
+                        overflow: hidden;
+                    }
+                    .login-box {
+                        width: 100%;
+                        max-width: 420px;
+                        padding: 2.5rem;
+                        background: rgba(30, 41, 59, 0.4);
+                        backdrop-filter: blur(20px);
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        border-radius: 30px;
+                        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                        text-align: center;
+                    }
+                    .brand-logo {
+                        font-size: 3.5rem;
+                        margin-bottom: 1rem;
+                        display: inline-block;
+                        background: rgba(99, 102, 241, 0.1);
+                        width: 80px;
+                        height: 80px;
+                        line-height: 80px;
+                        border-radius: 20px;
+                        border: 1px solid rgba(99, 102, 241, 0.2);
+                        box-shadow: 0 0 20px rgba(99, 102, 241, 0.1);
+                    }
+                    .login-header h1 {
+                        font-size: 2rem;
+                        font-weight: 800;
+                        margin: 0;
+                        background: linear-gradient(135deg, #fff, #94a3b8);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                    }
+                    .login-header p {
+                        color: #94a3b8;
+                        font-size: 0.95rem;
+                        margin-top: 8px;
+                    }
+                    .loading-spinner {
+                        border: 4px solid rgba(255, 255, 255, 0.1);
+                        width: 50px;
+                        height: 50px;
+                        border-radius: 50%;
+                        border-left-color: #6366f1;
+                        animation: spin 1s linear infinite;
+                        margin: 2rem auto 0 auto;
+                    }
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
+    if (validationError) {
+        return (
+            <div className="login-page">
+                <div className="login-box fade-in">
+                    <div className="login-header">
+                        <div className="brand-logo">⚠️</div>
+                        <h1>Convite Inválido</h1>
+                        <p className="error-description">{validationError}</p>
+                    </div>
+                    <div className="error-actions">
+                        <button onClick={() => navigate('/login')} className="login-btn-primary">
+                            Ir para Login
+                        </button>
+                    </div>
+                </div>
+                <style>{`
+                    .login-page {
+                        height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: radial-gradient(circle at top left, #1e293b, #0f172a);
+                        color: white;
+                        overflow: hidden;
+                    }
+                    .login-box {
+                        width: 100%;
+                        max-width: 420px;
+                        padding: 2.5rem;
+                        background: rgba(30, 41, 59, 0.4);
+                        backdrop-filter: blur(20px);
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        border-radius: 30px;
+                        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                        text-align: center;
+                    }
+                    .brand-logo {
+                        font-size: 3.5rem;
+                        margin-bottom: 1rem;
+                        display: inline-block;
+                        background: rgba(239, 68, 68, 0.1);
+                        width: 80px;
+                        height: 80px;
+                        line-height: 80px;
+                        border-radius: 20px;
+                        border: 1px solid rgba(239, 68, 68, 0.2);
+                        box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
+                    }
+                    .login-header h1 {
+                        font-size: 2rem;
+                        font-weight: 800;
+                        margin: 0;
+                        background: linear-gradient(135deg, #fff, #f87171);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                    }
+                    .error-description {
+                        color: #f87171 !important;
+                        font-size: 1rem !important;
+                        margin-top: 12px;
+                        line-height: 1.5;
+                    }
+                    .login-btn-primary {
+                        width: 100%;
+                        padding: 14px;
+                        background: linear-gradient(135deg, #6366f1, #4f46e5);
+                        color: white;
+                        border: none;
+                        border-radius: 16px;
+                        font-weight: 700;
+                        font-size: 1rem;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+                        margin-top: 1rem;
+                    }
+                    .login-btn-primary:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 8px 25px rgba(99, 102, 241, 0.5);
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
     return (
         <div className="login-page">
             <div className="login-box fade-in">
                 <div className="login-header">
-                    <div className="brand-logo">🤖</div>
-                    <h1>Agent Flow</h1>
-                    <p>Acesse seu painel de automação inteligente</p>
+                    <div className="brand-logo">👋</div>
+                    <h1>Criar Conta</h1>
+                    <p>Você foi convidado como <strong>{inviteInfo?.role}</strong></p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="login-form">
+                    <div className="form-group">
+                        <label>Nome Completo</label>
+                        <div className="input-wrapper">
+                            <span className="input-icon">👤</span>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="Seu nome completo"
+                                required
+                            />
+                        </div>
+                    </div>
+
                     <div className="form-group">
                         <label>E-mail</label>
                         <div className="input-wrapper">
@@ -65,7 +272,7 @@ const Login = ({ onLogin }) => {
                                 type={showPassword ? "text" : "password"}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
+                                placeholder="Crie uma senha forte"
                                 required
                             />
                             <button
@@ -78,10 +285,10 @@ const Login = ({ onLogin }) => {
                         </div>
                     </div>
 
-                    {error && <div className="login-error-msg">{error}</div>}
+                    {submitError && <div className="login-error-msg">{submitError}</div>}
 
                     <button type="submit" className="login-btn-primary" disabled={loading}>
-                        {loading ? 'Entrando...' : 'Acessar Painel'}
+                        {loading ? 'Cadastrando...' : 'Finalizar Cadastro'}
                     </button>
                 </form>
 
@@ -282,4 +489,4 @@ const Login = ({ onLogin }) => {
     );
 };
 
-export default Login;
+export default Register;

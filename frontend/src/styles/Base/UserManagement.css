@@ -209,7 +209,6 @@
   margin-bottom: 0.4rem;
   padding-left: 0.2rem;
 }
-
 .user-form input,
 .user-form select {
   width: 100%;
@@ -229,4 +228,46 @@
   -webkit-text-fill-color: #fff !important;
   -webkit-box-shadow: 0 0 0px 1000px #0f172a inset !important;
   transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Abas de Navegação na Gestão de Usuários */
+.tabs-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 1px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.8rem 1.5rem;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s;
+  border-radius: 8px 8px 0 0;
+}
+
+.tab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tab-btn.active {
+  color: #3b82f6;
+}
+
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }

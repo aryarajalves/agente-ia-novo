@@ -3,6 +3,24 @@ import { formatDate } from '../utils/helpers';
 import { api } from '../../../api/client';
 import AutomationPipelineModal from './AutomationPipelineModal';
 
+const parseLabels = (labelsField) => {
+    if (!labelsField) return [];
+    if (Array.isArray(labelsField)) return labelsField;
+    if (typeof labelsField === 'string') {
+        try {
+            const parsed = JSON.parse(labelsField);
+            if (Array.isArray(parsed)) return parsed;
+            return [labelsField];
+        } catch (e) {
+            if (labelsField.startsWith('[') && labelsField.endsWith(']')) {
+                return [];
+            }
+            return [labelsField];
+        }
+    }
+    return [];
+};
+
 const LeadsModal = ({
     leadsModal,
     onClose,
@@ -270,7 +288,29 @@ const LeadsModal = ({
                                                     ▼
                                                 </span>
                                             </div>
-                                            <div style={{ fontSize: '0.9rem', color: '#6366f1', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', marginTop: '2px' }}>{l.telefone}</div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '2px', flexWrap: 'wrap' }}>
+                                                <div style={{ fontSize: '0.9rem', color: '#6366f1', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{l.telefone}</div>
+                                                {parseLabels(l.labels).map((label, idx) => (
+                                                    <span 
+                                                        key={idx} 
+                                                        style={{
+                                                            fontSize: '0.65rem', 
+                                                            fontWeight: 700, 
+                                                            padding: '1px 8px', 
+                                                            borderRadius: '12px',
+                                                            background: 'rgba(99, 102, 241, 0.15)', 
+                                                            color: '#a5b4fc', 
+                                                            border: '1px solid rgba(99, 102, 241, 0.25)', 
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                            backdropFilter: 'blur(4px)'
+                                                        }}
+                                                    >
+                                                        🏷️ {label}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                     <div style={{ textAlign: 'right', marginRight: '3.5rem', display: 'flex', alignItems: 'center', gap: '2rem' }}>
@@ -319,6 +359,34 @@ const LeadsModal = ({
                                                 },
                                                 { label: 'ÚLTIMA MENSAGEM DO USUÁRIO', value: l.mensagem || '—', icon: '💬', fullWidth: true },
                                                 { label: 'ÚLTIMA RESPOSTA DO AGENTE', value: l.ultima_resposta_agente || '—', icon: '🤖', fullWidth: true },
+                                                { 
+                                                    label: 'ETIQUETAS DO CHATWOOT', 
+                                                    value: parseLabels(l.labels).length > 0 ? (
+                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                            {parseLabels(l.labels).map((label, idx) => (
+                                                                <span 
+                                                                    key={idx} 
+                                                                    style={{
+                                                                        fontSize: '0.7rem', 
+                                                                        fontWeight: 700, 
+                                                                        padding: '2px 10px', 
+                                                                        borderRadius: '20px',
+                                                                        background: 'rgba(99, 102, 241, 0.15)', 
+                                                                        color: '#a5b4fc', 
+                                                                        border: '1px solid rgba(99, 102, 241, 0.25)',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px'
+                                                                    }}
+                                                                >
+                                                                    🏷️ {label}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : 'Sem etiquetas', 
+                                                    icon: '🏷️', 
+                                                    fullWidth: true 
+                                                },
                                             ].map((item, i) => (
                                                 <div key={i} style={{ 
                                                     background: 'rgba(255, 255, 255, 0.03)', 
