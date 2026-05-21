@@ -119,12 +119,12 @@ Esta versão traz o novo fluxo de convites para novos usuários e melhorias de s
 ## 📦 Deploy e Imagens Docker
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.6.9 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.6.9`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.1 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.1`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.6.9 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.6.9`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.1 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.1`
 
 
 
