@@ -152,10 +152,10 @@ async def test_no_greeting_or_ad_shortcut_if_not_first_msg():
     config = MockConfig()
     history = [{"role": "user", "content": "Olá"}, {"role": "assistant", "content": "Tudo bem?"}]
     
-    # Test "Oi" with history - should NOT trigger greeting
+    # Test "Oi" with history - should now trigger greeting
     result = await run_pre_router_ai("Oi", history, config)
-    assert result["eh_saudacao"] is False
-    assert result["resposta_direta"] is None
+    assert result["eh_saudacao"] is True
+    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
     
     # Test Ad message with history - should NOT trigger greeting
     result = await run_pre_router_ai("Quero saber mais sobre o Laser Day", history, config)
@@ -172,8 +172,8 @@ async def test_greeting_in_history_warm_clarification():
         {"role": "assistant", "content": "Nossos preços começam em R$ 99."}
     ]
     
-    # Test "Oie" with history - should trigger a warm friendly response instead of robotic technical choices
-    result = await run_pre_router_ai("Oie", history, config)
+    # Test "ta" with history - should trigger a warm friendly response instead of robotic technical choices
+    result = await run_pre_router_ai("ta", history, config)
     assert result["eh_saudacao"] is False
     assert result["precisa_esclarecimento"] is True
     assert result["resposta_esclarecimento"] is not None

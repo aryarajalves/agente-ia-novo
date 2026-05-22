@@ -114,6 +114,33 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
             
             respostas_str = json.dumps(respostas, ensure_ascii=False)
             
+            # Buscar lead existente para ler etiquetas atuais e evitar sobrescrever labels já aplicadas
+            existing_labels = []
+            try:
+                lead_query = f"SELECT labels FROM {leads_table} WHERE telefone = :phone"
+                lead_res = await db.execute(text(lead_query), {"phone": phone})
+                lead_row = lead_res.fetchone()
+                if lead_row and lead_row[0]:
+                    raw_labels = lead_row[0]
+                    try:
+                        parsed = json.loads(raw_labels)
+                        if isinstance(parsed, list):
+                            existing_labels = [str(x) for x in parsed]
+                        else:
+                            existing_labels = [str(raw_labels)]
+                    except Exception:
+                        existing_labels = [x.strip() for x in raw_labels.split(",") if x.strip()]
+            except Exception as e_read_labels:
+                logger.error(f"Erro ao ler etiquetas existentes do lead: {e_read_labels}")
+            
+            # Unir novas etiquetas do agente com as existentes
+            final_labels = list(existing_labels)
+            for item in to_add:
+                if item not in final_labels:
+                    final_labels.append(item)
+            
+            final_labels_json = json.dumps(final_labels, ensure_ascii=False)
+            
             # Tentar fazer o UPDATE primeiro
             update_query = f"""
                 UPDATE {leads_table} SET 
@@ -122,19 +149,14 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                     lead_classification = :lead_classification,
                     lead_justification = :lead_justification,
                     qualified_by_agent_id = :qualified_by_agent_id,
-                    labels = CASE 
-                        WHEN labels IS NULL OR labels = '' THEN :initial_labels
-                        WHEN labels NOT LIKE '%qualificado%' THEN labels || ',' || :initial_labels
-                        ELSE labels
-                    END,
+                    labels = :labels,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE telefone = :phone
             """
-            initial_labels = ",".join(to_add)
             result = await db.execute(text(update_query), {
                 "respostas": respostas_str,
                 "phone": phone,
-                "initial_labels": initial_labels,
+                "labels": final_labels_json,
                 "lead_score": lead_score,
                 "lead_classification": lead_classification,
                 "lead_justification": lead_justification,
@@ -177,7 +199,7 @@ async def handle_lead_qualified(db, context_variables, func_args_str, agent_id):
                     "mensagem_id": str(mensagem_id) if mensagem_id is not None else None,
                     "contato_id": str(contato_id) if contato_id is not None else None,
                     "telefone": phone,
-                    "labels": initial_labels,
+                    "labels": final_labels_json,
                     "contato_nome": contato_nome,
                     "respostas": respostas_str,
                     "lead_score": lead_score,

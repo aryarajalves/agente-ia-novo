@@ -13,6 +13,10 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+connect_args = {}
+if DATABASE_URL and "postgresql" in DATABASE_URL:
+    connect_args["prepared_statement_cache_size"] = 0
+
 # Engine Assíncrono (FastAPI)
 engine = create_async_engine(
     DATABASE_URL, 
@@ -22,6 +26,7 @@ engine = create_async_engine(
     pool_timeout=30,
     pool_recycle=300,
     pool_pre_ping=True,
+    connect_args=connect_args,
 )
 
 async_session = async_sessionmaker(

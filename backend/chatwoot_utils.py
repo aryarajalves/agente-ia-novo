@@ -11,17 +11,15 @@ CHATWOOT_TOKEN_DEFAULT = os.getenv("CHATWOOT_API_TOKEN", "")
 async def sync_conversation_labels(cw_url: str, account_id: int, conversation_id: int, token: str, to_add: list = None, to_remove: list = None):
     """
     Sincroniza as etiquetas de uma conversa no Chatwoot de forma idempotente.
+    Retorna uma tupla (sucesso: bool, etiquetas_finais: list)
     """
     if not cw_url or not account_id or not conversation_id or not token:
         logger.warning(f"Dados insuficientes para sincronizar etiquetas Chatwoot: url={cw_url}, acc={account_id}, conv={conversation_id}")
-        return False
+        return False, []
 
     cw_url = cw_url.rstrip("/")
     to_add = to_add or []
     to_remove = to_remove or []
-
-    if not to_add and not to_remove:
-        return True
 
     labels_url = f"{cw_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/labels"
     
@@ -39,23 +37,26 @@ async def sync_conversation_labels(cw_url: str, account_id: int, conversation_id
                 if l not in final_labels:
                     final_labels.append(l)
             
-            # 3. Se não houver mudança, pula o POST
+            # 3. Se não houver mudança e nem to_add/to_remove vazios pendentes, pula o POST
+            if not to_add and not to_remove:
+                return True, current_labels
+
             if set(final_labels) == set(current_labels):
                 logger.info(f"✅ Etiquetas já sincronizadas para conversa {conversation_id}")
-                return True
+                return True, final_labels
                 
             # 4. Atualizar no Chatwoot
             update_resp = await client.post(labels_url, json={"labels": final_labels}, headers={"api_access_token": token})
             if update_resp.status_code == 200:
                 logger.info(f"🏷️ Etiquetas sincronizadas para conversa {conversation_id}: +{to_add} -{to_remove}")
-                return True
+                return True, final_labels
             else:
                 logger.error(f"❌ Erro ao atualizar etiquetas: {update_resp.status_code} - {update_resp.text}")
-                return False
+                return False, current_labels
                 
     except Exception as e:
         logger.error(f"⚠️ Exceção ao sincronizar etiquetas Chatwoot: {e}")
-        return False
+        return False, []
 
 async def is_conversation_paused(cw_url: str, account_id: int, conversation_id: int, token: str, ignore_label: str) -> bool:
     """

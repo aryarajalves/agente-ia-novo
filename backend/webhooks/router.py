@@ -961,11 +961,63 @@ async def delete_all_leads(webhook_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{webhook_id}/leads/sync-all")
 async def sync_all_leads_endpoint(webhook_id: int, db: AsyncSession = Depends(get_db)):
     config = await db.get(WebhookConfigModel, webhook_id)
-    if not config: raise HTTPException(status_code=404, detail="Webhook não encontrado")
+    if not config: 
+        raise HTTPException(status_code=404, detail="Webhook não encontrado")
+        
+    cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
+    cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
     
-    # Aqui poderíamos disparar uma task Celery para buscar do Chatwoot
-    # Por enquanto, retornamos sucesso para não dar erro na UI
-    return {"ok": True, "message": "Sincronização iniciada"}
+    if not cw_url or not cw_token:
+        raise HTTPException(status_code=400, detail="Configurações ou credenciais do Chatwoot não configuradas")
+        
+    if not config.leads_table:
+        return {"ok": False, "message": "Tabela de leads não configurada para este webhook"}
+        
+    try:
+        # Buscar todos os leads vinculados ao webhook
+        query = text(f"SELECT id, conta_id, conversa_id FROM {config.leads_table} WHERE webhook_config_id = :wid")
+        res = await db.execute(query, {"wid": webhook_id})
+        leads = res.fetchall()
+        
+        from chatwoot_utils import sync_conversation_labels
+        
+        semaphore = asyncio.Semaphore(5)
+        updated_count = 0
+        
+        async def sync_single_lead(lead_id, c_id, conv_id):
+            nonlocal updated_count
+            async with semaphore:
+                try:
+                    success, final_labels = await sync_conversation_labels(
+                        cw_url=cw_url,
+                        account_id=int(c_id),
+                        conversation_id=int(conv_id),
+                        token=cw_token
+                    )
+                    if success:
+                        update_q = text(f"UPDATE {config.leads_table} SET labels = :labels, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+                        await db.execute(update_q, {
+                            "labels": json.dumps(final_labels, ensure_ascii=False),
+                            "id": lead_id
+                        })
+                        updated_count += 1
+                except Exception as e_single:
+                    logger.error(f"Erro ao sincronizar etiquetas do lead {lead_id}: {e_single}")
+                    
+        tasks = []
+        for row in leads:
+            lead_id, c_id, conv_id = row
+            if c_id and conv_id:
+                tasks.append(sync_single_lead(lead_id, c_id, conv_id))
+                
+        if tasks:
+            await asyncio.gather(*tasks)
+            await db.commit()
+            
+        return {"ok": True, "message": f"Sincronização concluída com sucesso. {updated_count} contatos atualizados."}
+    except Exception as e:
+        logger.error(f"Erro na sincronização em massa: {e}")
+        return {"ok": False, "message": f"Erro interno ao sincronizar: {str(e)}"}
 @router.get("/{webhook_id}/events/{event_id}")
 async def get_webhook_event_detail(webhook_id: int, event_id: int, db: AsyncSession = Depends(get_db)):
     event = await db.get(WebhookEventModel, event_id)

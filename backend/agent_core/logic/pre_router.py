@@ -82,7 +82,7 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
         msg_clean_no_punct = msg_clean_no_punct.replace(char, "")
     msg_clean_no_punct = msg_clean_no_punct.strip()
 
-    if (msg_clean_no_punct in common_greetings or msg_clean_no_punct == "") and is_first_msg:
+    if (msg_clean_no_punct in common_greetings or msg_clean_no_punct == ""):
         resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
         
         # Se houver pergunta inicial configurada, envia ela no final
@@ -143,8 +143,8 @@ NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que
 
 2. Se a mensagem contiver perguntas ou requisições, você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
 
-3. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true.
-   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa. Defina 'precisa_esclarecimento' como true, mas use uma resposta simpática e natural de retorno de contato em 'resposta_esclarecimento' (Ex: "Olá! Como posso te ajudar agora?" ou "Oi! Em que posso te ajudar hoje?") em vez de perguntar de forma robótica se quer cancelar ou testar o chat.
+3. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true e forneça uma mensagem curta e simpática de esclarecimento em 'resposta_esclarecimento' (Ex: "Como posso te ajudar hoje?" ou "Olá! Poderia me dar mais detalhes sobre o que você precisa?").
+   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa e nem defina 'precisa_esclarecimento' como true. Em vez disso, defina 'eh_saudacao' como true e use a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
    ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' como false e 'id_agente_alvo' como o Agente Principal.
    
 4. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
@@ -167,7 +167,7 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
 }}"""
 
     if not is_first_msg:
-        system_prompt += "\n⚠️ REGRA CRÍTICA DE HISTÓRICO: Há interações anteriores na conversa. NUNCA defina 'eh_saudacao' como true, pois o usuário já está em atendimento. Trate a mensagem como uma pergunta ou continuação normal da conversa."
+        system_prompt += "\n⚠️ REGRA CRÍTICA DE HISTÓRICO: Há interações anteriores na conversa. Se a mensagem for apenas uma saudação curta ou cumprimento isolado (Ex: 'Oi', 'Olá', 'Bom dia', 'Tudo bem?'), você PODE definir 'eh_saudacao' como true e usar a 'SAUDAÇÃO CONFIGURADA' como 'resposta_direta'. Mas se o usuário trouxer qualquer dúvida, resposta ou assunto novo, trate a mensagem como continuação normal da conversa (eh_saudacao = false)."
 
     user_prompt = f"{history_text}\nMENSAGEM ATUAL DO USUÁRIO:\n{message}"
 
@@ -187,9 +187,14 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         )
         result = json.loads(response.choices[0].message.content.strip())
         
-        if not is_first_msg:
-            result["eh_saudacao"] = False
-            result["resposta_direta"] = None
+        # Se eh_saudacao for True mas resposta_direta for nula, preenchemos programaticamente
+        if result.get("eh_saudacao") and not result.get("resposta_direta"):
+            resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
+            init_q_msg = getattr(main_agent, 'initial_question_message', None)
+            if init_q_msg and resposta:
+                if not resposta.endswith(init_q_msg):
+                    resposta = f"{resposta}\n\n{init_q_msg}"
+            result["resposta_direta"] = resposta
             
         # Metadados para depuração (Raio-X)
         result["_model_used"] = model_to_use

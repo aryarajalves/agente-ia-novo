@@ -199,13 +199,46 @@ def check_automation_trap(db, event, config, lead_internal_id, last_msg, lead_cr
                 cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
                 if cw_url and cw_token and event.conversa_id and event.conta_id:
                     webhook_tasks._add_step(db, event.id, "🏷️ Adicionando etiquetas automáticas", f"Etiquetas: {', '.join(labels_to_add)}")
-                    asyncio.run(webhook_tasks.sync_conversation_labels(
+                    success, final_labels = asyncio.run(webhook_tasks.sync_conversation_labels(
                         cw_url, 
                         int(event.conta_id), 
                         int(event.conversa_id), 
                         cw_token, 
                         to_add=labels_to_add
                     ))
+                    if success and config.leads_table and event.telefone:
+                        from sqlalchemy import text
+                        try:
+                            # Tentar obter etiquetas atuais locais para mesclagem limpa
+                            lead_query = f"SELECT labels FROM {config.leads_table} WHERE telefone = :tel"
+                            lead_res = db.execute(text(lead_query), {"tel": event.telefone})
+                            lead_row = lead_res.fetchone()
+                            existing_labels = []
+                            if lead_row and lead_row[0]:
+                                try:
+                                    parsed = json.loads(lead_row[0])
+                                    if isinstance(parsed, list):
+                                        existing_labels = [str(x) for x in parsed]
+                                    else:
+                                        existing_labels = [str(lead_row[0])]
+                                except Exception:
+                                    existing_labels = [x.strip() for x in lead_row[0].split(",") if x.strip()]
+                            
+                            # Mesclar as etiquetas do Chatwoot com as locais (por garantia)
+                            final_merged = list(final_labels)
+                            for item in existing_labels:
+                                if item not in final_merged:
+                                    final_merged.append(item)
+                                    
+                            db.execute(text(f"UPDATE {config.leads_table} SET labels = :labels, updated_at = :now WHERE telefone = :tel"), {
+                                "labels": json.dumps(final_merged, ensure_ascii=False),
+                                "tel": event.telefone,
+                                "now": datetime.utcnow()
+                            })
+                            db.commit()
+                            logger.info(f"Etiquetas locais atualizadas via webhook: {final_merged}")
+                        except Exception as e_db_update:
+                            logger.error(f"Erro ao atualizar etiquetas locais via webhook: {e_db_update}")
         except Exception as e_labels:
             logger.error(f"Erro ao adicionar etiquetas automáticas: {e_labels}")
             webhook_tasks._add_step(db, event.id, "⚠️ Aviso: Etiquetas não adicionadas", f"Falha ao sincronizar etiquetas: {str(e_labels)}")

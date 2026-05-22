@@ -97,6 +97,11 @@ Esta versão traz o novo fluxo de convites para novos usuários e melhorias de s
 - **Fuso Horário de Brasília**: Todas as datas de listagem e alteração de leads na tela de Lead Scoring são convertidas na API para o fuso horário de Brasília (`America/Sao_Paulo` / UTC-3).
 - **Maximização das Diretrizes de Lead Scoring**: Inclusão de botão "Maximizar" ao lado do campo de texto de Diretrizes que abre um editor amplo em tela cheia (85% da largura da tela) com sincronização em tempo real e backdrop blur Premium.
 
+### Novidades e Ajustes Recentes (v1.7.2)
+- **Resiliência e Conexão PostgreSQL**: Desativação inteligente de prepared statements em cache (`prepared_statement_cache_size=0`) para conexões assíncronas PostgreSQL, mitigando erros do tipo `InvalidCachedStatementError` após alterações dinâmicas de esquema.
+- **Saudações Inteligentes com Histórico no Pre-Router**: O motor de triagem do `Pre-Router AI` agora classifica e responde corretamente com saudações diretas a cumprimentos curtos e isolados (como "oi", "olá", "oie", "bom dia"), mesmo que a conversa já contenha histórico de interações anteriores.
+- **Sincronização de Etiquetas Chatwoot em Lote e Webhooks**: Integração e persistência bidirecional das etiquetas do Chatwoot no banco local de leads de forma automática nos webhooks, no pipeline de qualificação, e por meio da rota de sincronização em lote `/sync-all` para todos os leads.
+
 ### Novidades Anteriores (v1.7.0)
 - **Tratamento e Remoção de Anúncios e Pergunta Inicial no Primeiro Contato**: Remoção automática e case-insensitive de mensagens de anúncios cadastrados (`ignore_messages`) na primeira interação de um lead. Se o lead enviar anúncio + uma pergunta, o robô responde à pergunta utilizando a IA e anexa a pergunta de início de atendimento (`initial_question_message`) no final da mensagem. Se o lead enviar apenas o anúncio (ou anúncio + saudação simples), o robô responde com a saudação padrão e anexa a pergunta inicial no final.
 - **Tratamento Estrito de Erro de Envio no Webhook**: Casos de falha ou timeout de rede com a API do Chatwoot no envio de respostas agora marcam o status do evento de webhook como `error` (e não mais `completed`). Isso evita que envios malsucedidos contaminem o histórico de contexto do agente.
@@ -119,12 +124,12 @@ Esta versão traz o novo fluxo de convites para novos usuários e melhorias de s
 ## 📦 Deploy e Imagens Docker
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.1 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.1`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.2 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.2`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.1 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.1`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.2 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.2`
 
 
 
