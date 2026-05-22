@@ -140,10 +140,20 @@ export const useChat = ({
     const handleSendMessage = async (e, directText = null) => {
         if (e) e.preventDefault();
         const userMsg = directText || input.trim();
-        const hasImage = !!selectedImage;
+        const imageFile = selectedImage;
+        const hasImage = !!imageFile;
 
         if ((!userMsg && !hasImage) || !selectedAgentId || loading) return;
         if (!directText) setInput('');
+
+        // Limpa o preview e seleção da imagem local imediatamente ao iniciar o envio
+        if (hasImage) {
+            setSelectedImage(null);
+            setImagePreview(null);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
 
         setLoading(true);
         let finalImageUrl = null;
@@ -152,7 +162,7 @@ export const useChat = ({
             setIsUploading(true);
             try {
                 const formData = new FormData();
-                formData.append('file', selectedImage);
+                formData.append('file', imageFile);
                 const uploadRes = await api.upload('/upload-image', formData);
                 if (!uploadRes.ok) throw new Error("Falha no upload");
                 const uploadData = await uploadRes.json();
@@ -193,11 +203,6 @@ export const useChat = ({
             .catch(e => console.log("Erro silencioso na analise de sentimento:", e));
 
         await Promise.all(agentPromises);
-        
-        if (hasImage) {
-            setSelectedImage(null);
-            setImagePreview(null);
-        }
         
         // Atualiza histórico lateral se houver callback
         if (onMessageSent) {

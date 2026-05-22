@@ -101,7 +101,7 @@ async def process_message(
     system_prompt = config.system_prompt
     system_prompt += "\n\n⚠️ **REGRA DE OURO:** Não use 'IA', 'Robô', 'Suporte Humano'. Use 'especialista', 'equipe'."
     system_prompt += "\n\n🚨 **PRIORIDADE DE RESPOSTA (SEGUIR À RISCA):**"
-    system_prompt += "\n1. Se o usuário fizer uma pergunta sobre algo que NÃO esteja no seu PROMPT DE SISTEMA (as diretrizes/conhecimento descritos acima), no seu conhecimento (RAG) ou nas 'INSTRUÇÕES ADICIONAIS' (Inbox), use OBRIGATORIAMENTE a ferramenta 'registrar_duvida_sem_resposta' e diga que vai verificar com a equipe."
+    system_prompt += "\n1. Se o usuário fizer uma pergunta sobre algo que NÃO esteja no seu PROMPT DE SISTEMA (as diretrizes/conhecimento descritos acima), no seu conhecimento (RAG) ou nas 'INSTRUÇÕES ADICIONAIS' (Inbox), use OBRIGATORIAMENTE a ferramenta 'registrar_duvida_sem_resposta' e diga que vai verificar com a equipe. No entanto, se houver informações intimamente correlacionadas no prompt (por exemplo, se o usuário perguntar sobre o preço/compra de um equipamento, mas o prompt descrever apenas o aluguel/locação do mesmo), você DEVE responder com confiança de forma contextual e informativa explicando o funcionamento do modelo de negócio disponível (ex: esclarecer que trabalhamos com locação/aluguel e informar as condições de aluguel descritas). Apenas chame a ferramenta 'registrar_duvida_sem_resposta' se o usuário insistir em detalhes que realmente não constam no prompt ou se o assunto for inteiramente desconhecido."
     system_prompt += "\n2. Use 'transferir_suporte_humano' APENAS se o usuário pedir EXPLICITAMENTE ('quero falar com atendente', 'me passa pra um humano', 'quero suporte humano')."
     system_prompt += "\n3. NUNCA use 'transferir_suporte_humano' apenas porque você não sabe a resposta. Para isso existe a regra 1."
     system_prompt += "\n4. NUNCA invente nomes de membros da equipe ou clientes. Se a pessoa citada não estiver no seu PROMPT DE SISTEMA, conhecimento (RAG ou Inbox), trate como dúvida (Regra 1)."
@@ -121,18 +121,21 @@ async def process_message(
     # --- REGRAS RÍGIDAS DE INTEGRIDADE (CONTRA ALUCINAÇÃO) ---
     strict_rules = (
         "\n\n### REGRA DE OURO (COMPORTAMENTO OBRIGATÓRIO):\n"
-        "1. Seu 'CONHECIMENTO OFICIAL' é composto por: (a) SEU PRÓPRIO PROMPT DE SISTEMA (instruções/informações de produtos descritas acima neste prompt), (b) CONTEXTO RAG e (c) INSTRUÇÕES ADICIONAIS (Inbox). Se a informação estiver em QUALQUER um desses lugares, você DEVE responder com confiança.\n"
-        "2. Se a informação necessária NÃO estiver em nenhum desses locais, você DEVE chamar a ferramenta 'registrar_duvida_sem_resposta' ANTES de responder.\n"
+        "1. Seu 'CONHECIMENTO OFICIAL' é composto por: (a) SEU PRÓPRIO PROMPT DE SISTEMA (instruções/informações de produtos descritas acima neste prompt), (b) CONTEXTO RAG e (c) INSTRUÇÕES ADICIONAIS (Inbox). Se a informação estiver em QUALQUER um desses lugares, ou se houver informação correlacionada no prompt (como explicar sobre o aluguel quando questionado sobre compra do equipamento), você DEVE responder com confiança de forma contextual e informativa.\n"
+        "2. Se a informação necessária NÃO estiver em nenhum desses locais e não for possível fornecer uma resposta contextual baseada nas regras de negócio existentes (assuntos totalmente desconhecidos ou fora de escopo), você DEVE chamar a ferramenta 'registrar_duvida_sem_resposta' antes de responder.\n"
         "3. É PROIBIDO inventar nomes, prazos ou políticas que não constem no seu PROMPT DE SISTEMA, RAG ou Inbox.\n"
         "4. **PROTOCOLO DE RESPOSTA DA FERRAMENTA 'registrar_duvida_sem_resposta' (OBRIGATÓRIO):**\n"
-        "   - **Primeiro Turno (Acionamento da Ferramenta):** Ao chamar a ferramenta, sua resposta final para o usuário DEVE seguir estritamente este padrão: 'Vou verificar com a equipe e já te retorno certinho sobre: [pergunta do usuário reformulada de forma clara e direta].' E no final da mensagem, faça sempre alguma pergunta para o usuário como: 'Posso lhe ajudar com mais alguma dúvida?' ou similar.\n"
-        "   - **Segundo Turno (Confirmação do Usuário):** Se o usuário responder apenas com concordâncias/confirmações curtas (ex: 'ok', 'blz', 'tudo bem', 'beleza', 'certo', 'combinado', 'obrigado') após você ter dito que iria verificar com a equipe, você **DEVE APENAS** responder: 'Já salvei sua pergunta aqui para o nosso time analisar. Enquanto isso, como posso te ajudar com outro assunto agora?'. **É TERMINANTEMENTE PROIBIDO** perguntar se ele quer que você passe as informações que você tem agora, oferecer passar o que você sabe, ou perguntar se ele quer aguardar, pois você NÃO possui essa informação na sua base ou prompt. Apenas confirme o salvamento da pergunta e questione se há outro assunto em que possa ajudar."
+        "   - **Primeiro Turno (Acionamento da Ferramenta):** Ao chamar a ferramenta, você DEVE responder de forma contextual e informativa usando qualquer informação relacionada disponível no prompt (por exemplo, se perguntarem sobre comprar o equipamento, esclareça que o curso foca em aluguel e que o usuário não precisa comprar a máquina). Para a informação específica e faltante (como preços ou detalhes que de fato não constam no prompt), inclua de forma integrada na mesma mensagem o padrão: 'Sobre [detalhe específico sem resposta], vou verificar com a equipe e já te retorno certinho sobre: [pergunta reformulada de forma clara e direta].' E no final da mensagem, faça sempre alguma pergunta para o usuário como: 'Posso lhe ajudar com mais alguma dúvida?' ou similar ou dê prosseguimento ao fluxo natural.\n"
+        "   - **Segundo Turno (Resposta do Usuário após registrar dúvida):**\n"
+        "     - Se o usuário responder apenas com concordâncias/confirmações curtas (ex: 'ok', 'blz', 'tudo bem', 'beleza', 'certo', 'combinado', 'obrigado') após você ter dito que iria verificar com a equipe, você **DEVE APENAS** responder: 'Já salvei sua pergunta aqui para o nosso time analisar. Enquanto isso, como posso te ajudar com outro assunto agora?'. **É TERMINANTEMENTE PROIBIDO** perguntar se ele quer que você passe as informações que você tem agora, oferecer passar o que você sabe, ou perguntar se ele quer aguardar, pois você NÃO possui essa informação na sua base ou prompt. Apenas confirme o salvamento da pergunta e questione se há outro assunto em que possa ajudar.\n"
+        "     - Se o usuário responder negativamente ou indicando que não precisa de mais ajuda (ex: 'não', 'não obrigado', 'não preciso de mais nada', 'nada mais', 'no', 'nada'), você **DEVE** confirmar que a dúvida foi salva para a equipe e encerrar a conversa de forma extremamente educada e conclusiva (ex: 'Perfeito! Já salvei sua pergunta aqui para a equipe e eles vão te retornar. Se precisar de mais alguma coisa no futuro, estarei por aqui. Tenha um excelente dia!'), **SEM** perguntar se pode ajudar com outro assunto ou fazer novas perguntas."
     )
     system_prompt += strict_rules
 
     # --- INJEÇÃO DE PERGUNTAS DE QUALIFICAÇÃO DE LEAD ---
+    has_lead_qualified = any(t.name == "lead_qualificado" for t in tools) if tools else False
     raw_qq = getattr(config, 'qualification_questions', None)
-    if raw_qq:
+    if raw_qq and has_lead_qualified:
         try:
             qq_list = json.loads(raw_qq) if isinstance(raw_qq, str) else raw_qq
             if isinstance(qq_list, list) and qq_list:
@@ -281,7 +284,7 @@ async def process_message(
         })
 
     # Adicionar ferramenta de qualificação de lead se configurada
-    if getattr(config, 'qualification_questions', None):
+    if getattr(config, 'qualification_questions', None) and has_lead_qualified:
         openai_tools.append({
             "type": "function",
             "function": {

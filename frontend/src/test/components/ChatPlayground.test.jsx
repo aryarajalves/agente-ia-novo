@@ -9,6 +9,7 @@ vi.mock('../../api/client', () => ({
     api: {
         get: vi.fn(),
         post: vi.fn(),
+        upload: vi.fn(),
     },
 }));
 
@@ -69,6 +70,16 @@ describe('ChatPlayground Component', () => {
             return Promise.resolve({ ok: true });
         });
 
+        api.upload.mockImplementation((path, formData) => {
+            if (path.includes('/upload-image')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ image_url: 'http://localhost:5300/uploads/test-image.png' })
+                });
+            }
+            return Promise.resolve({ ok: true });
+        });
+
         // Mock window.location
         delete window.location;
         window.location = new URL('http://localhost:5300/playground?agentId=4');
@@ -101,14 +112,13 @@ describe('ChatPlayground Component', () => {
             );
         });
 
-        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        const input = screen.getByPlaceholderText(/Mensagem para o agente/i);
 
         await act(async () => {
             fireEvent.change(input, { target: { value: 'Olá!' } });
         });
 
-        const buttons = screen.getAllByRole('button');
-        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        const sendButton = document.querySelector('button[type="submit"]');
 
         await waitFor(() => {
             expect(sendButton).not.toBeDisabled();
@@ -154,13 +164,12 @@ describe('ChatPlayground Component', () => {
             );
         });
 
-        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        const input = screen.getByPlaceholderText(/Mensagem para o agente/i);
         await act(async () => {
             fireEvent.change(input, { target: { value: 'Qual o link do grupo?' } });
         });
 
-        const buttons = screen.getAllByRole('button');
-        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        const sendButton = document.querySelector('button[type="submit"]');
         await act(async () => {
             fireEvent.click(sendButton);
         });
@@ -203,13 +212,12 @@ describe('ChatPlayground Component', () => {
             );
         });
 
-        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        const input = screen.getByPlaceholderText(/Mensagem para o agente/i);
         await act(async () => {
             fireEvent.change(input, { target: { value: 'Me manda o link' } });
         });
 
-        const buttons = screen.getAllByRole('button');
-        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        const sendButton = document.querySelector('button[type="submit"]');
         await act(async () => {
             fireEvent.click(sendButton);
         });
@@ -242,14 +250,13 @@ describe('ChatPlayground Component', () => {
             );
         });
 
-        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        const input = screen.getByPlaceholderText(/Mensagem para o agente/i);
 
         await act(async () => {
             fireEvent.change(input, { target: { value: 'Erro!' } });
         });
 
-        const buttons = screen.getAllByRole('button');
-        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        const sendButton = document.querySelector('button[type="submit"]');
 
         await act(async () => {
             fireEvent.click(sendButton);
@@ -291,13 +298,12 @@ describe('ChatPlayground Component', () => {
             );
         });
 
-        const input = screen.getByPlaceholderText('Mensagem para o agente');
+        const input = screen.getByPlaceholderText(/Mensagem para o agente/i);
         await act(async () => {
             fireEvent.change(input, { target: { value: 'Teste de horario' } });
         });
 
-        const buttons = screen.getAllByRole('button');
-        const sendButton = buttons.find(b => b.className.includes('send-trigger'));
+        const sendButton = document.querySelector('button[type="submit"]');
 
         await act(async () => {
             fireEvent.click(sendButton);
@@ -308,5 +314,40 @@ describe('ChatPlayground Component', () => {
         await waitFor(() => {
             expect(screen.getByText('Mensagem com timestamp')).toBeInTheDocument();
         }, { timeout: 3000 });
+    });
+
+    it('should clear image preview immediately upon clicking send', async () => {
+        await act(async () => {
+            render(
+                <MemoryRouter initialEntries={['/playground?agentId=4']}>
+                    <ChatPlayground />
+                </MemoryRouter>
+            );
+        });
+
+        // 1. Simula a seleção de uma imagem
+        const file = new File(['dummy content'], 'test-image.png', { type: 'image/png' });
+        const inputEl = document.querySelector('input[type="file"]');
+        expect(inputEl).toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.change(inputEl, { target: { files: [file] } });
+        });
+
+        // O preview de imagem deve surgir na tela
+        await waitFor(() => {
+            expect(screen.getByAltText('Preview')).toBeInTheDocument();
+        });
+
+        // 2. Clica no botão de enviar
+        const sendButton = document.querySelector('button[type="submit"]');
+        expect(sendButton).not.toBeDisabled();
+
+        await act(async () => {
+            fireEvent.click(sendButton);
+        });
+
+        // O preview de imagem deve desaparecer IMEDIATAMENTE
+        expect(screen.queryByAltText('Preview')).not.toBeInTheDocument();
     });
 });

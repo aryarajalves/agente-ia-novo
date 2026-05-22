@@ -1,6 +1,6 @@
 # 🤖 Plataforma de Agentes de IA para Automação
 
-Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.6.0", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
+Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.7.3", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
 
 
 
@@ -81,6 +81,19 @@ npm run test:frontend
 ```
 
 ---
+
+## ✨ Novidades da Versão (v1.7.3)
+
+Esta versão traz melhorias críticas de UI/UX e testes na interface de teste do chat (ChatPlayground):
+- **Limpeza Imediata de Preview de Imagem**: O preview de imagens selecionadas na caixa de entrada do chat agora desaparece instantaneamente quando o usuário clica em enviar (ou aperta Enter), ao mesmo tempo em que a caixa de entrada de texto é limpa. O upload do arquivo ocorre de forma transparente em segundo plano, melhorando consideravelmente a percepção de performance e a experiência de uso.
+- **Correção Estética de Preview de Imagem (Glassmorphism)**: Ajuste fino no container de preview utilizando Glassmorphism com efeito blur (`backdrop-filter: blur(10px)`), limites dimensionais estritos para imagens de alta resolução (`64px` x `64px` com `object-fit: cover`) e botão de remover com feedback hover suave.
+- **Suíte de Testes do ChatPlayground Estabilizada**: Criação e atualização de testes unitários que cobrem a montagem do preview, metadados da imagem, e validação rigorosa de que o preview é limpo instantaneamente ao enviar a mensagem. Os testes foram atualizados com seletores e expressões regulares robustas.
+
+## ✨ Novidades da Versão (v1.9.1)
+
+Esta versão traz melhorias críticas no fluxo de conversação e flexibilidade da IA:
+- **Respostas de Saudação de Continuação no Pre-Router**: O robô agora identifica e responde a saudações curtas no meio da conversa (quando há histórico recente) com um cumprimento amigável e genérico (*"Olá! Como posso te ajudar?"*), em vez de repetir a saudação inicial longa e específica do agente.
+- **Flexibilização de Dúvidas Sem Resposta**: Ajuste da regra de integridade do prompt de sistema (Regra de Ouro) no motor do Agente principal (`core.py`) para permitir respostas contextuais inteligentes e informativas quando houver dados correlacionados no prompt (ex: explicar sobre aluguel quando questionada sobre compra), acionando a ferramenta de dúvidas sem resposta apenas para assuntos inteiramente desconhecidos.
 
 ## ✨ Novidades da Versão (v1.9.0)
 

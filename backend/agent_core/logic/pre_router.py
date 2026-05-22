@@ -23,6 +23,9 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
     # Lista de saudações comuns
     common_greetings = ["oi", "ola", "oie", "bom dia", "boa tarde", "boa noite"]
     
+    # Lista de agradecimentos comuns
+    common_thanks = ["obrigado", "obrigada", "valeu", "gratidao", "obrigadao", "thanks", "tanks"]
+    
     # Lista de anúncios configurada (se houver)
     ignore_messages = []
     initial_ignore = getattr(main_agent, 'initial_ignore_message', None)
@@ -83,19 +86,30 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
     msg_clean_no_punct = msg_clean_no_punct.strip()
 
     if (msg_clean_no_punct in common_greetings or msg_clean_no_punct == ""):
-        resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
-        
-        # Se houver pergunta inicial configurada, envia ela no final
-        init_q_msg = getattr(main_agent, 'initial_question_message', None)
-        if init_q_msg and resposta:
-            if not resposta.endswith(init_q_msg):
-                resposta = f"{resposta}\n\n{init_q_msg}"
+        if is_first_msg:
+            resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
+        else:
+            resposta = "Olá! Como posso te ajudar?"
 
         return {
             "eh_saudacao": True,
+            "eh_agradecimento": False,
             "precisa_esclarecimento": False,
             "id_agente_alvo": main_agent.id,
             "resposta_direta": resposta,
+            "perguntas_extraidas": None,
+            "data_extraida": None,
+            "eh_anuncio": is_ad,
+            "detalhe_anuncio": similarity_info,
+            "_model_used": "shortcut-logic"
+        }
+    elif msg_clean_no_punct in common_thanks:
+        return {
+            "eh_saudacao": True,
+            "eh_agradecimento": True,
+            "precisa_esclarecimento": False,
+            "id_agente_alvo": main_agent.id,
+            "resposta_direta": "Por nada! Se precisar de mais alguma coisa, é só chamar.",
             "perguntas_extraidas": None,
             "data_extraida": None,
             "eh_anuncio": is_ad,
@@ -111,6 +125,7 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
     if not api_key:
         return {
             "eh_saudacao": False, 
+            "eh_agradecimento": False,
             "id_agente_alvo": main_agent.id, 
             "perguntas_extraidas": message,
             "eh_anuncio": False,
@@ -138,13 +153,14 @@ Sua função é tripla:
    - MENSAGEM DE ANÚNCIO (IGNORAR): "{getattr(main_agent, 'initial_ignore_message', '')}"
    
    CRITÉRIO RÍGIDO: Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos, você DEVE definir 'eh_saudacao' como true e usar a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
+   Se a mensagem for um AGRADECIMENTO (Ex: "Obrigado", "Obrigada", "Valeu", "Muito obrigado"), você deve definir 'eh_agradecimento' como true, 'eh_saudacao' como true e usar uma resposta simpática de agradecimento (Ex: "Por nada! Se precisar de mais alguma coisa, é só chamar.") como 'resposta_direta'.
    
 NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que faz sentido dentro do histórico recente, NÃO é apenas saudação, é parte da conversa, logo eh_saudacao deve ser false.
 
 2. Se a mensagem contiver perguntas ou requisições, você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
 
 3. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true e forneça uma mensagem curta e simpática de esclarecimento em 'resposta_esclarecimento' (Ex: "Como posso te ajudar hoje?" ou "Olá! Poderia me dar mais detalhes sobre o que você precisa?").
-   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa e nem defina 'precisa_esclarecimento' como true. Em vez disso, defina 'eh_saudacao' como true e use a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
+   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa e nem defina 'precisa_esclarecimento' como true. Em vez disso, defina 'eh_saudacao' as true e use a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
    ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' como false e 'id_agente_alvo' como o Agente Principal.
    
 4. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
@@ -158,6 +174,7 @@ Se estiver em dúvida, escolha SEMPRE o Agente Principal (ID: {main_agent.id}).
 Retorne SEMPRE um JSON completo com TODAS as chaves:
 {{
   "eh_saudacao": boolean,
+  "eh_agradecimento": boolean,
   "precisa_esclarecimento": boolean,
   "resposta_direta": "string ou null",
   "resposta_esclarecimento": "string ou null",
@@ -187,14 +204,17 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         )
         result = json.loads(response.choices[0].message.content.strip())
         
-        # Se eh_saudacao for True mas resposta_direta for nula, preenchemos programaticamente
-        if result.get("eh_saudacao") and not result.get("resposta_direta"):
-            resposta = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
-            init_q_msg = getattr(main_agent, 'initial_question_message', None)
-            if init_q_msg and resposta:
-                if not resposta.endswith(init_q_msg):
-                    resposta = f"{resposta}\n\n{init_q_msg}"
-            result["resposta_direta"] = resposta
+        # Se eh_saudacao for True
+        if result.get("eh_saudacao"):
+            if result.get("eh_agradecimento"):
+                if not result.get("resposta_direta"):
+                    result["resposta_direta"] = "Por nada! Se precisar de mais alguma coisa, é só chamar."
+            else:
+                if is_first_msg:
+                    if not result.get("resposta_direta"):
+                        result["resposta_direta"] = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
+                else:
+                    result["resposta_direta"] = "Olá! Como posso te ajudar?"
             
         # Metadados para depuração (Raio-X)
         result["_model_used"] = model_to_use
@@ -214,6 +234,7 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         logger.error(f"Erro no Pre-Router: {e}")
         return {
             "eh_saudacao": False, 
+            "eh_agradecimento": False,
             "precisa_esclarecimento": False,
             "id_agente_alvo": main_agent.id, 
             "perguntas_extraidas": message,

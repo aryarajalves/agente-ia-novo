@@ -5,6 +5,20 @@ from agent import process_message
 from config_store import AgentConfig
 from agent_core.tools.handlers.internal import handle_lead_qualified
 
+class MockTool:
+    def __init__(self, name, description="", parameters_schema=None):
+        self.name = name
+        self.description = description
+        self.parameters_schema = parameters_schema or {}
+
+@pytest.fixture
+def lead_qualificado_tool():
+    return MockTool(
+        name="lead_qualificado",
+        description="Chame esta ferramenta quando o usuário responder com sucesso todas as perguntas de qualificação.",
+        parameters_schema={"type": "object", "properties": {"respostas": {"type": "object"}}, "required": ["respostas"]}
+    )
+
 class MockMessage:
     def __init__(self, content, tool_calls=None):
         self.content = content
@@ -34,7 +48,7 @@ def qualification_config():
     )
 
 @pytest.mark.asyncio
-async def test_qualification_prompt_injection(qualification_config):
+async def test_qualification_prompt_injection(qualification_config, lead_qualificado_tool):
     message = "Olá"
     history = []
     
@@ -46,7 +60,7 @@ async def test_qualification_prompt_injection(qualification_config):
         mock_get_client.return_value = mock_client
         mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá! Qual seu nome?"))
         
-        await process_message(message, history, qualification_config)
+        await process_message(message, history, qualification_config, tools=[lead_qualificado_tool])
         
         called_args, called_kwargs = mock_client.chat.completions.create.call_args
         messages = called_kwargs["messages"]
@@ -58,7 +72,7 @@ async def test_qualification_prompt_injection(qualification_config):
         assert "Qual sua empresa?" in system_msg["content"]
 
 @pytest.mark.asyncio
-async def test_qualification_tool_declaration(qualification_config):
+async def test_qualification_tool_declaration(qualification_config, lead_qualificado_tool):
     message = "Olá"
     history = []
     
@@ -70,7 +84,7 @@ async def test_qualification_tool_declaration(qualification_config):
         mock_get_client.return_value = mock_client
         mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá! Qual seu nome?"))
         
-        await process_message(message, history, qualification_config)
+        await process_message(message, history, qualification_config, tools=[lead_qualificado_tool])
         
         called_args, called_kwargs = mock_client.chat.completions.create.call_args
         tools = called_kwargs["tools"]
@@ -100,6 +114,9 @@ async def test_handler_lead_qualified():
     mock_webhook_result = MagicMock()
     mock_webhook_result.scalars.return_value.first.return_value = mock_webhook
     
+    mock_lead_row_result = MagicMock()
+    mock_lead_row_result.fetchone.return_value = (None,)
+    
     mock_update_result = MagicMock()
     mock_update_result.rowcount = 1
     
@@ -107,6 +124,7 @@ async def test_handler_lead_qualified():
         mock_agent_result,      # SELECT AgentConfigModel (no handle_lead_qualified)
         mock_webhook_result,    # SELECT WebhookConfigModel
         mock_agent_result,      # SELECT AgentConfigModel (dentro de calculate_lead_score)
+        mock_lead_row_result,   # SELECT labels FROM leads WHERE telefone = ...
         mock_update_result,     # UPDATE da tabela leads
     ]
     
@@ -175,10 +193,14 @@ async def test_handler_lead_qualified_creates_lead():
     mock_update_result = MagicMock()
     mock_update_result.rowcount = 0
     
+    mock_lead_row_result = MagicMock()
+    mock_lead_row_result.fetchone.return_value = (None,)
+    
     mock_db.execute.side_effect = [
         mock_agent_result,      # SELECT AgentConfigModel (no handle_lead_qualified)
         mock_webhook_result,    # SELECT WebhookConfigModel
         mock_agent_result,      # SELECT AgentConfigModel (dentro de calculate_lead_score)
+        mock_lead_row_result,   # SELECT labels FROM leads WHERE telefone = ...
         mock_update_result,     # UPDATE da tabela leads (retorna 0 rows)
         MagicMock(),            # INSERT da tabela leads
     ]
@@ -209,9 +231,9 @@ async def test_handler_lead_qualified_creates_lead():
         assert "sucesso" in result.lower()
         # Valida que o execute foi chamado com o INSERT
         calls = mock_db.execute.call_args_list
-        assert len(calls) == 5
+        assert len(calls) == 6
         # O último execute deve conter o comando INSERT
-        last_call_sql = str(calls[4][0][0])
+        last_call_sql = str(calls[5][0][0])
         assert "INSERT" in last_call_sql
         assert "leads_cliente_1" in last_call_sql
 
@@ -257,10 +279,14 @@ async def test_handler_lead_qualified_env_fallback():
     mock_update_result = MagicMock()
     mock_update_result.rowcount = 1
     
+    mock_lead_row_result = MagicMock()
+    mock_lead_row_result.fetchone.return_value = (None,)
+    
     mock_db.execute.side_effect = [
         mock_agent_result,      # SELECT AgentConfigModel (no handle_lead_qualified)
         mock_webhook_result,    # SELECT WebhookConfigModel
         mock_agent_result,      # SELECT AgentConfigModel (dentro de calculate_lead_score)
+        mock_lead_row_result,   # SELECT labels FROM leads WHERE telefone = ...
         mock_update_result,     # UPDATE da tabela leads
     ]
     
@@ -324,13 +350,13 @@ async def test_unanswered_question_prompt_rules_injection(qualification_config):
         system_content = messages[0]["content"]
         
         assert "PROTOCOLO DE RESPOSTA DA FERRAMENTA 'registrar_duvida_sem_resposta'" in system_content
-        assert "Vou verificar com a equipe e já te retorno certinho sobre" in system_content
+        assert "vou verificar com a equipe e já te retorno certinho sobre" in system_content.lower()
         assert "TERMINANTEMENTE PROIBIDO" in system_content
         assert "perguntar se ele quer que" in system_content
 
 
 @pytest.mark.asyncio
-async def test_qualification_prompt_injection_with_structured_questions(qualification_config):
+async def test_qualification_prompt_injection_with_structured_questions(qualification_config, lead_qualificado_tool):
     # Definindo perguntas estruturadas (novos objetos)
     qualification_config.qualification_questions = '[{"text": "Qual seu nome?", "instruction": "Validar se possui pelo menos sobrenome"}, {"text": "Qual seu email?", "instruction": ""}]'
     
@@ -345,7 +371,7 @@ async def test_qualification_prompt_injection_with_structured_questions(qualific
         mock_get_client.return_value = mock_client
         mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá! Qual seu nome?"))
         
-        await process_message(message, history, qualification_config)
+        await process_message(message, history, qualification_config, tools=[lead_qualificado_tool])
         
         called_args, called_kwargs = mock_client.chat.completions.create.call_args
         messages = called_kwargs["messages"]
@@ -358,7 +384,7 @@ async def test_qualification_prompt_injection_with_structured_questions(qualific
 
 
 @pytest.mark.asyncio
-async def test_qualification_prompt_injection_mixed_questions(qualification_config):
+async def test_qualification_prompt_injection_mixed_questions(qualification_config, lead_qualificado_tool):
     # Mistura de string simples antiga e dicionário estruturado novo
     qualification_config.qualification_questions = '["Qual sua empresa?", {"text": "Qual seu cargo?", "instruction": "Exigir cargo de gerência"}]'
     
@@ -373,7 +399,7 @@ async def test_qualification_prompt_injection_mixed_questions(qualification_conf
         mock_get_client.return_value = mock_client
         mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá!"))
         
-        await process_message(message, history, qualification_config)
+        await process_message(message, history, qualification_config, tools=[lead_qualificado_tool])
         
         called_args, called_kwargs = mock_client.chat.completions.create.call_args
         messages = called_kwargs["messages"]
@@ -383,5 +409,36 @@ async def test_qualification_prompt_injection_mixed_questions(qualification_conf
         assert "Qual sua empresa?" in system_msg["content"]
         assert "Qual seu cargo?" in system_msg["content"]
         assert "↳ Instrução de validação para esta pergunta: Exigir cargo de gerência" in system_msg["content"]
+
+@pytest.mark.asyncio
+async def test_no_qualification_injection_when_tool_absent(qualification_config):
+    # Quando o agente tem perguntas configuradas mas a ferramenta lead_qualificado não está na lista,
+    # nem o prompt de qualificação nem a ferramenta devem ser injetados.
+    message = "Olá"
+    history = []
+    
+    with patch("agent_core.core.get_openai_client") as mock_get_client, \
+         patch("agent_core.core.run_pre_router_ai", new_callable=AsyncMock) as mock_pre_router:
+        
+        mock_pre_router.return_value = {"eh_saudacao": False, "id_agente_alvo": 1, "perguntas_extraidas": "Olá"}
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=MockResponse("Olá! Como posso ajudar?"))
+        
+        # Chamamos process_message sem passar a ferramenta lead_qualificado (tools vazio ou com outra ferramenta)
+        await process_message(message, history, qualification_config, tools=[])
+        
+        called_args, called_kwargs = mock_client.chat.completions.create.call_args
+        messages = called_kwargs["messages"]
+        system_msg = next(m for m in messages if m["role"] == "system")
+        
+        # O prompt de qualificação NÃO deve estar presente no system prompt
+        assert "QUALIFICAÇÃO DE LEAD" not in system_msg["content"]
+        assert "Qual seu nome?" not in system_msg["content"]
+        
+        # A ferramenta lead_qualificado NÃO deve estar declarada nas ferramentas do OpenAI
+        openai_tools = called_kwargs.get("tools", [])
+        tool_names = [t["function"]["name"] for t in openai_tools]
+        assert "lead_qualificado" not in tool_names
 
 

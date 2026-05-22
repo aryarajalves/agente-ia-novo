@@ -29,7 +29,7 @@ async def test_greeting_shortcut():
     # Test "Oi"
     result = await run_pre_router_ai("Oi", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
+    assert result["resposta_direta"] == config.initial_message
 
 @pytest.mark.asyncio
 async def test_ad_shortcut():
@@ -38,7 +38,7 @@ async def test_ad_shortcut():
     # Test Ad Message exactly as configured
     result = await run_pre_router_ai("Quero saber mais sobre o Laser Day", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
+    assert result["resposta_direta"] == config.initial_message
 
 @pytest.mark.asyncio
 async def test_ad_shortcut_case_insensitive():
@@ -47,7 +47,7 @@ async def test_ad_shortcut_case_insensitive():
     # Test Ad Message with different case
     result = await run_pre_router_ai("quero saber mais sobre o laser day", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
+    assert result["resposta_direta"] == config.initial_message
     assert result["eh_anuncio"] is True
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_ad_shortcut_similarity_high():
     # Similaridade: 6/6 = 100% das palavras da mensagem batem com as do anúncio.
     result = await run_pre_router_ai("quero saber mais sobre o laser", [], config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
+    assert result["resposta_direta"] == config.initial_message
     assert result["eh_anuncio"] is True
     assert "Similaridade:" in result["detalhe_anuncio"]
 
@@ -152,10 +152,10 @@ async def test_no_greeting_or_ad_shortcut_if_not_first_msg():
     config = MockConfig()
     history = [{"role": "user", "content": "Olá"}, {"role": "assistant", "content": "Tudo bem?"}]
     
-    # Test "Oi" with history - should now trigger greeting
+    # Test "Oi" with history - should now trigger greeting but with the short friendly continuation message
     result = await run_pre_router_ai("Oi", history, config)
     assert result["eh_saudacao"] is True
-    assert result["resposta_direta"] == f"{config.initial_message}\n\n{config.initial_question_message}"
+    assert result["resposta_direta"] == "Olá! Como posso te ajudar?"
     
     # Test Ad message with history - should NOT trigger greeting
     result = await run_pre_router_ai("Quero saber mais sobre o Laser Day", history, config)
@@ -253,4 +253,130 @@ async def test_ad_with_question_integration():
         pre_router_module.openai.AsyncOpenAI = original_async_openai
         if "OPENAI_API_KEY" in os.environ:
             del os.environ["OPENAI_API_KEY"]
+
+
+@pytest.mark.asyncio
+async def test_second_turn_negative_response():
+    config = MockConfig()
+    
+    from agent_core.core import get_openai_client
+    import agent_core.core as core_module
+    
+    mock_client = AsyncMock()
+    mock_completion = AsyncMock()
+    mock_completion.choices = [MagicMock(message=MagicMock(content="Perfeito! Já salvei sua pergunta aqui para a equipe e eles vão te retornar. Se precisar de mais alguma coisa no futuro, estarei por aqui. Tenha um excelente dia!", tool_calls=None))]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    core_module.get_openai_client = MagicMock(return_value=mock_client)
+    
+    core_module.run_pre_router_ai = AsyncMock(return_value={
+        "eh_saudacao": False,
+        "perguntas_extraidas": "Não"
+    })
+    
+    history = [
+        {"role": "user", "content": "Qual o valor do Omer Smart?"},
+        {"role": "assistant", "content": "Vou verificar com a equipe e já te retorno certinho sobre o valor do Omer Smart. Posso lhe ajudar com mais alguma dúvida?"}
+    ]
+    
+    result = await process_message("Não", history, config)
+    
+    assert "salvei" in result["content"].lower() or "retornar" in result["content"].lower()
+    assert "outro assunto" not in result["content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_flexible_unanswered_question_protocol():
+    config = MockConfig()
+    
+    from agent_core.core import get_openai_client
+    import agent_core.core as core_module
+    
+    mock_client = AsyncMock()
+    mock_completion = AsyncMock()
+    # Simula a IA gerando uma resposta contextualizada sobre o aluguel enquanto encaminha a dúvida do preço
+    expected_response = "No Método Laser Day você não precisa comprar a máquina, a ideia é alugar. Sobre o preço exato de compra, vou verificar com a equipe e já te retorno certinho sobre: qual o preço de compra do Omer Smart. Posso lhe ajudar com mais alguma dúvida?"
+    mock_completion.choices = [MagicMock(message=MagicMock(content=expected_response, tool_calls=None))]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    core_module.get_openai_client = MagicMock(return_value=mock_client)
+    
+    core_module.run_pre_router_ai = AsyncMock(return_value={
+        "eh_saudacao": False,
+        "perguntas_extraidas": "Qual o preço de compra do Omer Smart?"
+    })
+    
+    result = await process_message("Qual o preço de compra do Omer Smart?", [], config)
+    
+    assert "não precisa comprar" in result["content"].lower() or "alugar" in result["content"].lower()
+    assert "vou verificar com a equipe" in result["content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_thanks_shortcut():
+    config = MockConfig()
+    
+    # Testar com "Obrigado"
+    result = await run_pre_router_ai("Obrigado", [], config)
+    assert result["eh_saudacao"] is True
+    assert result["eh_agradecimento"] is True
+    assert "Por nada!" in result["resposta_direta"]
+    
+    # Testar com "obrigada!"
+    result = await run_pre_router_ai("obrigada!", [], config)
+    assert result["eh_saudacao"] is True
+    assert result["eh_agradecimento"] is True
+    assert "Por nada!" in result["resposta_direta"]
+
+    # Testar com "Valeu"
+    result = await run_pre_router_ai("Valeu", [], config)
+    assert result["eh_saudacao"] is True
+    assert result["eh_agradecimento"] is True
+    assert "Por nada!" in result["resposta_direta"]
+
+
+@pytest.mark.asyncio
+async def test_thanks_openai_routing():
+    config = MockConfig()
+    
+    import agent_core.logic.pre_router as pre_router_module
+    
+    mock_pr_client = AsyncMock()
+    mock_pr_completion = AsyncMock()
+    # A resposta da IA do pre-router deve indicar que é agradecimento
+    mock_pr_completion.choices = [MagicMock(message=MagicMock(content=json.dumps({
+        "eh_saudacao": True,
+        "eh_agradecimento": True,
+        "precisa_esclarecimento": False,
+        "resposta_direta": None,
+        "resposta_esclarecimento": None,
+        "id_agente_alvo": 1,
+        "perguntas_extraidas": None,
+        "data_extraida": None
+    }), tool_calls=None))]
+    mock_pr_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_pr_client.chat.completions.create.return_value = mock_pr_completion
+    
+    original_async_openai = pre_router_module.openai.AsyncOpenAI
+    pre_router_module.openai.AsyncOpenAI = MagicMock(return_value=mock_pr_client)
+    
+    try:
+        import os
+        os.environ["OPENAI_API_KEY"] = "mock-key"
+        
+        # Testamos uma mensagem longa de agradecimento que requer OpenAI
+        pr_result = await run_pre_router_ai("Nossa muito obrigado de verdade ajudou demais!", [{"role": "user", "content": "Olá"}], config)
+        
+        assert pr_result["eh_saudacao"] is True
+        assert pr_result["eh_agradecimento"] is True
+        assert "Por nada!" in pr_result["resposta_direta"]
+        
+    finally:
+        pre_router_module.openai.AsyncOpenAI = original_async_openai
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
+
+
 
