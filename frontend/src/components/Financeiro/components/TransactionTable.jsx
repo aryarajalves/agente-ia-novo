@@ -53,7 +53,7 @@ const TransactionTable = () => {
                             <span style={{ textAlign: 'center' }}>{item.total_messages || '—'}</span>
                             <span style={{ textAlign: 'center' }}>{item.total_tokens?.toLocaleString('pt-BR') || '—'}</span>
                             <span style={{ textAlign: 'right' }}>
-                                {item.avg_cost_per_message ? `R$ ${item.avg_cost_per_message.toFixed(4)}` : '—'}
+                                {item.avg_cost_per_message ? `R$ ${item.avg_cost_per_message.toFixed(2)}` : '—'}
                             </span>
                             <span className="cost-cell">R$ {item.total_cost.toFixed(2)}</span>
                         </div>

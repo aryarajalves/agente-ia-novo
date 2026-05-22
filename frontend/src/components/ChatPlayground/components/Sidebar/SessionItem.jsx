@@ -34,7 +34,7 @@ const SessionItem = ({
                     {session.summary ? session.summary.substring(0, 60) + '...' : `Conversa de ${session.message_count} mensagens`}
                 </div>
                 <div className="history-footer">
-                    <span className="cost-tag">R$ {session.total_cost.toFixed(4)}</span>
+                    <span className="cost-tag">R$ {session.total_cost.toFixed(2)}</span>
                     <div style={{ display: 'flex', gap: '5px', marginLeft: 'auto' }}>
                         <span className="agent-tag">{session.agent_name}</span>
                     </div>

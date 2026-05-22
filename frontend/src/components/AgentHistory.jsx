@@ -232,7 +232,7 @@ const AgentHistory = ({ agentId }) => {
 
                         <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '2rem' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                <span style={{ color: 'var(--success-color)', fontWeight: 700, fontSize: '0.9rem' }}>R$ {session.totalCost.toFixed(4)}</span>
+                                <span style={{ color: 'var(--success-color)', fontWeight: 700, fontSize: '0.9rem' }}>R$ {session.totalCost.toFixed(2)}</span>
                                 <span>{session.totalTokens} tokens</span>
                             </div>
                             <span style={{ transform: expandedSessions[session.id] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s', opacity: 0.5 }}>
@@ -279,7 +279,7 @@ const AgentHistory = ({ agentId }) => {
                                         </div>
                                         <div style={{ display: 'flex', gap: '10px', marginTop: '6px', fontSize: '0.65rem', color: 'var(--text-secondary)', opacity: 0.7 }}>
                                             <span>📦 {log.input_tokens + log.output_tokens} tok</span>
-                                            <span>💰 R$ {log.cost_brl.toFixed(4)}</span>
+                                            <span>💰 R$ {log.cost_brl.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -347,7 +347,7 @@ const AgentHistory = ({ agentId }) => {
                                             paddingTop: '8px'
                                         }}>
                                             <span>📊 Tokens: <strong>{summaries[session.id].usage?.total_tokens || 0}</strong></span>
-                                            <span>💰 Custo: <strong>R$ {summaries[session.id].cost_brl?.toFixed(4)}</strong></span>
+                                            <span>💰 Custo: <strong>R$ {summaries[session.id].cost_brl?.toFixed(2)}</strong></span>
                                         </div>
                                     </div>
                                 )}

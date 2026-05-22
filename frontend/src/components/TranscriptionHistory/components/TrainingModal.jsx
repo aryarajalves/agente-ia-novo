@@ -529,9 +529,9 @@ const TrainingModal = () => {
                         <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ color: '#a855f7' }}>✨</span> Gerado com <strong>{usedLlmModel}</strong>
                             {generationCostBrl > 0 && (
-                                <span className="cost-pill" style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    💵 Custo: R$ {generationCostBrl.toFixed(4)} (${generationCostUsd.toFixed(4)})
-                                </span>
+                                <div style={{ fontSize: '0.85rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '6px 12px', borderRadius: '8px', fontWeight: '500' }}>
+                                    💵 Custo: R$ {generationCostBrl.toFixed(2)} (${generationCostUsd.toFixed(2)})
+                                </div>
                             )}
                         </div>
                     )}

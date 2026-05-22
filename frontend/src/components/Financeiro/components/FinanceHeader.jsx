@@ -44,7 +44,7 @@ const FinanceHeader = () => {
             id: 'custo-medio',
             icon: '📊',
             label: 'Custo Médio/Sessão',
-            value: avgCost > 0 ? `R$ ${avgCost.toFixed(4)}` : '—',
+            value: avgCost > 0 ? `R$ ${avgCost.toFixed(2)}` : '—',
             sub: 'por conversa',
             accent: 'pink',
         },

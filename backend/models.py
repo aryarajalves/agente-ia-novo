@@ -417,6 +417,7 @@ class WebhookEventModel(Base):
     scheduled_at = Column(DateTime(timezone=True), nullable=True) # Data/Hora para execução após debounce
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    is_automatic = Column(Boolean, default=False, nullable=True)
 
     webhook_config = relationship("WebhookConfigModel", back_populates="events")
 

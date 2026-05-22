@@ -12,3 +12,5 @@
 
 - **Tamanho de Código:** Backend < 1000 linhas, Frontend < 500 linhas. Se exceder, modularize imediatamente.
 - **Docker:** Reinicie os containers após mudanças significativas para garantir a integridade do ambiente.
+- **Docker Hub (Tags):** Nunca gere, faça build ou dê push em imagens utilizando a tag `latest` para o Docker Hub. Publique sempre utilizando a tag com a versão estrita e específica do projeto (ex: `backend-1.7.4` e `frontend-1.7.4`).
+

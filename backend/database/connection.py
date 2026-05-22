@@ -18,15 +18,22 @@ if DATABASE_URL and "postgresql" in DATABASE_URL:
     connect_args["prepared_statement_cache_size"] = 0
 
 # Engine Assíncrono (FastAPI)
+engine_kwargs = {
+    "echo": False,
+    "pool_pre_ping": True,
+    "connect_args": connect_args,
+}
+if DATABASE_URL and "postgresql" in DATABASE_URL:
+    engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_timeout": 30,
+        "pool_recycle": 300,
+    })
+
 engine = create_async_engine(
     DATABASE_URL, 
-    echo=False,
-    pool_size=20,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=300,
-    pool_pre_ping=True,
-    connect_args=connect_args,
+    **engine_kwargs
 )
 
 async_session = async_sessionmaker(

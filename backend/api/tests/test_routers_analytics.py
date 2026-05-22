@@ -94,3 +94,53 @@ class TestFinancialReport:
             data = response.json()
             assert "items" in data
             assert "grand_total_cost" in data
+
+    @patch("api.routers.analytics.verify_api_key", return_value=None)
+    @patch("api.routers.analytics.get_db")
+    def test_filters_out_zero_cost_items(self, mock_db, mock_key, client):
+        """A rota deve filtrar itens com custo zero."""
+        row_zero = MagicMock()
+        row_zero.day = "2026-05-22"
+        row_zero.agent_id = 1
+        row_zero.agent_name = "Agent Zero"
+        row_zero.model_used = "gpt-4"
+        row_zero.messages = 5
+        row_zero.tokens = 100
+        row_zero.cost = 0.0
+        row_zero.unique_sessions = 2
+
+        row_active = MagicMock()
+        row_active.day = "2026-05-22"
+        row_active.agent_id = 2
+        row_active.agent_name = "Agent Active"
+        row_active.model_used = "gpt-4"
+        row_active.messages = 10
+        row_active.tokens = 200
+        row_active.cost = 1.5
+        row_active.unique_sessions = 4
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row_zero, row_active]
+
+        db_session = AsyncMock()
+        db_session.execute = AsyncMock(return_value=mock_result)
+
+        async def fake_get_db():
+            yield db_session
+
+        from api.deps import get_db, verify_api_key
+        test_app.dependency_overrides[get_db] = fake_get_db
+        test_app.dependency_overrides[verify_api_key] = lambda: None
+
+        try:
+            response = client.get("/financial/report")
+        finally:
+            test_app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        items = data["items"]
+        assert len(items) == 1
+        assert items[0]["agent_id"] == 2
+        assert items[0]["total_cost"] == 1.5
+        assert data["grand_total_cost"] == 1.5

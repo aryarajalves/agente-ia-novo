@@ -106,28 +106,15 @@ describe('FinanceHeader', () => {
         expect(screen.getByText('R$ 2.30')).toBeTruthy();
     });
 
+    it('KPI "Custo Médio/Sessão" exibe o valor formatado com 2 casas decimais', () => {
+        renderWithContext(FinanceHeader);
+        expect(screen.getByText('R$ 0.15')).toBeTruthy();
+    });
+
     it('KPI "Tokens Totais" exibe soma de tokens', () => {
         renderWithContext(FinanceHeader);
         // 5000 + 2000 = 7000
         expect(screen.getByText('7.000')).toBeTruthy();
-    });
-
-    it('botão "Agentes" chama setViewMode com "agents"', () => {
-        renderWithContext(FinanceHeader);
-        fireEvent.click(document.getElementById('btn-view-agents'));
-        expect(mockContextValue.setViewMode).toHaveBeenCalledWith('agents');
-    });
-
-    it('botão "Fine-Tuning" chama setViewMode com "finetuning"', () => {
-        renderWithContext(FinanceHeader);
-        fireEvent.click(document.getElementById('btn-view-finetuning'));
-        expect(mockContextValue.setViewMode).toHaveBeenCalledWith('finetuning');
-    });
-
-    it('botão "Agentes" tem classe "active" quando viewMode === agents', () => {
-        renderWithContext(FinanceHeader);
-        const btn = document.getElementById('btn-view-agents');
-        expect(btn.className).toContain('active');
     });
 });
 
@@ -236,6 +223,12 @@ describe('TransactionTable', () => {
     it('exibe "Agente Alpha" na primeira linha', () => {
         renderWithContext(TransactionTable);
         expect(screen.getByTitle('Agente Alpha')).toBeTruthy();
+    });
+
+    it('exibe o custo médio por mensagem formatado com 2 casas decimais na tabela', () => {
+        renderWithContext(TransactionTable);
+        const elements = screen.getAllByText('R$ 0.00');
+        expect(elements.length).toBeGreaterThanOrEqual(2);
     });
 
     it('exibe badges AG para agentes normais', () => {

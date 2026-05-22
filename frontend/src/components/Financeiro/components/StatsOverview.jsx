@@ -21,7 +21,7 @@ const StatsOverview = () => {
                                 <div
                                     className="bar-fill"
                                     style={{ height: `${(d.cost / maxCost) * 100}%` }}
-                                    title={`R$ ${d.cost.toFixed(4)}`}
+                                    title={`R$ ${d.cost.toFixed(2)}`}
                                 />
                                 <span className="bar-label">
                                     {new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}

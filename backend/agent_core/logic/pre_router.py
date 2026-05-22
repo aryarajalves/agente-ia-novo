@@ -144,12 +144,12 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
         for h in history:
             role = h.get('role', 'user').upper()
             content = h.get('content', '')
-            history_text += f"{role}: {content}\n"
+            history_text += f"{role}: {content}\n\n"
             
     system_prompt = f"""Você é o "Pre-Router AI", o primeiro contato que lê a mensagem do usuário antes dela ser enviada aos Agentes.
-Sua função é tripla:
+Sua função é quadrupla:
 1. Identificar se a mensagem é APENAS uma saudação curta, cumprimento ou agradecimento (Ex: "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?", "Obrigado") OU uma mensagem de teste do usuário ("teste", "testando") e NÃO contém nenhuma pergunta ou requisição técnica.
-   - SAUDAÇÃO CONFIGURADA: "{getattr(main_agent, 'initial_message', 'Olá! Como posso ajudar?')}"
+   - SAUDAÇÃO CONFIGURADA: "{getattr(main_agent, 'initial_message', 'Olá! Como posso te ajudar hoje?')}"
    - MENSAGEM DE ANÚNCIO (IGNORAR): "{getattr(main_agent, 'initial_ignore_message', '')}"
    
    CRITÉRIO RÍGIDO: Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos, você DEVE definir 'eh_saudacao' como true e usar a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
@@ -157,15 +157,22 @@ Sua função é tripla:
    
 NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que faz sentido dentro do histórico recente, NÃO é apenas saudação, é parte da conversa, logo eh_saudacao deve ser false.
 
-2. Se a mensagem contiver perguntas ou requisições, você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
+2. Identificar se a mensagem atual do usuário é uma MENSAGEM AUTOMÁTICA de boas-vindas, saudação comercial ou de AUSÊNCIA enviada pelo outro lado (por exemplo, mensagens automáticas de catálogo, mensagens rápidas do WhatsApp Business do contato, saudações automáticas de consultórios/lojas, mensagens de ausência informando horário de atendimento, etc. Exemplos: "Olá, seja bem-vindo ao Jessika Albuquerque Beauty...", "Olá! No momento não posso atender...", "Aqui quem cuida de você é...", "Obrigado por sua mensagem. Entraremos em contato...").
+   Se você identificar que a mensagem do usuário é uma mensagem automática/ausência/saudação do outro lado:
+   - Defina 'eh_mensagem_automatica' como true.
+   - Defina 'eh_saudacao' como true.
+   - Defina 'resposta_direta' como a 'SAUDAÇÃO CONFIGURADA' (ou "Olá! Como posso te ajudar hoje?" se a configurada estiver vazia).
+   - Defina 'perguntas_extraidas' como null ou "".
 
-3. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true e forneça uma mensagem curta e simpática de esclarecimento em 'resposta_esclarecimento' (Ex: "Como posso te ajudar hoje?" ou "Olá! Poderia me dar mais detalhes sobre o que você precisa?").
+3. Se a mensagem contiver perguntas ou requisições (e não for automática), você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
+
+4. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true e forneça uma mensagem curta e simpática de esclarecimento em 'resposta_esclarecimento' (Ex: "Como posso te ajudar hoje?" ou "Olá! Poderia me dar mais detalhes sobre o que você precisa?").
    ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa e nem defina 'precisa_esclarecimento' como true. Em vez disso, defina 'eh_saudacao' as true e use a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
-   ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' como false e 'id_agente_alvo' como o Agente Principal.
+   ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' as false e 'id_agente_alvo' como o Agente Principal.
    
-4. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
+5. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
 
-4. Baseado no que o usuário quer, escolha qual agente abaixo deve receber a mensagem:
+Baseado no que o usuário quer, escolha qual agente abaixo deve receber a mensagem:
 {agents_desc}
 Se estiver em dúvida, escolha SEMPRE o Agente Principal (ID: {main_agent.id}).
 
@@ -175,6 +182,7 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
 {{
   "eh_saudacao": boolean,
   "eh_agradecimento": boolean,
+  "eh_mensagem_automatica": boolean,
   "precisa_esclarecimento": boolean,
   "resposta_direta": "string ou null",
   "resposta_esclarecimento": "string ou null",
@@ -204,17 +212,22 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         )
         result = json.loads(response.choices[0].message.content.strip())
         
-        # Se eh_saudacao for True
-        if result.get("eh_saudacao"):
+        # Se eh_saudacao for True ou eh_mensagem_automatica for True
+        if result.get("eh_saudacao") or result.get("eh_mensagem_automatica"):
             if result.get("eh_agradecimento"):
                 if not result.get("resposta_direta"):
                     result["resposta_direta"] = "Por nada! Se precisar de mais alguma coisa, é só chamar."
+            elif result.get("eh_mensagem_automatica"):
+                result["resposta_direta"] = getattr(main_agent, 'initial_message', None) or "Olá! Como posso te ajudar hoje?"
+                result["eh_saudacao"] = True
+                result["perguntas_extraidas"] = None
             else:
                 if is_first_msg:
                     if not result.get("resposta_direta"):
-                        result["resposta_direta"] = getattr(main_agent, 'initial_message', None) or "Olá! Como posso ajudar?"
+                        result["resposta_direta"] = getattr(main_agent, 'initial_message', None) or "Olá! Como posso te ajudar hoje?"
                 else:
-                    result["resposta_direta"] = "Olá! Como posso te ajudar?"
+                    if not result.get("resposta_direta"):
+                        result["resposta_direta"] = "Olá! Como posso te ajudar hoje?"
             
         # Metadados para depuração (Raio-X)
         result["_model_used"] = model_to_use

@@ -172,7 +172,7 @@ const TasksTable = () => {
                                 <td>{getStatusBadge(task.status)}</td>
                                 <td style={{ whiteSpace: 'nowrap' }}>{formatDate(task.created_at)}</td>
                                 <td style={{ whiteSpace: 'nowrap', color: '#10b981', fontWeight: '500' }}>
-                                    {task.cost_usd ? `$${task.cost_usd.toFixed(4)}` : '$0.0000'}
+                                    {task.cost_usd ? `$${task.cost_usd.toFixed(2)}` : '$0.00'}
                                 </td>
                                 <td>
                                     <div className="row-actions">

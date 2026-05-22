@@ -278,7 +278,7 @@ const AutomationPipelineModal = ({
                                                 )}
                                                 {step.metadata.cost > 0 && (
                                                     <span style={{ fontSize: '0.7rem', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
-                                                        💰 R$ {step.metadata.cost.toFixed(5)}
+                                                        💰 R$ {step.metadata.cost.toFixed(2)}
                                                     </span>
                                                 )}
                                             </div>

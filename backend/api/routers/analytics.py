@@ -40,8 +40,11 @@ async def get_financial_report(
     _: None = Depends(verify_api_key)
 ):
     # Group by date and agent, adjusting for Brazil timezone (GMT-3)
-    tz_aware_timestamp = text("interaction_logs.timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo'")
-    date_field = func.date(tz_aware_timestamp)
+    if db.bind and db.bind.dialect.name == "sqlite":
+        date_field = func.date(InteractionLog.timestamp)
+    else:
+        tz_aware_timestamp = text("interaction_logs.timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo'")
+        date_field = func.date(tz_aware_timestamp)
     
     query = (
         select(
@@ -74,6 +77,8 @@ async def get_financial_report(
     grand_total = 0.0
     for row in rows:
         cost = float(row.cost or 0.0)
+        if cost == 0.0:
+            continue
         messages = int(row.messages or 0)
         grand_total += cost
         items.append({

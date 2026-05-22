@@ -531,6 +531,12 @@ def process_webhook_automation(self, event_id: int):
                 
                 pre_router_result = await run_pre_router_ai(mensagem, history, db_agent, secondary_agents)
                 
+                # Se for mensagem automática, salva o estado no banco de dados do evento
+                if pre_router_result.get("eh_mensagem_automatica"):
+                    event.is_automatic = True
+                    _add_step(db, event_id, "🤖 Mensagem Automática do Contato", "A IA identificou esta mensagem como um envio automático/ausência comercial do contato. Esta mensagem será isolada de históricos futuros.")
+                    db.commit()
+                
                 # Log visual de anúncio na pipeline (apenas se for a primeira mensagem)
                 is_first_msg = not history or len(history) == 0
                 if is_first_msg:

@@ -72,7 +72,7 @@ const MessageBubble = ({
                                     </span>
                                     {msg.metrics.cost !== undefined && (
                                         <span className="meta-pill cost-pill" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#eab308' }} title="Custo estimado desta resposta em BRL">
-                                            💰 R$ {msg.metrics.cost.toFixed(4)}
+                                            💰 R$ {msg.metrics.cost.toFixed(2)}
                                         </span>
                                     )}
                                     {msg.metrics.response_time_ms !== undefined && (
@@ -86,7 +86,7 @@ const MessageBubble = ({
                                     <span className="meta-pill tokens-pill">⚡ {msg.metrics.tokens.toLocaleString()} toks</span>
                                     {msg.metrics.cost !== undefined && (
                                         <span className="meta-pill cost-pill" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#eab308' }}>
-                                            💰 R$ {msg.metrics.cost.toFixed(4)}
+                                            💰 R$ {msg.metrics.cost.toFixed(2)}
                                         </span>
                                     )}
                                 </>

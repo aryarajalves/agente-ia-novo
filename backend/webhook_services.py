@@ -283,7 +283,11 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                     WebhookEventModel.telefone.like(f"%{tel_suffix}")  # Cobre variações do 9° dígito
                 ),
                 WebhookEventModel.id != event_id,
-                WebhookEventModel.status.in_(["completed", "processed", "delivered", "success"])
+                WebhookEventModel.status.in_(["completed", "processed", "delivered", "success"]),
+                or_(
+                    WebhookEventModel.is_automatic.is_(None),
+                    WebhookEventModel.is_automatic == False
+                )
             ).order_by(WebhookEventModel.created_at.desc()).limit(db_agent.context_window).all()
 
             # Reverte para ordem cronológica (mais antiga para mais recente)

@@ -1,6 +1,6 @@
 # 🤖 Plataforma de Agentes de IA para Automação
 
-Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.7.3", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
+Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.7.4", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
 
 
 
@@ -88,21 +88,16 @@ Esta versão traz melhorias críticas de UI/UX e testes na interface de teste do
 - **Limpeza Imediata de Preview de Imagem**: O preview de imagens selecionadas na caixa de entrada do chat agora desaparece instantaneamente quando o usuário clica em enviar (ou aperta Enter), ao mesmo tempo em que a caixa de entrada de texto é limpa. O upload do arquivo ocorre de forma transparente em segundo plano, melhorando consideravelmente a percepção de performance e a experiência de uso.
 - **Correção Estética de Preview de Imagem (Glassmorphism)**: Ajuste fino no container de preview utilizando Glassmorphism com efeito blur (`backdrop-filter: blur(10px)`), limites dimensionais estritos para imagens de alta resolução (`64px` x `64px` com `object-fit: cover`) e botão de remover com feedback hover suave.
 - **Suíte de Testes do ChatPlayground Estabilizada**: Criação e atualização de testes unitários que cobrem a montagem do preview, metadados da imagem, e validação rigorosa de que o preview é limpo instantaneamente ao enviar a mensagem. Os testes foram atualizados com seletores e expressões regulares robustas.
+## ✨ Novidades da Versão (v1.7.4)
 
-## ✨ Novidades da Versão (v1.9.1)
+Esta versão consolida grandes evoluções no sistema, incluindo o controle financeiro de custos e segurança de mensagens:
+- **Filtragem de Custos Zerados no Painel Financeiro**: O endpoint `/financial/report` agora filtra e oculta automaticamente registros com custo de interações igual a `R$ 0.00`, limpando a visualização de agentes inativos.
+- **Exibição de Custos Formatada com Duas Casas Decimais**: Ajuste completo na interface (frontend) para exibir valores de custos com exatamente 2 casas decimais (ex: `R$ 15.90` em vez de `R$ 15.9194` ou 4/5 casas decimais).
+- **Detecção e Isolamento de Mensagens Automáticas**: O motor de triagem do Pre-Router AI identifica saudações e avisos automáticos externos, respondendo com fallback configurado e isolando estes eventos (`is_automatic=True`) para não contaminar o contexto RAG.
+- **Respostas de Saudação de Continuação**: O robô agora envia saudações amigáveis curtas em interações contínuas para manter a naturalidade, evitando repetir a mensagem inicial longa do agente.
+- **Flexibilização de Dúvidas Sem Resposta**: Regra de Ouro otimizada no Agente principal para permitir respostas contextuais ricas baseadas no prompt de sistema antes de recorrer à inbox de dúvidas sem resposta.
+- **Fluxo Premium de Convites de Usuários**: Substituição do cadastro direto por convites expiráveis (7h, 14h, 24h e 48h) com tabela de gestão, revogação manual e tela de registro com Glassmorphism e tratamento de e-mail duplicado.
 
-Esta versão traz melhorias críticas no fluxo de conversação e flexibilidade da IA:
-- **Respostas de Saudação de Continuação no Pre-Router**: O robô agora identifica e responde a saudações curtas no meio da conversa (quando há histórico recente) com um cumprimento amigável e genérico (*"Olá! Como posso te ajudar?"*), em vez de repetir a saudação inicial longa e específica do agente.
-- **Flexibilização de Dúvidas Sem Resposta**: Ajuste da regra de integridade do prompt de sistema (Regra de Ouro) no motor do Agente principal (`core.py`) para permitir respostas contextuais inteligentes e informativas quando houver dados correlacionados no prompt (ex: explicar sobre aluguel quando questionada sobre compra), acionando a ferramenta de dúvidas sem resposta apenas para assuntos inteiramente desconhecidos.
-
-## ✨ Novidades da Versão (v1.9.0)
-
-Esta versão traz o novo fluxo de convites para novos usuários e melhorias de segurança:
-- **Fluxo Premium de Convites de Usuários**: Substituição do cadastro direto de novos usuários por um link de convite expirável.
-- **Validade do Link de Convite Editável**: Opções fixas de validade (7 horas, 14 horas, 24 horas e 48 horas) selecionáveis na criação do convite.
-- **Visualização e Revogação Manual de Convites**: Nova aba "Convites Pendentes" adicionada na Gestão de Usuários, com a tabela de links de convites ativos gerados, opção de copiar o link novamente e de revogá-los manualmente através de um popup Premium de confirmação.
-- **Formulário de Registro de Convidado Elegante**: Tela pública `/register/:token` com Glassmorphism, input de exibição/ocultação de senha (olho para exibir) e redirecionamento pós-cadastro para a tela de login.
-- **Tratamento de Validação de E-mail Duplicado**: Se o convidado tentar se registrar usando um e-mail já existente no banco de dados, o sistema apresenta um erro amigável na tela de registro ("Este e-mail já está em uso"), mantendo o link de convite válido para que o convidado possa tentar com outro e-mail sem invalidá-lo prematuramente.
 
 ### Novidades Anteriores (v1.8.0)
 - **Exclusão Parcial de Leads (Desqualificação)**: Permite desqualificar leads diretamente da listagem clicando no ícone de lixeira, abrindo um modal Premium de confirmação. A ação limpa as respostas de qualificação, score, justificativa, classificação e remove a tag `"qualificado"` do contato, sem deletar o contato do banco.
@@ -136,13 +131,16 @@ Esta versão traz o novo fluxo de convites para novos usuários e melhorias de s
 
 ## 📦 Deploy e Imagens Docker
 
+*(Aviso: Conforme as regras do projeto, nunca gerar ou dar push em tags `latest` no Docker Hub; use sempre tags de versão estritas.)*
+
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.2 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.2`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.4 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.4`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.2 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.2`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.4 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.4`
+
 
 
 
