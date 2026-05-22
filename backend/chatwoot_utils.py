@@ -93,3 +93,28 @@ async def send_chatwoot_message(cw_url: str, account_id: int, conversation_id: i
     except Exception as e:
         logger.error(f"Erro ao enviar mensagem Chatwoot: {e}")
         return False
+
+
+def get_conversation_labels_sync(cw_url: str, account_id: int, conversation_id: int, token: str) -> list:
+    """
+    Busca as etiquetas de uma conversa de forma síncrona no Chatwoot.
+    Retorna a lista de etiquetas se a chamada for bem-sucedida.
+    Retorna None em caso de falha de conexão ou status diferente de 200 para evitar sobrescrever dados locais.
+    """
+    if not cw_url or not account_id or not conversation_id or not token:
+        logger.warning("Parâmetros inválidos para obter etiquetas síncronas")
+        return None
+    url = f"{cw_url.rstrip('/')}/api/v1/accounts/{account_id}/conversations/{conversation_id}/labels"
+    headers = {"api_access_token": token}
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json().get("payload", [])
+            else:
+                logger.error(f"Erro ao obter etiquetas do Chatwoot síncronamente (Status {resp.status_code}): {resp.text}")
+                return None
+    except Exception as e:
+        logger.error(f"Exceção ao obter etiquetas do Chatwoot síncronamente: {e}")
+        return None
+

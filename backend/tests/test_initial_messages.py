@@ -287,6 +287,37 @@ async def test_second_turn_negative_response():
 
 
 @pytest.mark.asyncio
+async def test_second_turn_short_concordance_response():
+    config = MockConfig()
+    
+    from agent_core.core import get_openai_client
+    import agent_core.core as core_module
+    
+    mock_client = AsyncMock()
+    mock_completion = AsyncMock()
+    mock_completion.choices = [MagicMock(message=MagicMock(content="Perfeito! Já salvei sua pergunta aqui para a equipe e eles vão te retornar. Se precisar de mais alguma coisa no futuro, estarei por aqui. Tenha um excelente dia!", tool_calls=None))]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    core_module.get_openai_client = MagicMock(return_value=mock_client)
+    
+    core_module.run_pre_router_ai = AsyncMock(return_value={
+        "eh_saudacao": False,
+        "perguntas_extraidas": "Ta ótimo"
+    })
+    
+    history = [
+        {"role": "user", "content": "Qual o valor do Omer Smart?"},
+        {"role": "assistant", "content": "Vou verificar com a equipe e já te retorno certinho sobre o valor do Omer Smart. Posso lhe ajudar com mais alguma dúvida?"}
+    ]
+    
+    result = await process_message("Ta ótimo", history, config)
+    
+    assert "salvei" in result["content"].lower() or "retornar" in result["content"].lower()
+    assert "outro assunto" not in result["content"].lower()
+
+
+@pytest.mark.asyncio
 async def test_flexible_unanswered_question_protocol():
     config = MockConfig()
     
@@ -377,6 +408,96 @@ async def test_thanks_openai_routing():
         pre_router_module.openai.AsyncOpenAI = original_async_openai
         if "OPENAI_API_KEY" in os.environ:
             del os.environ["OPENAI_API_KEY"]
+
+
+@pytest.mark.asyncio
+async def test_no_initial_question_message_on_handoff():
+    config = MockConfig(handoff_enabled=True)
+    
+    from agent_core.core import get_openai_client
+    import agent_core.core as core_module
+    
+    mock_client = AsyncMock()
+    mock_completion = AsyncMock()
+    
+    mock_tool_call = MagicMock()
+    mock_tool_call.function.name = "transferir_suporte_humano"
+    mock_tool_call.function.arguments = json.dumps({"motivo": "Falar com suporte"})
+    
+    # A resposta da IA contendo a chamada de ferramenta de handoff
+    mock_completion.choices = [MagicMock(message=MagicMock(content="Encaminhando você para o suporte.", tool_calls=[mock_tool_call]))]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    original_get_openai = core_module.get_openai_client
+    core_module.get_openai_client = MagicMock(return_value=mock_client)
+    
+    # Mock do pre-router
+    original_run_pre_router = core_module.run_pre_router_ai
+    core_module.run_pre_router_ai = AsyncMock(return_value={
+        "eh_saudacao": False,
+        "perguntas_extraidas": "Quero falar com um atendente"
+    })
+    
+    # Mocks para funções internas que usam rede/db
+    original_generate_handoff = core_module.generate_handoff_summary
+    core_module.generate_handoff_summary = AsyncMock(return_value="Resumo do handoff")
+    
+    original_handle_handoff = core_module.handle_chatwoot_handoff
+    core_module.handle_chatwoot_handoff = AsyncMock(return_value="Sincronização OK. DETALHES: Adicionado etiqueta 'suporte'.")
+
+    try:
+        result = await process_message("Quero falar com um atendente", [], config)
+        
+        # O conteúdo da resposta não deve incluir a initial_question_message
+        assert "Estou transferindo seu atendimento para nossa equipe especializada" in result["content"]
+        assert config.initial_question_message not in result["content"]
+        assert result["handoff_data"]["handoff"] is True
+    finally:
+        # Restaurar mocks
+        core_module.get_openai_client = original_get_openai
+        core_module.run_pre_router_ai = original_run_pre_router
+        core_module.generate_handoff_summary = original_generate_handoff
+        core_module.handle_chatwoot_handoff = original_handle_handoff
+
+
+@pytest.mark.asyncio
+async def test_no_redundant_initial_question_message():
+    config = MockConfig()
+    
+    from agent_core.core import get_openai_client
+    import agent_core.core as core_module
+    
+    mock_client = AsyncMock()
+    mock_completion = AsyncMock()
+    # A resposta da IA já contém uma pergunta de continuação no final
+    ia_response = "Aqui está a explicação sobre o método. Posso te ajudar com mais alguma dúvida do curso?"
+    mock_completion.choices = [MagicMock(message=MagicMock(content=ia_response, tool_calls=None))]
+    mock_completion.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    original_get_openai = core_module.get_openai_client
+    core_module.get_openai_client = MagicMock(return_value=mock_client)
+    
+    # Mock do pre-router
+    original_run_pre_router = core_module.run_pre_router_ai
+    core_module.run_pre_router_ai = AsyncMock(return_value={
+        "eh_saudacao": False,
+        "perguntas_extraidas": "Como funciona o método?"
+    })
+
+    try:
+        result = await process_message("Como funciona o método?", [], config)
+        
+        # A pergunta redundante gerada pela IA ("Posso te ajudar com mais alguma dúvida do curso?")
+        # deve ter sido removida, e a initial_question_message do config ("Você possui mais alguma dúvida?")
+        # deve ter sido adicionada no final.
+        expected_content = f"Aqui está a explicação sobre o método.\n\n{config.initial_question_message}"
+        assert result["content"] == expected_content
+    finally:
+        core_module.get_openai_client = original_get_openai
+        core_module.run_pre_router_ai = original_run_pre_router
+
 
 
 

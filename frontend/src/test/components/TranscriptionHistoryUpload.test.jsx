@@ -146,6 +146,33 @@ describe('TranscriptionHistory - Fluxo de Upload Direto', () => {
         expect(uploadManager.removeUpload).toHaveBeenCalledWith('error-1');
     });
 
+    it('deve renderizar status amigável de enviado quando o upload for concluído com sucesso', () => {
+        render(<TranscriptionHistory />);
+        
+        // Simular um upload completo
+        act(() => {
+            uploadManager._setMockUploads([
+                {
+                    id: 'success-1',
+                    filename: 'video_com_sucesso.mp4',
+                    progress: 100,
+                    status: 'completed',
+                    created_at: new Date().toISOString()
+                }
+            ]);
+        });
+
+        const filenameText = screen.getByText('video_com_sucesso.mp4');
+        expect(filenameText).toBeInTheDocument();
+
+        // Não deve mostrar erro no envio
+        expect(screen.queryByText(/Erro no Envio/i)).toBeNull();
+
+        // Deve mostrar o status amigável de enviado
+        const statusBadge = screen.getByText(/Enviado/i);
+        expect(statusBadge).toBeInTheDocument();
+    });
+
     it('deve registrar o listener beforeunload e impedir a saída da página se houver uploads em andamento', () => {
         const addEventSpy = vi.spyOn(window, 'addEventListener');
         const removeEventSpy = vi.spyOn(window, 'removeEventListener');

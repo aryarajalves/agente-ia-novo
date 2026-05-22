@@ -1,0 +1,51 @@
+import { chromium } from '@playwright/test';
+import path from 'path';
+
+async function run() {
+    console.log("Iniciando Chromium para capturar o Histórico de Transcrições...");
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    try {
+        console.log("1. Acessando a página de login...");
+        await page.goto('http://localhost:5300/login', { timeout: 30000, waitUntil: 'load' });
+        await page.waitForTimeout(2000);
+
+        console.log("2. Preenchendo campos de login...");
+        const emailInput = page.locator('input[type="email"]');
+        const passwordInput = page.locator('input[type="password"]');
+        
+        await emailInput.focus();
+        await page.keyboard.press('Control+A');
+        await page.keyboard.press('Backspace');
+        await emailInput.fill('aryarajmarketing@gmail.com');
+        
+        await passwordInput.focus();
+        await page.keyboard.press('Control+A');
+        await page.keyboard.press('Backspace');
+        await passwordInput.fill('123456');
+
+        console.log("3. Clicando no botão de login...");
+        await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
+
+        console.log("4. Aguardando login...");
+        await page.waitForURL('http://localhost:5300/**', { timeout: 15000 });
+        await page.waitForTimeout(3000);
+
+        console.log("5. Navegando para o histórico de transcrições...");
+        await page.goto('http://localhost:5300/knowledge-bases?tab=history', { timeout: 30000, waitUntil: 'networkidle' });
+        await page.waitForTimeout(5000); // Aguarda carregar dados do Histórico
+
+        console.log("6. Salvando screenshot do Histórico de Transcrições...");
+        const screenshotPath = 'C:/Users/aryar/.gemini/antigravity/brain/96490b91-6c47-4ecb-81df-36e38e353563/transcripts_valido.png';
+        await page.screenshot({ path: screenshotPath });
+        console.log("Screenshot salva com sucesso em:", screenshotPath);
+    } catch (error) {
+        console.error("Erro na automação visual:", error);
+    } finally {
+        await browser.close();
+    }
+}
+
+run();

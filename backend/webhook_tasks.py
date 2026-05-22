@@ -543,7 +543,31 @@ def process_webhook_automation(self, event_id: int):
                     eh_anuncio = pre_router_result.get("eh_anuncio", False)
                     detalhe = pre_router_result.get("detalhe_anuncio")
                     if eh_anuncio:
-                        _add_step(db, event_id, "📢 Anúncio Detectado", f"A primeira mensagem foi identificada como anúncio ({detalhe}). Enviando a mensagem de saudação.")
+                        perguntas = pre_router_result.get("perguntas_extraidas")
+                        if not perguntas or not str(perguntas).strip():
+                            # É APENAS ANÚNCIO (ou anúncio + saudação)
+                            # Não responder e marcar como ignored
+                            _add_step(db, event_id, "📢 Anúncio Detectado", f"A primeira mensagem foi identificada como anúncio ({detalhe}) e não contém perguntas. Ignorando evento e não respondendo.")
+                            if config.leads_table and lead_internal_id:
+                                try:
+                                    db.execute(text(f"UPDATE {config.leads_table} SET mensagem = NULL, ultima_mensagem_em = NULL WHERE id = :lid"), {"lid": lead_internal_id})
+                                    db.commit()
+                                except Exception as e_lead_clear:
+                                    logger.warning(f"Erro ao limpar mensagem de anuncio da tabela de leads: {e_lead_clear}")
+                            return {"ignored_by_ad": True}
+                        else:
+                            # Mensagem mista: anúncio + pergunta.
+                            # Prossegue, mas limpa o anúncio do evento atual
+                            _add_step(db, event_id, "📢 Anúncio Detectado (Mensagem Mista)", f"Mensagem mista contendo anúncio ({detalhe}) e pergunta. O anúncio será removido e a pergunta será respondida.")
+                            event.mensagem = perguntas
+                            mensagem = perguntas
+                            db.commit()
+                            if config.leads_table and lead_internal_id:
+                                try:
+                                    db.execute(text(f"UPDATE {config.leads_table} SET mensagem = :msg WHERE id = :lid"), {"msg": perguntas, "lid": lead_internal_id})
+                                    db.commit()
+                                except Exception as e_lead_update:
+                                    logger.warning(f"Erro ao atualizar mensagem limpa na tabela de leads: {e_lead_update}")
                     else:
                         _add_step(db, event_id, "📢 Anúncio Não Detectado", "A primeira mensagem não corresponde a nenhum anúncio cadastrado. A pipeline prosseguirá normalmente.")
                     db.commit()
@@ -677,6 +701,25 @@ def process_webhook_automation(self, event_id: int):
                 logger.error(f"Erro ao limpar redis no Bot Defense: {redis_err}")
             return
 
+        # Se foi ignorado por ser Mensagem de Anúncio, encerramos a pipeline aqui
+        if isinstance(result, dict) and result.get("ignored_by_ad"):
+            event.status = "ignored"
+            db.commit()
+            _add_step(db, event_id, "📢 Pipeline Ignorado - Mensagem de Anúncio", "Processamento interrompido porque a mensagem é um anúncio e foi ignorada.")
+            
+            # Limpar debounce no redis
+            try:
+                import redis as redis_lib
+                _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
+                phone = event.telefone
+                wid = config.id
+                _redis_local.delete(f"webhook:debounce:id:{wid}:{phone}")
+                _redis_local.delete(f"webhook:debounce:text:{wid}:{phone}")
+                logger.info(f"🧹 Limpeza de debounce concluída após Anúncio Ignorado para {phone}")
+            except Exception as redis_err:
+                logger.error(f"Erro ao limpar redis no Anúncio Ignorado: {redis_err}")
+            return
+
         actual_debug = result.get("debug", {}) if isinstance(result, dict) else {}
         resolved_prompt = actual_debug.get("resolved_prompt") or db_agent.system_prompt
         rag_context = actual_debug.get("rag_context", "")
@@ -778,15 +821,50 @@ def process_webhook_automation(self, event_id: int):
         if response_text and config.leads_table and event.telefone:
             try:
                 table = config.leads_table
+                
+                # Sincronizar etiquetas do Chatwoot se as credenciais estiverem disponíveis
+                cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
+                cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
+                
+                cw_labels = None
+                if cw_url and cw_token and event.conversa_id and event.conta_id:
+                    from chatwoot_utils import get_conversation_labels_sync
+                    cw_labels = get_conversation_labels_sync(
+                        cw_url,
+                        int(event.conta_id) if str(event.conta_id).isdigit() else 0,
+                        int(event.conversa_id) if str(event.conversa_id).isdigit() else 0,
+                        cw_token
+                    )
+                
+                update_fields = [
+                    "contato_nome = :nome",
+                    "ultima_resposta_agente = :resp",
+                    "ultima_resposta_agente_em = :now",
+                    "updated_at = :now"
+                ]
+                
+                params = {
+                    "nome": event.contato_nome,
+                    "resp": response_text,
+                    "tel": event.telefone,
+                    "wid": config.id,
+                    "cid": event.conversa_id,
+                    "now": get_now_utc()
+                }
+                
+                if cw_labels is not None:
+                    update_fields.append("labels = :labels")
+                    params["labels"] = json.dumps(cw_labels, ensure_ascii=False)
+                
                 db.execute(text(f"""
                     UPDATE {table} SET
-                        ultima_resposta_agente = :resp,
-                        ultima_resposta_agente_em = :now,
-                        updated_at = :now
+                        {", ".join(update_fields)}
                     WHERE telefone = :tel AND webhook_config_id = :wid AND conversa_id = :cid
-                """), {"resp": response_text, "tel": event.telefone, "wid": config.id, "cid": event.conversa_id, "now": get_now_utc()})
+                """), params)
                 db.commit()
-                _add_step(db, event_id, "💾 Tabela de Leads Atualizada", "Resposta completa do agente salva de forma proativa.")
+                
+                labels_log = f"labels ({json.dumps(cw_labels, ensure_ascii=False)})" if cw_labels is not None else "labels preservadas"
+                _add_step(db, event_id, "💾 Tabela de Leads Atualizada", f"Nome, telefone, {labels_log} e resposta do agente salvos de forma proativa.")
             except Exception as le:
                 logger.error(f"Erro ao atualizar leads table proativamente: {le}")
                 _add_step(db, event_id, "⚠️ Aviso: Falha ao salvar no Contato", str(le))

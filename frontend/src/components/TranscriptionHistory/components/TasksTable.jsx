@@ -116,6 +116,10 @@ const TasksTable = () => {
                                         <span className="status-badge" style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
                                             📤 Enviando {upload.progress}%
                                         </span>
+                                    ) : upload.status === 'completed' ? (
+                                        <span className="status-badge" style={{ background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                                            ⏳ Enviado
+                                        </span>
                                     ) : (
                                         <span className="status-badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.2)' }} title={upload.error}>
                                             ❌ Erro no Envio

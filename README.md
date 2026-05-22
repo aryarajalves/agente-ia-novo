@@ -1,6 +1,6 @@
 # 🤖 Plataforma de Agentes de IA para Automação
 
-Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.7.4", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
+Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.7.5", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
 
 
 
@@ -82,6 +82,22 @@ npm run test:frontend
 
 ---
 
+## ✨ Novidades da Versão (v1.8.2)
+
+Esta versão traz melhorias na detecção de mensagens automáticas e no fluxo de upload do histórico de transcrições:
+- **Tratamento Amigável de Status de Envio (AssemblyAI)**: O frontend agora trata o status `completed` de uploads de áudio/vídeo, exibindo a badge `"⏳ Enviado"` no histórico de transcrições durante a transição em cache de 3 segundos, eliminando a exibição temporária da badge de erro `"❌ Erro no Envio"`.
+- **Detecção de Mensagens Automáticas de Contatos**: A pipeline do Pre-Router AI detecta mensagens iniciais automáticas de contatos (como auto-responders comerciais ou mensagens de catálogo/ausência) e dispara a saudação inicial configurada (ou padrão) para o cliente.
+- **Suíte de Testes Unitários de Frontend e Visual**: Inclusão de cobertura de testes no Vitest para o status `completed` no componente de tabela de transcrições, além de automação visual via Playwright.
+
+---
+
+## ✨ Novidades da Versão (v1.8.1)
+
+Esta versão traz a sincronização proativa e resiliente dos contatos do ZapVoice:
+- **Sincronização Proativa de Contatos e Etiquetas no ZapVoice**: Ao gerar e preparar o envio de uma resposta de IA ao Chatwoot, o sistema atualiza proativamente o contato do lead correspondente no banco de dados local Postgres (tabela configurada em `leads_table` no webhook). Os campos atualizados incluem o nome do contato, telefone, a última resposta enviada pelo agente, o timestamp da atualização e a lista de etiquetas ativas da conversa no Chatwoot.
+- **Resiliência e Tolerância a Falhas de Conectividade**: Caso a chamada síncrona para obter etiquetas no Chatwoot falhe (falha de rede, timeout, ou erro de status HTTP), o fluxo é tolerante a falhas, realizando o update do lead sem alterar a coluna `labels`, preservando o conjunto de etiquetas pré-existente no banco local de dados.
+- **Suíte de Testes Unitários de Integração e Atualização Proativa**: Criação de testes unitários que cobrem a função síncrona de consulta ao Chatwoot e garantem a correta execução da query SQL de atualização de leads nas tarefas em background (Celery).
+
 ## ✨ Novidades da Versão (v1.7.3)
 
 Esta versão traz melhorias críticas de UI/UX e testes na interface de teste do chat (ChatPlayground):
@@ -97,6 +113,16 @@ Esta versão consolida grandes evoluções no sistema, incluindo o controle fina
 - **Respostas de Saudação de Continuação**: O robô agora envia saudações amigáveis curtas em interações contínuas para manter a naturalidade, evitando repetir a mensagem inicial longa do agente.
 - **Flexibilização de Dúvidas Sem Resposta**: Regra de Ouro otimizada no Agente principal para permitir respostas contextuais ricas baseadas no prompt de sistema antes de recorrer à inbox de dúvidas sem resposta.
 - **Fluxo Premium de Convites de Usuários**: Substituição do cadastro direto por convites expiráveis (7h, 14h, 24h e 48h) com tabela de gestão, revogação manual e tela de registro com Glassmorphism e tratamento de e-mail duplicado.
+- **Tratamento e Descarte de Mensagens de Anúncio**: A pipeline de IA agora intercepta contatos cujo primeiro envio corresponda a um anúncio cadastrado. Se for anúncio puro (sem pergunta acoplada), o robô não envia resposta no Chatwoot, define o status do evento de webhook como `'ignored'`, limpa a coluna de mensagem na tabela local de leads e limpa o debounce de mensagens no Redis. Se a mensagem for mista (anúncio + pergunta), a pipeline remove a parte de anúncio e responde apenas à pergunta limpa, gravando no histórico local apenas a pergunta tratada.
+
+---
+
+## ✨ Novidades da Versão (v1.7.5)
+
+Esta versão traz melhorias no encerramento de conversas após o registro de dúvidas sem resposta:
+- **Encerramento Amigável de Conversa após Registro de Dúvida**: Quando o robô informa que verificará uma pergunta com a equipe, respostas curtas contendo concordâncias (como "tá ótimo", "ok", "obrigado", "perfeito") agora encerram a conversa amigavelmente com uma confirmação conclusiva. Isso evita que o agente repita em loop a pergunta "como posso te ajudar com outro assunto agora?".
+- **Nova Cobertura de Testes Unitários de Fluxo**: Inclusão de testes unitários em `backend/tests/test_initial_messages.py` para validar o comportamento conclusivo diante de concordâncias curtas no segundo turno.
+
 
 
 ### Novidades Anteriores (v1.8.0)
@@ -134,12 +160,12 @@ Esta versão consolida grandes evoluções no sistema, incluindo o controle fina
 *(Aviso: Conforme as regras do projeto, nunca gerar ou dar push em tags `latest` no Docker Hub; use sempre tags de versão estritas.)*
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.4 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.4`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.5 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.5`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.4 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.4`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.5 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.5`
 
 
 

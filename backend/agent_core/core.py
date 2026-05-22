@@ -127,8 +127,7 @@ async def process_message(
         "4. **PROTOCOLO DE RESPOSTA DA FERRAMENTA 'registrar_duvida_sem_resposta' (OBRIGATÓRIO):**\n"
         "   - **Primeiro Turno (Acionamento da Ferramenta):** Ao chamar a ferramenta, você DEVE responder de forma contextual e informativa usando qualquer informação relacionada disponível no prompt (por exemplo, se perguntarem sobre comprar o equipamento, esclareça que o curso foca em aluguel e que o usuário não precisa comprar a máquina). Para a informação específica e faltante (como preços ou detalhes que de fato não constam no prompt), inclua de forma integrada na mesma mensagem o padrão: 'Sobre [detalhe específico sem resposta], vou verificar com a equipe e já te retorno certinho sobre: [pergunta reformulada de forma clara e direta].' E no final da mensagem, faça sempre alguma pergunta para o usuário como: 'Posso lhe ajudar com mais alguma dúvida?' ou similar ou dê prosseguimento ao fluxo natural.\n"
         "   - **Segundo Turno (Resposta do Usuário após registrar dúvida):**\n"
-        "     - Se o usuário responder apenas com concordâncias/confirmações curtas (ex: 'ok', 'blz', 'tudo bem', 'beleza', 'certo', 'combinado', 'obrigado') após você ter dito que iria verificar com a equipe, você **DEVE APENAS** responder: 'Já salvei sua pergunta aqui para o nosso time analisar. Enquanto isso, como posso te ajudar com outro assunto agora?'. **É TERMINANTEMENTE PROIBIDO** perguntar se ele quer que você passe as informações que você tem agora, oferecer passar o que você sabe, ou perguntar se ele quer aguardar, pois você NÃO possui essa informação na sua base ou prompt. Apenas confirme o salvamento da pergunta e questione se há outro assunto em que possa ajudar.\n"
-        "     - Se o usuário responder negativamente ou indicando que não precisa de mais ajuda (ex: 'não', 'não obrigado', 'não preciso de mais nada', 'nada mais', 'no', 'nada'), você **DEVE** confirmar que a dúvida foi salva para a equipe e encerrar a conversa de forma extremamente educada e conclusiva (ex: 'Perfeito! Já salvei sua pergunta aqui para a equipe e eles vão te retornar. Se precisar de mais alguma coisa no futuro, estarei por aqui. Tenha um excelente dia!'), **SEM** perguntar se pode ajudar com outro assunto ou fazer novas perguntas."
+        "     - Se o usuário responder negativamente ou indicando que não precisa de mais ajuda (ex: 'não', 'não obrigado', 'não preciso de mais nada', 'nada mais', 'no', 'nada') OU responder apenas com concordâncias/confirmações curtas (ex: 'ok', 'blz', 'tudo bem', 'beleza', 'certo', 'combinado', 'obrigado', 'ta otimo', 'tá ótimo', 'perfeito') após você ter dito que iria verificar com a equipe, você **DEVE** confirmar que a dúvida foi salva para a equipe e encerrar a conversa de forma extremamente educada e conclusiva (ex: 'Perfeito! Já salvei sua pergunta aqui para a equipe e eles vão te retornar. Se precisar de mais alguma coisa no futuro, estarei por aqui. Tenha um excelente dia!'), **SEM** perguntar se pode ajudar com outro assunto ou fazer novas perguntas. **É TERMINANTEMENTE PROIBIDO** perguntar se ele quer que você passe as informações que você tem agora, oferecer passar o que você sabe, perguntar se ele quer aguardar, ou fazer qualquer outra pergunta/questionamento sobre novos assuntos, pois a conversa deve ser encerrada ali."
     )
     system_prompt += strict_rules
 
@@ -396,7 +395,7 @@ async def process_message(
                         })
                         
                         detalhes_suporte = f"Destino: {destino}. Motivo: {motivo}."
-                        if handoff_result and "DETALHES:" in handoff_result:
+                        if handoff_result and isinstance(handoff_result, str) and "DETALHES:" in handoff_result:
                             try:
                                 # Extrair a seção de detalhes
                                 partes = handoff_result.split("DETALHES: ")
@@ -511,9 +510,18 @@ async def process_message(
     # anexamos ela ao final da resposta.
     is_first_msg = not history or len(history) == 0
     init_q_msg = getattr(config, 'initial_question_message', None)
-    if is_first_msg and init_q_msg and final_content:
-        # Só anexa se não for erro e se não for uma resposta curta de esclarecimento (vinda do pre-router)
-        # Na verdade, se chegou aqui, passou pelo pre-router e foi para o agente principal.
+    is_handoff = handoff_data.get("handoff", False) if isinstance(handoff_data, dict) else False
+    
+    if is_first_msg and init_q_msg and final_content and not is_handoff:
+        # Se o LLM gerar uma pergunta de continuação no final da resposta, nós a removemos
+        # do texto gerado para evitar duplicidade com a saudação inicial configurada no agente.
+        # Procuramos por expressões de ajuda, dúvidas, perguntas ou continuação no final.
+        pattern = r'(?:[\n\s]+)?(?:Posso|Deseja|Quer|Como posso|Você possui|Mais alguma|Se tiver|Qualquer).*?(?:dúvida|ajuda|ajudar|pergunta|esclarecer|algo mais|mais alguma).*?\?\s*$'
+        match = re.search(pattern, final_content, re.IGNORECASE | re.DOTALL)
+        if match:
+            # Removemos a pergunta redundante gerada pelo LLM
+            final_content = final_content[:match.start()].strip()
+            
         if not final_content.endswith(init_q_msg):
             final_content = f"{final_content}\n\n{init_q_msg}"
     
