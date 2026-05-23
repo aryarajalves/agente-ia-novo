@@ -24,7 +24,10 @@ from celery import shared_task
 from webhook_services import (
     execute_keyword_deletion_trap,
     check_automation_trap,
-    retrieve_context_history
+    retrieve_context_history,
+    _get_cost,
+    _build_agent_config,
+    _send_chatwoot_message
 )
 
 logger = logging.getLogger(__name__)
@@ -97,168 +100,12 @@ def _toggle_typing_indicator(config, account_id, conversation_id, command="on"):
         pass
 
 
-def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, config, split_paragraphs=False, delay=0):
-    """
-    Envia a resposta do agente para o Chatwoot.
-    """
-    try:
-        url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-        token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
-        
-        if not url or not token:
-            _add_step(db, event_id, "❌ Erro: Chatwoot não configurado", "URL ou Token ausentes no .env/config.")
-            return False
-
-        if not conversation_id or not account_id:
-            _add_step(db, event_id, "❌ Erro: Dados faltantes", f"conversa_id={conversation_id}, account_id={account_id}")
-            return False
-
-        if split_paragraphs:
-            parts = [p.strip() for p in re.split(r'\n\n+', content) if p.strip()]
-            if not parts: parts = [content]
-        else:
-            parts = [content]
-
-        total_parts = len(parts)
-        if total_parts > 1:
-            _add_step(db, event_id, "✂️ Resposta Fragmentada", f"A mensagem será enviada em {total_parts} partes com delay de {delay}s entre elas.")
-
-        headers = {"api_access_token": token, "Content-Type": "application/json"}
-        full_url = f"{url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"
-
-        success = True
-        for i, part in enumerate(parts):
-            _toggle_typing_indicator(config, account_id, conversation_id, "on")
-            
-            time.sleep(1)
-            
-            payload = {"content": part, "message_type": "outgoing"}
-            
-            try:
-                with httpx.Client(timeout=20.0) as client:
-                    resp = client.post(full_url, json=payload, headers=headers)
-                    if resp.status_code not in (200, 201):
-                        error_detail = f"Status {resp.status_code}: {resp.text[:200]}\nURL: {full_url}"
-                        _add_step(db, event_id, f"❌ Erro no envio (Parte {i+1})", error_detail)
-                        success = False
-                        _toggle_typing_indicator(config, account_id, conversation_id, "off")
-                        break
-            except Exception as http_err:
-                _add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Erro: {str(http_err)}")
-                success = False
-                _toggle_typing_indicator(config, account_id, conversation_id, "off")
-                break
-            
-            _toggle_typing_indicator(config, account_id, conversation_id, "off")
-
-            if i < total_parts - 1 and delay > 0:
-                time.sleep(delay)
-
-        if success:
-            if total_parts > 1:
-                _add_step(db, event_id, "📤 Partes entregues", f"Todas as {total_parts} partes foram enviadas com sucesso.")
-            else:
-                _add_step(db, event_id, "📤 Resposta enviada ao Chatwoot", f"Mensagem única entregue com sucesso.")
-        
-        return success
-    except Exception as e:
-        _add_step(db, event_id, "❌ Erro crítico no envio", str(e))
-        return False
+# A função _send_chatwoot_message foi movida para webhook_services.py
+# para manter este arquivo abaixo do limite maximo de 1000 linhas (Clean Code).
 
 
-def _get_cost(model, usage):
-    if not usage: return 0
-    if not model or not isinstance(model, str):
-        model = "gpt-4o-mini"
-    rates = {
-        "gpt-4o-mini": {"in": 0.00015 / 1000, "out": 0.00060 / 1000},
-        "gpt-4o": {"in": 0.005 / 1000, "out": 0.015 / 1000},
-        "gpt-3.5-turbo": {"in": 0.0005 / 1000, "out": 0.0015 / 1000},
-        "o1": {"in": 0.015 / 1000, "out": 0.060 / 1000},
-    }
-    
-    m = model.lower()
-    if "mini" in m:
-        rate = rates["gpt-4o-mini"]
-    elif "gpt-3.5" in m:
-        rate = rates["gpt-3.5-turbo"]
-    elif "o1" in m:
-        rate = rates["o1"]
-    elif "gpt" in m or "4o" in m:
-        rate = rates["gpt-4o"]
-    else:
-        rate = rates["gpt-4o-mini"]
-
-    p_tokens = usage.get("prompt_tokens", 0) or usage.get("mini_prompt", 0) + usage.get("main_prompt", 0)
-    c_tokens = usage.get("completion_tokens", 0) or usage.get("mini_completion", 0) + usage.get("main_completion", 0)
-    
-    usd_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
-    
-    try:
-        conversion_rate = float(os.getenv("USD_TO_BRL_RATE", "6.0"))
-    except:
-        conversion_rate = 6.0
-        
-    return usd_cost * conversion_rate
-
-
-def _build_agent_config(db_agent):
-    """Build AgentConfig pydantic object from DB model."""
-    import json as _json
-    return AgentConfig(
-        id=db_agent.id,
-        name=db_agent.name,
-        description=db_agent.description,
-        model=db_agent.model,
-        fallback_model=db_agent.fallback_model,
-        temperature=db_agent.temperature,
-        top_p=db_agent.top_p,
-        date_awareness=db_agent.date_awareness,
-        system_prompt=db_agent.system_prompt,
-        context_window=db_agent.context_window,
-        knowledge_base=_json.loads(db_agent.knowledge_base) if db_agent.knowledge_base else [],
-        knowledge_base_id=None,
-        knowledge_base_ids=[],
-        rag_retrieval_count=db_agent.rag_retrieval_count,
-        rag_translation_enabled=db_agent.rag_translation_enabled,
-        rag_multi_query_enabled=db_agent.rag_multi_query_enabled,
-        rag_rerank_enabled=db_agent.rag_rerank_enabled,
-        rag_agentic_eval_enabled=db_agent.rag_agentic_eval_enabled,
-        rag_parent_expansion_enabled=db_agent.rag_parent_expansion_enabled,
-        tool_ids=[],
-        is_active=db_agent.is_active,
-        simulated_time=db_agent.simulated_time,
-        security_competitor_blacklist=db_agent.security_competitor_blacklist,
-        security_forbidden_topics=db_agent.security_forbidden_topics,
-        security_discount_policy=db_agent.security_discount_policy,
-        security_language_complexity=db_agent.security_language_complexity,
-        security_pii_filter=db_agent.security_pii_filter,
-        security_bot_protection=db_agent.security_bot_protection,
-        security_max_messages_per_session=db_agent.security_max_messages_per_session,
-        security_semantic_threshold=db_agent.security_semantic_threshold,
-        security_loop_count=db_agent.security_loop_count,
-        security_validator_ia=db_agent.security_validator_ia,
-        inbox_capture_enabled=db_agent.inbox_capture_enabled,
-        ui_primary_color=db_agent.ui_primary_color,
-        ui_header_color=db_agent.ui_header_color,
-        ui_chat_title=db_agent.ui_chat_title,
-        ui_welcome_message=db_agent.ui_welcome_message,
-        router_enabled=db_agent.router_enabled,
-        router_simple_model=db_agent.router_simple_model,
-        router_simple_fallback_model=db_agent.router_simple_fallback_model,
-        router_complex_model=db_agent.router_complex_model,
-        handoff_enabled=db_agent.handoff_enabled,
-        response_translation_enabled=db_agent.response_translation_enabled,
-        response_translation_fallback_lang=db_agent.response_translation_fallback_lang or "portuguese",
-        top_k=db_agent.top_k,
-        presence_penalty=db_agent.presence_penalty,
-        frequency_penalty=db_agent.frequency_penalty,
-        safety_settings=db_agent.safety_settings,
-        model_settings=_json.loads(db_agent.model_settings) if db_agent.model_settings else {},
-        qualification_questions=db_agent.qualification_questions,
-        qualification_labels=db_agent.qualification_labels,
-        initial_question_message=db_agent.initial_question_message,
-    )
+# As funcoes _get_cost e _build_agent_config foram movidas para webhook_services.py
+# para manter este arquivo abaixo do limite maximo de 1000 linhas (Clean Code).
 
 # --- CELERY TASKS ---
 
@@ -325,6 +172,7 @@ def process_webhook_automation(self, event_id: int):
             db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_audio BOOLEAN DEFAULT TRUE"))
             db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_image BOOLEAN DEFAULT TRUE"))
             db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS delete_labels TEXT"))
+            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS negative_feedback_label TEXT"))
             db.commit()
         except Exception:
             db.rollback()
@@ -546,15 +394,14 @@ def process_webhook_automation(self, event_id: int):
                         perguntas = pre_router_result.get("perguntas_extraidas")
                         if not perguntas or not str(perguntas).strip():
                             # É APENAS ANÚNCIO (ou anúncio + saudação)
-                            # Não responder e marcar como ignored
-                            _add_step(db, event_id, "📢 Anúncio Detectado", f"A primeira mensagem foi identificada como anúncio ({detalhe}) e não contém perguntas. Ignorando evento e não respondendo.")
+                            # Permite o envio da mensagem de saudação e adiciona step explicativo
+                            _add_step(db, event_id, "📢 Anúncio Detectado", f"A primeira mensagem foi identificada como anúncio ({detalhe}) e não contém perguntas. Respondendo com a saudação configurada.")
                             if config.leads_table and lead_internal_id:
                                 try:
                                     db.execute(text(f"UPDATE {config.leads_table} SET mensagem = NULL, ultima_mensagem_em = NULL WHERE id = :lid"), {"lid": lead_internal_id})
                                     db.commit()
                                 except Exception as e_lead_clear:
                                     logger.warning(f"Erro ao limpar mensagem de anuncio da tabela de leads: {e_lead_clear}")
-                            return {"ignored_by_ad": True}
                         else:
                             # Mensagem mista: anúncio + pergunta.
                             # Prossegue, mas limpa o anúncio do evento atual
@@ -606,6 +453,57 @@ def process_webhook_automation(self, event_id: int):
                     }
                 )
                 
+                # --- INTERCEPTAÇÃO DE EMOJI NEGATIVO ---
+                if pre_router_result.get("eh_emoji_negativo"):
+                    neg_label = (config.negative_feedback_label or "feedback_negativo").strip()
+                    ignore_label = (config.ignore_by_label or "humano").strip()
+                    
+                    cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
+                    cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
+                    
+                    has_neg_label = False
+                    if cw_url and cw_token and event.conversa_id and event.conta_id:
+                        acc_id = int(event.conta_id) if str(event.conta_id).isdigit() else 0
+                        conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
+                        
+                        success, current_labels = await sync_conversation_labels(cw_url, acc_id, conv_id, cw_token)
+                        if success:
+                            has_neg_label = any(l.lower() == neg_label.lower() for l in current_labels if isinstance(l, str))
+                            
+                    if has_neg_label:
+                        msg_transicao = "Lamento muito pelo ocorrido. Vou transferir seu atendimento para nossa equipe de suporte agora."
+                        if cw_url and cw_token and event.conversa_id and event.conta_id:
+                            acc_id = int(event.conta_id) if str(event.conta_id).isdigit() else 0
+                            conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
+                            await sync_conversation_labels(cw_url, acc_id, conv_id, cw_token, to_add=[ignore_label])
+                        
+                        _add_step(db, event_id, "👎 Emoji Negativo (2ª ocorrência)", f"Enviando mensagem de transição e aplicando etiqueta de pausa: {ignore_label}")
+                        return {
+                            "content": msg_transicao,
+                            "usage": pr_usage,
+                            "model": pr_model,
+                            "debug": {
+                                "is_greeting": True,
+                                "negative_emoji_second_occurrence": True
+                            }
+                        }
+                    else:
+                        if cw_url and cw_token and event.conversa_id and event.conta_id:
+                            acc_id = int(event.conta_id) if str(event.conta_id).isdigit() else 0
+                            conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
+                            await sync_conversation_labels(cw_url, acc_id, conv_id, cw_token, to_add=[neg_label])
+                            
+                        _add_step(db, event_id, "👎 Emoji Negativo (1ª ocorrência)", f"Enviando resposta empática e aplicando etiqueta de feedback negativo: {neg_label}")
+                        return {
+                            "content": pre_router_result.get("resposta_direta"),
+                            "usage": pr_usage,
+                            "model": pr_model,
+                            "debug": {
+                                "is_greeting": True,
+                                "negative_emoji_first_occurrence": True
+                            }
+                        }
+
                 if pre_router_result.get("eh_saudacao") and pre_router_result.get("resposta_direta"):
                     _add_step(db, event_id, "👋 Saudação Detectada", "O Pre-Router gerou uma resposta direta, ignorando o agente principal.")
                     return {"content": pre_router_result.get("resposta_direta"), "usage": pr_usage, "model": pr_model, "debug": {"is_greeting": True}}
@@ -838,6 +736,11 @@ def process_webhook_automation(self, event_id: int):
                 
                 update_fields = [
                     "contato_nome = :nome",
+                    "telefone = :tel",
+                    "conversa_id = :cid",
+                    "conta_id = :conta_id",
+                    "inbox_id = :inbox_id",
+                    "inbox_nome = :inbox_nome",
                     "ultima_resposta_agente = :resp",
                     "ultima_resposta_agente_em = :now",
                     "updated_at = :now"
@@ -849,17 +752,35 @@ def process_webhook_automation(self, event_id: int):
                     "tel": event.telefone,
                     "wid": config.id,
                     "cid": event.conversa_id,
+                    "conta_id": event.conta_id,
+                    "inbox_id": event.inbox_id,
+                    "inbox_nome": event.inbox_nome,
                     "now": get_now_utc()
                 }
+
+                if event.created_at:
+                    update_fields.append("ultima_mensagem_em = :last_msg_at")
+                    params["last_msg_at"] = event.created_at
                 
                 if cw_labels is not None:
                     update_fields.append("labels = :labels")
                     params["labels"] = json.dumps(cw_labels, ensure_ascii=False)
                 
+                from webhooks.utils import normalize_phone, get_phone_suffix
+                phone_clean = normalize_phone(event.telefone)
+                tel_suffix = get_phone_suffix(phone_clean)
+                params["tel_suffix"] = tel_suffix
+
+                if lead_internal_id:
+                    params["lid"] = lead_internal_id
+                    where_clause = "id = :lid"
+                else:
+                    where_clause = "webhook_config_id = :wid AND (telefone = :tel OR telefone LIKE '%' || :tel_suffix || '%')"
+
                 db.execute(text(f"""
                     UPDATE {table} SET
                         {", ".join(update_fields)}
-                    WHERE telefone = :tel AND webhook_config_id = :wid AND conversa_id = :cid
+                    WHERE {where_clause}
                 """), params)
                 db.commit()
                 

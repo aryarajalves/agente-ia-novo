@@ -69,6 +69,7 @@ class WebhookConfigCreate(BaseModel):
     memory_name_path: Optional[str] = None
     memory_mappings: List[dict] = []
     ignore_by_label: Optional[str] = None
+    negative_feedback_label: Optional[str] = None
     handoff_labels_to_add: List[str] = []
     handoff_labels_to_remove: List[str] = []
     handoff_keyword: Optional[str] = None
@@ -109,6 +110,7 @@ class WebhookConfigResponse(BaseModel):
     memory_phone_path: Optional[str] = "phone"
     memory_mappings: Union[List[dict], Any, None] = []
     ignore_by_label: Optional[str] = None
+    negative_feedback_label: Optional[str] = None
     handoff_labels_to_add: Union[List[str], Any, None] = []
     handoff_labels_to_remove: Union[List[str], Any, None] = []
     handoff_keyword: Optional[str] = None
@@ -166,6 +168,7 @@ class WebhookConfigUpdate(BaseModel):
     memory_name_path: Optional[str] = None
     memory_mappings: Optional[List[dict]] = None
     ignore_by_label: Optional[str] = None
+    negative_feedback_label: Optional[str] = None
     handoff_labels_to_add: Optional[List[str]] = None
     handoff_labels_to_remove: Optional[List[str]] = None
     handoff_keyword: Optional[str] = None
@@ -801,6 +804,55 @@ async def cancel_webhook_event_endpoint(webhook_id: int, event_id: int, db: Asyn
             "steps": steps
         })
     return {"ok": True}
+
+@router.post("/{webhook_id}/events/{event_id}/retry", status_code=200)
+async def retry_webhook_event_endpoint(webhook_id: int, event_id: int, db: AsyncSession = Depends(get_db)):
+    event = await db.get(WebhookEventModel, event_id)
+    if not event or event.webhook_config_id != webhook_id:
+        raise HTTPException(status_code=404, detail="Evento de webhook não encontrado")
+        
+    if event.status == "processing":
+        raise HTTPException(status_code=400, detail="Este evento já está sendo processado no momento.")
+        
+    # Importar Celery task de forma lazy para evitar imports circulares
+    from webhook_tasks import process_webhook_automation
+    
+    # Resetar o status do evento no banco de dados
+    event.status = "processing"
+    event.agent_response = None
+    
+    # Registrar passo inicial de retentativa
+    now_br = get_now_br()
+    steps = [{
+        "step": "🔄 Reiniciando Pipeline",
+        "detail": "A retentativa da automação foi iniciada manualmente pelo usuário. Reprocessando mensagem original...",
+        "timestamp": now_br.isoformat()
+    }]
+    event.processing_steps = json.dumps(steps, ensure_ascii=False)
+    event.updated_at = now_br
+    
+    # Salvar alterações
+    await db.commit()
+    
+    # Broadcast status_update via WebSocket para atualizar a UI em tempo real
+    try:
+        await manager.broadcast({
+            "type": "status_update",
+            "webhook_id": webhook_id,
+            "event_id": event_id,
+            "status": "processing",
+            "steps": steps
+        })
+    except Exception as ws_err:
+        logger.error(f"Erro ao transmitir status_update via WS no retry: {ws_err}")
+        
+    # Disparar task do Celery
+    process_webhook_automation.delay(event_id)
+    
+    logger.info(f"🔄 Retentativa manual de automação iniciada para o evento {event_id} (Webhook Config ID: {webhook_id})")
+    
+    return {"ok": True, "status": "processing"}
+
 
 @router.get("/{webhook_id}/leads")
 async def list_webhook_leads(

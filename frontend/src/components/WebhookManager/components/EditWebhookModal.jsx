@@ -67,6 +67,7 @@ const EditWebhookModal = ({
         delete_labels: [],
         labels_on_message: [],
         ignore_by_label: '',
+        negative_feedback_label: '',
         window_close_label: [],
         handoff_labels_to_remove: [],
         handoff_labels_to_add: [],
@@ -384,6 +385,18 @@ const EditWebhookModal = ({
                                                         onChange={v => setEditForm({ ...safeEditForm, ignore_by_label: v })}
                                                         accentColor="#ef4444"
                                                     />
+                                                </div>
+                                                <div className="form-group-premium">
+                                                    <label className="premium-label" style={{ color: '#f59e0b', fontSize: '0.65rem' }}>👎 Feedback Negativo (1º emoji)</label>
+                                                    <LabelSingleSelect
+                                                        selected={safeEditForm.negative_feedback_label || ''}
+                                                        options={labelsList}
+                                                        onChange={v => setEditForm({ ...safeEditForm, negative_feedback_label: v })}
+                                                        accentColor="#f59e0b"
+                                                    />
+                                                    <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                        Esta etiqueta será aplicada ao contato no primeiro emoji negativo que ele enviar.
+                                                    </p>
                                                 </div>
                                                 <div className="form-group-premium">
                                                     <label className="premium-label" style={{ color: '#f59e0b', fontSize: '0.65rem' }}>⏳ Remover após janela 24h expirar</label>

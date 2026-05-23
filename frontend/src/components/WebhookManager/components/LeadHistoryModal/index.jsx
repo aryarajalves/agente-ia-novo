@@ -22,6 +22,7 @@ const LeadHistoryModal = ({
     const [selectedPipelineEvent, setSelectedPipelineEvent] = useState(null);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, eventId: null });
     const [maximizedText, setMaximizedText] = useState(null);
+    const [retryingEvents, setRetryingEvents] = useState(new Set());
 
     // Bloquear scroll do body ao montar modal
     useEffect(() => {
@@ -70,6 +71,37 @@ const LeadHistoryModal = ({
         }
     };
 
+    const handleRetryEvent = async (eventId) => {
+        if (retryingEvents.has(eventId)) return;
+
+        setRetryingEvents(prev => {
+            const next = new Set(prev);
+            next.add(eventId);
+            return next;
+        });
+
+        try {
+            const res = await api.post(`/webhooks/${webhook.id}/events/${eventId}/retry`);
+            if (res.ok) {
+                showToast('Automação reiniciada com sucesso! Aguarde a resposta do agente.', 'success');
+                fetchLeadHistory();
+            } else {
+                const errorData = await res.json().catch(() => ({}));
+                const errorMsg = errorData.detail || 'Erro ao reiniciar automação.';
+                showToast(errorMsg, 'error');
+            }
+        } catch (e) {
+            console.error('Erro ao reiniciar automação:', e);
+            showToast('Erro ao reiniciar automação.', 'error');
+        } finally {
+            setRetryingEvents(prev => {
+                const next = new Set(prev);
+                next.delete(eventId);
+                return next;
+            });
+        }
+    };
+
     // Conexão WebSocket para atualização em tempo real
     useEffect(() => {
         if (!webhook || !webhook.id) return;
@@ -92,6 +124,34 @@ const LeadHistoryModal = ({
                                 return [data.event, ...prev];
                             });
                             setTotal(prev => prev + 1);
+                        }
+                    } else if (data.type === 'status_update' && data.webhook_id === webhook.id) {
+                        setEvents(prev => prev.map(evt => {
+                            if (evt.id === data.event_id) {
+                                return {
+                                    ...evt,
+                                    status: data.status,
+                                    processing_steps: JSON.stringify(data.steps)
+                                };
+                            }
+                            return evt;
+                        }));
+
+                        if (['completed', 'error', 'ignored'].includes(data.status)) {
+                            api.get(`/webhooks/${webhook.id}/events/${data.event_id}`)
+                                .then(res => res.json())
+                                .then(updatedEvent => {
+                                    setEvents(prev => prev.map(evt => {
+                                        if (evt.id === data.event_id) {
+                                            return {
+                                                ...evt,
+                                                ...updatedEvent
+                                            };
+                                        }
+                                        return evt;
+                                    }));
+                                })
+                                .catch(err => console.error("Erro ao buscar detalhes do evento pós-update:", err));
                         }
                     }
                 } catch (e) {
@@ -213,6 +273,8 @@ const LeadHistoryModal = ({
                                     setMaximizedText={setMaximizedText}
                                     setSelectedPipelineEvent={setSelectedPipelineEvent}
                                     handleDeleteEvent={handleDeleteEvent}
+                                    handleRetryEvent={handleRetryEvent}
+                                    isRetrying={retryingEvents.has(event.id)}
                                 />
                             ))}
                         </tbody>

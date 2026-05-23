@@ -350,4 +350,27 @@ describe('ChatPlayground Component', () => {
         // O preview de imagem deve desaparecer IMEDIATAMENTE
         expect(screen.queryByAltText('Preview')).not.toBeInTheDocument();
     });
+
+    it('should show success toast and reset session when reset button is clicked', async () => {
+        await act(async () => {
+            render(
+                <MemoryRouter initialEntries={['/playground?agentId=4']}>
+                    <ChatPlayground />
+                </MemoryRouter>
+            );
+        });
+
+        // Procurar o botão "⚡ Resetar"
+        const resetBtn = screen.getByText(/Resetar/i);
+        expect(resetBtn).toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(resetBtn);
+        });
+
+        // O toast deve ser renderizado no document body
+        await waitFor(() => {
+            expect(screen.getByText('Sessão resetada com sucesso!')).toBeInTheDocument();
+        });
+    });
 });

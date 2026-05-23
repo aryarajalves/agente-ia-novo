@@ -65,7 +65,7 @@ const ChatPlayground = () => {
 
     const showToast = (message, type = 'info') => {
         setToast({ show: true, message, type });
-        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3000);
+        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 5000);
     };
 
     // Fetch Agents and Globals
@@ -361,11 +361,12 @@ const ChatPlayground = () => {
                     />
                 )}
 
-                {toast.show && (
+                {toast.show && createPortal(
                     <div className={`toast-notification fade-in ${toast.type}`}>
                         <span>{toast.type === 'error' ? '❌' : (toast.type === 'success' ? '✅' : 'ℹ️')}</span>
                         <span>{toast.message}</span>
-                    </div>
+                    </div>,
+                    document.body
                 )}
             </div>
 

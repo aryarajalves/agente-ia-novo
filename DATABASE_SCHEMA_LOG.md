@@ -18,6 +18,7 @@ Este arquivo registra todas as alterações manuais de schema (ALTER TABLE) real
 | 2026-05-21 | TODAS (Leads) | qualified_by_agent_id | add_qualified_by_agent_id_column.py | Coluna para rastrear qual agente realizou a qualificação do lead. |
 | 2026-05-21 | user_invites | TODAS | create_user_invites_table.py | Criação da tabela de convites de usuários expiráveis. |
 | 2026-05-22 | webhook_events | is_automatic | add_is_automatic_column.py | Adição de coluna para identificar se a mensagem do webhook é de envio automático do contato. |
+| 2026-05-22 | webhook_configs | negative_feedback_label | add_negative_feedback_label_column.py | Adição de campo configurável para a etiqueta de feedback negativo (1º emoji negativo). |
 
 
 

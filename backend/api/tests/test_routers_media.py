@@ -21,7 +21,10 @@ test_app.include_router(router)
 
 @pytest.fixture
 def client():
-    return TestClient(test_app, raise_server_exceptions=False)
+    from api.deps import verify_api_key
+    test_app.dependency_overrides[verify_api_key] = lambda: None
+    yield TestClient(test_app, raise_server_exceptions=False)
+    test_app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -118,3 +121,75 @@ class TestUploadImage:
                             files={"file": ("noext", io.BytesIO(b"IMG"), "image/webp")},
                         )
         assert response.status_code != 404
+
+
+class TestTranscribeAudio:
+    def test_route_exists(self, client):
+        """A rota POST /transcribe-audio deve existir."""
+        response = client.post("/transcribe-audio", headers={"X-API-Key": "test"})
+        # Sem arquivo, deve ser 422, não 404
+        assert response.status_code != 404
+
+    @patch("api.routers.media.verify_api_key", return_value=None)
+    @patch.dict("os.environ", {"OPENAI_API_KEY": ""})
+    def test_transcribe_without_api_key_returns_500(self, mock_key, client):
+        """Sem chave da OpenAI, a rota deve retornar 500."""
+        response = client.post(
+            "/transcribe-audio",
+            headers={"X-API-Key": "test"},
+            files={"file": ("test.webm", io.BytesIO(b"audio_bytes"), "audio/webm")},
+        )
+        assert response.status_code == 500
+        assert "Chave da OpenAI" in response.json()["detail"]
+
+    @patch("api.routers.media.verify_api_key", return_value=None)
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "fake_key", "BACKEND_URL": "http://localhost:8000"})
+    @patch("openai.resources.audio.transcriptions.AsyncTranscriptions.create")
+    def test_transcribe_audio_success(self, mock_create, mock_key, client, tmp_path, monkeypatch):
+        """Com chave configurada e Whisper obtendo sucesso de primeira, deve retornar o texto."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tmp_uploads").mkdir(exist_ok=True)
+
+        # Mock da transcrição do Whisper
+        mock_transcript = MagicMock()
+        mock_transcript.text = "Olá, este é um teste de transcrição."
+        mock_create.return_value = mock_transcript
+
+        response = client.post(
+            "/transcribe-audio",
+            files={"file": ("test.webm", io.BytesIO(b"audio_bytes"), "audio/webm")},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["text"] == "Olá, este é um teste de transcrição."
+        assert "audio_url" in data
+        assert data["filename"].endswith(".webm")
+
+    @patch("api.routers.media.verify_api_key", return_value=None)
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "fake_key", "BACKEND_URL": "http://localhost:8000"})
+    @patch("openai.resources.audio.transcriptions.AsyncTranscriptions.create")
+    @patch("agent_core.services.media_service._convert_to_mp3")
+    def test_transcribe_audio_fallback_ffmpeg_success(self, mock_convert, mock_create, mock_key, client, tmp_path, monkeypatch):
+        """Se falhar de primeira, tenta converter com ffmpeg e transcrever novamente."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tmp_uploads").mkdir(exist_ok=True)
+
+        # Primeira chamada falha, segunda tem sucesso após conversão
+        mock_transcript = MagicMock()
+        mock_transcript.text = "Transcrito após conversão."
+        mock_create.side_effect = [Exception("Whisper error"), mock_transcript]
+
+        mock_convert.return_value = b"fake_mp3_bytes"
+
+        response = client.post(
+            "/transcribe-audio",
+            files={"file": ("test.ogg", io.BytesIO(b"audio_bytes"), "audio/ogg")},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["text"] == "Transcrito após conversão."
+        assert data["filename"].endswith(".mp3")
+        assert "audio_url" in data
+

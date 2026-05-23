@@ -162,4 +162,45 @@ describe('LeadHistoryModal Component', () => {
         // 3. Validar se a API foi chamada novamente
         expect(api.get).toHaveBeenCalledTimes(1);
     });
+
+    it('deve exibir o botão de retentativa 🔄 apenas para eventos normais e acionar a API de retry com sucesso', async () => {
+        api.post.mockResolvedValue(createMockResponse({ ok: true }, 200));
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        render(
+            <LeadHistoryModal
+                lead={mockLead}
+                webhook={mockWebhook}
+                onClose={() => {}}
+            />
+        );
+
+        // 1. Aguardar renderização dos eventos
+        expect(await screen.findByText('Olá, sou um lead comum')).toBeInTheDocument();
+
+        // 2. Verificar que o botão com title "Reiniciar Automação" existe
+        const retryButtons = screen.queryAllByTitle('Reiniciar Automação');
+        // Apenas o evento comum (id 1) é elegível. O de memória (id 2) não é.
+        expect(retryButtons.length).toBe(1);
+
+        // 3. Clicar no botão de retentativa 🔄
+        fireEvent.click(retryButtons[0]);
+
+        // 4. Validar chamada da API
+        await vi.waitFor(() => {
+            expect(api.post).toHaveBeenCalledWith(
+                `/webhooks/${mockWebhook.id}/events/1/retry`
+            );
+        });
+
+        // 5. Validar o disparo do toast
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.any(CustomEvent)
+        );
+        const toastEvent = dispatchSpy.mock.calls.find(
+            call => call[0].type === 'app:toast' && call[0].detail.message.includes('Automação reiniciada com sucesso!')
+        )[0];
+        expect(toastEvent).toBeDefined();
+        expect(toastEvent.detail.type).toBe('success');
+    });
 });

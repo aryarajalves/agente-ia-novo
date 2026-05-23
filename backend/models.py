@@ -356,6 +356,7 @@ class WebhookConfigModel(Base):
     followup_steps = Column(Text, nullable=True)         # JSON: [{delay_hours}, ...]
     followup_business_hours = Column(Text, nullable=True) # JSON: {enabled, start, end, weekdays, saturday, sunday}
     ignore_by_label = Column(String, nullable=True)     # Se o contato tiver essa etiqueta, a automação para
+    negative_feedback_label = Column(String, nullable=True) # Etiqueta aplicada ao contato no primeiro emoji negativo
     
     # Automação de Suporte Humano (Handoff)
     handoff_labels_to_add = Column(Text, nullable=True)     # JSON: ["etiqueta1", ...]

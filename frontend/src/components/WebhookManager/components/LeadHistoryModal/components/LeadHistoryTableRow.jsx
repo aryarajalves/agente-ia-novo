@@ -6,7 +6,9 @@ const LeadHistoryTableRow = ({
     getMessageTypeLabel, 
     setMaximizedText, 
     setSelectedPipelineEvent, 
-    handleDeleteEvent 
+    handleDeleteEvent,
+    handleRetryEvent,
+    isRetrying
 }) => {
     const isAgent = event.dono === 'agente' || event.dono === 'bot';
     const isGrouped = event.status === 'grouped';
@@ -141,12 +143,32 @@ const LeadHistoryTableRow = ({
             {/* Ações */}
             <td style={{ padding: '1rem', textAlign: 'center' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                    {!isAgent && event.event_type !== 'memory' && (
-                        <button
-                            onClick={() => setSelectedPipelineEvent(event)}
-                            title="Ver Pipeline"
-                            style={{ background: 'rgba(99, 102, 241, 0.1)', border: 'none', color: '#818cf8', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}
-                        >⚡</button>
+                    {!isAgent && event.event_type !== 'memory' && !isGrouped && (
+                        <>
+                            <button
+                                onClick={() => handleRetryEvent(event.id)}
+                                title={isRetrying || event.status === 'processing' ? "Reprocessando..." : "Reiniciar Automação"}
+                                disabled={isRetrying || event.status === 'processing'}
+                                className={isRetrying || event.status === 'processing' ? "loading-spin" : ""}
+                                style={{ 
+                                    background: 'rgba(129, 140, 248, 0.1)', 
+                                    border: 'none', 
+                                    color: '#a5b4fc', 
+                                    borderRadius: '6px', 
+                                    padding: '6px', 
+                                    cursor: (isRetrying || event.status === 'processing') ? 'not-allowed' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.85rem'
+                                }}
+                            >🔄</button>
+                            <button
+                                onClick={() => setSelectedPipelineEvent(event)}
+                                title="Ver Pipeline"
+                                style={{ background: 'rgba(99, 102, 241, 0.1)', border: 'none', color: '#818cf8', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}
+                            >⚡</button>
+                        </>
                     )}
                     <button
                         onClick={() => handleDeleteEvent(event.id)}

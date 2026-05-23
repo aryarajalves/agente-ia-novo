@@ -6,14 +6,16 @@ from webhook_tasks import process_webhook_automation
 
 def test_process_webhook_automation_ad_simple():
     """
-    Testa se uma mensagem contendo apenas anúncio é ignorada pelo webhook
-    e não gera resposta, marcando o status do evento como 'ignored'.
+    Testa se uma mensagem contendo apenas anúncio não é ignorada,
+    mas sim respondida com a mensagem de saudação do agente,
+    marcando o status do evento como 'completed'.
     """
     with patch('webhook_tasks.SessionLocal') as mock_session_local, \
          patch('webhook_tasks._add_step') as mock_add_step, \
          patch('webhook_tasks._build_agent_config') as mock_build_agent_config, \
          patch('webhook_tasks.retrieve_context_history') as mock_retrieve_history, \
          patch('webhook_tasks.run_pre_router_ai', new_callable=AsyncMock) as mock_run_pre_router, \
+         patch('webhook_tasks._send_chatwoot_message') as mock_send_message, \
          patch('webhook_tasks.is_conversation_paused', new_callable=AsyncMock, return_value=False), \
          patch('webhook_tasks.sync_conversation_labels', new_callable=AsyncMock, return_value=(True, [])), \
          patch('redis.from_url') as mock_redis_from_url:
@@ -87,17 +89,22 @@ def test_process_webhook_automation_ad_simple():
         # Mock do Redis
         mock_redis = MagicMock()
         mock_redis_from_url.return_value = mock_redis
+        mock_send_message.return_value = True
         
         # Executar a task de automação
         process_webhook_automation.run(123)
         
-        # Verificar se o status do evento mudou para 'ignored'
-        assert mock_event.status == "ignored"
+        # Verificar se o status do evento mudou para 'completed'
+        assert mock_event.status == "completed"
         
         # Verificar se foi adicionado o step de Anúncio Detectado
         log_steps = [call[0][2] for call in mock_add_step.call_args_list]
         assert any("Anúncio Detectado" in step for step in log_steps)
-        assert any("Pipeline Ignorado - Mensagem de Anúncio" in step for step in log_steps)
+        assert not any("Pipeline Ignorado - Mensagem de Anúncio" in step for step in log_steps)
+        
+        # Verificar se a mensagem de saudação configurada foi enviada via Chatwoot
+        mock_send_message.assert_called_once()
+        assert mock_send_message.call_args[0][4] == "Olá! Como posso ajudar?"
         
         # Verificar se tentou atualizar a tabela de leads limpando a mensagem
         lead_sql_calls = [call[0][0].text for call in mock_db.execute.call_args_list if hasattr(call[0][0], 'text')]

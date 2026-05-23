@@ -334,3 +334,172 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
             webhook_tasks._add_step(db, event_id, "⚠️ Erro na Memória", "Não foi possível carregar o histórico anterior.")
             
     return history
+
+
+def _get_cost(model, usage):
+    if not usage: return 0
+    if not model or not isinstance(model, str):
+        model = "gpt-4o-mini"
+    rates = {
+        "gpt-4o-mini": {"in": 0.00015 / 1000, "out": 0.00060 / 1000},
+        "gpt-4o": {"in": 0.005 / 1000, "out": 0.015 / 1000},
+        "gpt-3.5-turbo": {"in": 0.0005 / 1000, "out": 0.0015 / 1000},
+        "o1": {"in": 0.015 / 1000, "out": 0.060 / 1000},
+    }
+    
+    m = model.lower()
+    if "mini" in m:
+        rate = rates["gpt-4o-mini"]
+    elif "gpt-3.5" in m:
+        rate = rates["gpt-3.5-turbo"]
+    elif "o1" in m:
+        rate = rates["o1"]
+    elif "gpt" in m or "4o" in m:
+        rate = rates["gpt-4o"]
+    else:
+        rate = rates["gpt-4o-mini"]
+
+    p_tokens = usage.get("prompt_tokens", 0) or usage.get("mini_prompt", 0) + usage.get("main_prompt", 0)
+    c_tokens = usage.get("completion_tokens", 0) or usage.get("mini_completion", 0) + usage.get("main_completion", 0)
+    
+    usd_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
+    
+    try:
+        conversion_rate = float(os.getenv("USD_TO_BRL_RATE", "6.0"))
+    except:
+        conversion_rate = 6.0
+        
+    return usd_cost * conversion_rate
+
+
+def _build_agent_config(db_agent):
+    """Build AgentConfig pydantic object from DB model."""
+    import json as _json
+    return AgentConfig(
+        id=db_agent.id,
+        name=db_agent.name,
+        description=db_agent.description,
+        model=db_agent.model,
+        fallback_model=db_agent.fallback_model,
+        temperature=db_agent.temperature,
+        top_p=db_agent.top_p,
+        date_awareness=db_agent.date_awareness,
+        system_prompt=db_agent.system_prompt,
+        context_window=db_agent.context_window,
+        knowledge_base=_json.loads(db_agent.knowledge_base) if db_agent.knowledge_base else [],
+        knowledge_base_id=None,
+        knowledge_base_ids=[],
+        rag_retrieval_count=db_agent.rag_retrieval_count,
+        rag_translation_enabled=db_agent.rag_translation_enabled,
+        rag_multi_query_enabled=db_agent.rag_multi_query_enabled,
+        rag_rerank_enabled=db_agent.rag_rerank_enabled,
+        rag_agentic_eval_enabled=db_agent.rag_agentic_eval_enabled,
+        rag_parent_expansion_enabled=db_agent.rag_parent_expansion_enabled,
+        tool_ids=[],
+        is_active=db_agent.is_active,
+        simulated_time=db_agent.simulated_time,
+        security_competitor_blacklist=db_agent.security_competitor_blacklist,
+        security_forbidden_topics=db_agent.security_forbidden_topics,
+        security_discount_policy=db_agent.security_discount_policy,
+        security_language_complexity=db_agent.security_language_complexity,
+        security_pii_filter=db_agent.security_pii_filter,
+        security_bot_protection=db_agent.security_bot_protection,
+        security_max_messages_per_session=db_agent.security_max_messages_per_session,
+        security_semantic_threshold=db_agent.security_semantic_threshold,
+        security_loop_count=db_agent.security_loop_count,
+        security_validator_ia=db_agent.security_validator_ia,
+        inbox_capture_enabled=db_agent.inbox_capture_enabled,
+        ui_primary_color=db_agent.ui_primary_color,
+        ui_header_color=db_agent.ui_header_color,
+        ui_chat_title=db_agent.ui_chat_title,
+        ui_welcome_message=db_agent.ui_welcome_message,
+        router_enabled=db_agent.router_enabled,
+        router_simple_model=db_agent.router_simple_model,
+        router_simple_fallback_model=db_agent.router_simple_fallback_model,
+        router_complex_model=db_agent.router_complex_model,
+        handoff_enabled=db_agent.handoff_enabled,
+        response_translation_enabled=db_agent.response_translation_enabled,
+        response_translation_fallback_lang=db_agent.response_translation_fallback_lang or "portuguese",
+        top_k=db_agent.top_k,
+        presence_penalty=db_agent.presence_penalty,
+        frequency_penalty=db_agent.frequency_penalty,
+        safety_settings=db_agent.safety_settings,
+        model_settings=_json.loads(db_agent.model_settings) if db_agent.model_settings else {},
+        qualification_questions=db_agent.qualification_questions,
+        qualification_labels=db_agent.qualification_labels,
+        initial_question_message=db_agent.initial_question_message,
+    )
+
+
+def _send_chatwoot_message(db, event_id, conversation_id, account_id, content, config, split_paragraphs=False, delay=0):
+    """
+    Envia a resposta do agente para o Chatwoot. Mapeado de webhook_tasks para respeitar limite de clean code.
+    """
+    import webhook_tasks
+    try:
+        url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
+        token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
+        
+        if not url or not token:
+            webhook_tasks._add_step(db, event_id, "❌ Erro: Chatwoot não configurado", "URL ou Token ausentes no .env/config.")
+            return False
+
+        if not conversation_id or not account_id:
+            webhook_tasks._add_step(db, event_id, "❌ Erro: Dados faltantes", f"conversa_id={conversation_id}, account_id={account_id}")
+            return False
+
+        import re
+        if split_paragraphs:
+            parts = [p.strip() for p in re.split(r'\n\n+', content) if p.strip()]
+            if not parts: parts = [content]
+        else:
+            parts = [content]
+
+        total_parts = len(parts)
+        if total_parts > 1:
+            webhook_tasks._add_step(db, event_id, "✂️ Resposta Fragmentada", f"A mensagem será enviada em {total_parts} partes com delay de {delay}s entre elas.")
+
+        headers = {"api_access_token": token, "Content-Type": "application/json"}
+        full_url = f"{url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"
+
+        import httpx
+        import time
+        success = True
+        for i, part in enumerate(parts):
+            webhook_tasks._toggle_typing_indicator(config, account_id, conversation_id, "on")
+            
+            time.sleep(1)
+            
+            payload = {"content": part, "message_type": "outgoing"}
+            
+            try:
+                with httpx.Client(timeout=20.0) as client:
+                    resp = client.post(full_url, json=payload, headers=headers)
+                    if resp.status_code not in (200, 201):
+                        error_detail = f"Status {resp.status_code}: {resp.text[:200]}\nURL: {full_url}"
+                        webhook_tasks._add_step(db, event_id, f"❌ Erro no envio (Parte {i+1})", error_detail)
+                        success = False
+                        webhook_tasks._toggle_typing_indicator(config, account_id, conversation_id, "off")
+                        break
+            except Exception as http_err:
+                webhook_tasks._add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Erro: {str(http_err)}")
+                success = False
+                webhook_tasks._toggle_typing_indicator(config, account_id, conversation_id, "off")
+                break
+            
+            webhook_tasks._toggle_typing_indicator(config, account_id, conversation_id, "off")
+
+            if i < total_parts - 1 and delay > 0:
+                time.sleep(delay)
+
+        if success:
+            if total_parts > 1:
+                webhook_tasks._add_step(db, event_id, "📤 Partes entregues", f"Todas as {total_parts} partes foram enviadas com sucesso.")
+            else:
+                webhook_tasks._add_step(db, event_id, "📤 Resposta enviada ao Chatwoot", f"Mensagem única entregue com sucesso.")
+        
+        return success
+    except Exception as e:
+        webhook_tasks._add_step(db, event_id, "❌ Erro crítico no envio", str(e))
+        return False
+

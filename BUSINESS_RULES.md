@@ -22,6 +22,8 @@
 ## 🤖 Agentes e Automação
 - [x] Suporte a RAG via pgvector.
 - [x] Integração com Google Calendar via OAuth.
+- [x] [NOVO] Como tratar emojis negativos (ex: 👎, 🖕, 😡, 😠, 🤬, 😕, 🙁, ☹️, 😢, 😭 e variações)?
+  - Resposta: Devem ser interceptados programmaticamente em atalho direto no Pre-Router, respondendo de forma empática: "Puxa, sinto muito! 😕 Percebi que algo não deu certo. O que aconteceu? Como posso te ajudar a resolver de uma forma melhor?" sem passar pela LLM principal.
 
 ## 📝 Perguntas e Decisões Pendentes
 - [x] [NOVO] Existe algum ambiente onde o uso de `localhost:8002` ainda seja obrigatório para o frontend em vez do túnel?

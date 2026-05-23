@@ -26,6 +26,15 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
     # Lista de agradecimentos comuns
     common_thanks = ["obrigado", "obrigada", "valeu", "gratidao", "obrigadao", "thanks", "tanks"]
     
+    # Lista de emojis de confirmação/reação comuns (inclui variações e múltiplos)
+    common_emojis = ["👍🏻", "👍🏼", "👍🏽", "👍🏾", "👍🏿", "👌🏻", "👌🏼", "👌🏽", "👌🏾", "👌🏿", "👍", "👌", "👏", "🙌", "✌️", "❤️", "✔️", "☑️", "✅", "🆗"]
+    
+    # Lista de emojis negativos (insatisfação, raiva, tristeza, dedo do meio e variações de tons de pele)
+    negative_emojis = ["👎🏻", "👎🏼", "👎🏽", "👎🏾", "👎🏿", "🖕🏻", "🖕🏼", "🖕🏽", "🖕🏾", "🖕🏿", "👎", "🖕", "😡", "😠", "🤬", "😕", "🙁", "☹️", "😢", "😭"]
+    
+    # Lista de termos de confirmação curtos comuns
+    common_confirmations = ["ok", "blz", "show", "combinado", "perfeito", "certo", "beleza", "entendi", "tendi", "tá", "ta", "sim", "isso", "fechado"]
+    
     # Lista de anúncios configurada (se houver)
     ignore_messages = []
     initial_ignore = getattr(main_agent, 'initial_ignore_message', None)
@@ -116,6 +125,81 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
             "detalhe_anuncio": similarity_info,
             "_model_used": "shortcut-logic"
         }
+    else:
+        # Limpa a mensagem de emojis para verificar se sobrou texto
+        msg_no_emojis = msg_clean_no_punct
+        has_reaction_emoji = False
+        has_negative_emoji = False
+        
+        for em in negative_emojis:
+            if em in msg_no_emojis:
+                has_negative_emoji = True
+            msg_no_emojis = msg_no_emojis.replace(em, "")
+            
+        for em in common_emojis:
+            if em in msg_no_emojis:
+                has_reaction_emoji = True
+            msg_no_emojis = msg_no_emojis.replace(em, "")
+            
+        msg_no_emojis = msg_no_emojis.strip()
+        
+        # Verifica se a mensagem contém apenas emojis de reação (ou se ficou vazia após removê-los)
+        is_pure_emoji_reaction = (has_reaction_emoji or has_negative_emoji) and msg_no_emojis == ""
+        
+        # Verifica se a mensagem é um termo de confirmação curto
+        is_confirmation_word = msg_clean_no_punct in common_confirmations or msg_no_emojis in common_confirmations
+        
+        if is_pure_emoji_reaction or is_confirmation_word:
+            # Caso especial: Emoji negativo é atalho programático direto imediato,
+            # ignorando se o assistente perguntou ou não no turno anterior
+            if has_negative_emoji and is_pure_emoji_reaction:
+                return {
+                    "eh_saudacao": True,
+                    "eh_agradecimento": False,
+                    "eh_emoji_negativo": True,
+                    "precisa_esclarecimento": False,
+                    "id_agente_alvo": main_agent.id,
+                    "resposta_direta": "Puxa, sinto muito! 😕 Percebi que algo não deu certo. O que aconteceu? Como posso te ajudar a resolver de uma forma melhor?",
+                    "perguntas_extraidas": None,
+                    "data_extraida": None,
+                    "eh_anuncio": is_ad,
+                    "detalhe_anuncio": similarity_info,
+                    "_model_used": "shortcut-logic"
+                }
+
+            # Se for confirmação por texto ou emoji positivo, mas o assistente fez uma pergunta direta por último, não interceptamos como atalho,
+            # pois o usuário pode estar respondendo a pergunta (ex: "você prefere Pix ou cartão?", "Pix")
+            last_assistant_asked = False
+            if history:
+                for h in reversed(history):
+                    if h.get("role") == "assistant":
+                        content = h.get("content", "")
+                        if "?" in content:
+                            last_assistant_asked = True
+                        break
+            
+            # Interceptamos se for reação de emoji pura OU (se for confirmação por texto e o assistente não perguntou por último)
+            if is_pure_emoji_reaction or not last_assistant_asked:
+                resposta_confirmacao = "Perfeito! Se precisar de mais alguma coisa, é só chamar. 😊"
+                if "combinado" in msg_clean_no_punct:
+                    resposta_confirmacao = "Combinado! Qualquer dúvida, estou por aqui. 😉"
+                elif "ok" in msg_clean_no_punct:
+                    resposta_confirmacao = "Combinado! Se precisar de algo, é só chamar. 👍"
+                elif "certo" in msg_clean_no_punct:
+                    resposta_confirmacao = "Certo! Se precisar de mais alguma ajuda, estou à disposição. 👍"
+                    
+                return {
+                    "eh_saudacao": True,
+                    "eh_agradecimento": False,
+                    "precisa_esclarecimento": False,
+                    "id_agente_alvo": main_agent.id,
+                    "resposta_direta": resposta_confirmacao,
+                    "perguntas_extraidas": None,
+                    "data_extraida": None,
+                    "eh_anuncio": is_ad,
+                    "detalhe_anuncio": similarity_info,
+                    "_model_used": "shortcut-logic"
+                }
 
     # Se a mensagem contém algo além de saudação/anúncio, usamos o conteúdo limpo no processamento
     message = cleaned_message
@@ -147,15 +231,17 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
             history_text += f"{role}: {content}\n\n"
             
     system_prompt = f"""Você é o "Pre-Router AI", o primeiro contato que lê a mensagem do usuário antes dela ser enviada aos Agentes.
-Sua função é quadrupla:
-1. Identificar se a mensagem é APENAS uma saudação curta, cumprimento ou agradecimento (Ex: "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?", "Obrigado") OU uma mensagem de teste do usuário ("teste", "testando") e NÃO contém nenhuma pergunta ou requisição técnica.
+Sua função é quintupla:
+1. Identificar se a mensagem é APENAS uma saudação curta, cumprimento, agradecimento (Ex: "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?", "Obrigado") ou uma confirmação/reação curta (Ex: "Ok", "Entendi", "Certo", "Show", "Combinado", "👍", "👌", "Perfeito") ou emoji negativo (Ex: 👎, 🖕, 😡, 😠, 😕, 😢, 😭) OU uma mensagem de teste do usuário ("teste", "testando") e NÃO contém nenhuma pergunta ou requisição técnica.
    - SAUDAÇÃO CONFIGURADA: "{getattr(main_agent, 'initial_message', 'Olá! Como posso te ajudar hoje?')}"
    - MENSAGEM DE ANÚNCIO (IGNORAR): "{getattr(main_agent, 'initial_ignore_message', '')}"
    
-   CRITÉRIO RÍGIDO: Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos, você DEVE definir 'eh_saudacao' como true e usar a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
-   Se a mensagem for um AGRADECIMENTO (Ex: "Obrigado", "Obrigada", "Valeu", "Muito obrigado"), você deve definir 'eh_agradecimento' como true, 'eh_saudacao' como true e usar uma resposta simpática de agradecimento (Ex: "Por nada! Se precisar de mais alguma coisa, é só chamar.") como 'resposta_direta'.
+   CRITÉRIO RÍGIDO: Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos, você DEVE definir 'eh_saudacao' as true e usar a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
+   Se a mensagem for um AGRADECIMENTO (Ex: "Obrigado", "Obrigada", "Valeu", "Muito obrigado"), você deve definir 'eh_agradecimento' as true, 'eh_saudacao' as true e usar uma resposta simpática de agradecimento (Ex: "Por nada! Se precisar de mais alguma coisa, é só chamar.") como 'resposta_direta'.
+   Se a mensagem for uma REAÇÃO NEGATIVA ou emoji de insatisfação/raiva/tristeza (Ex: 👎, 🖕, 😡, 😠, 🤬, 😕, 🙁, ☹️, 😢, 😭 e variações), você deve definir 'eh_saudacao' as true e usar a resposta empática: "Puxa, sinto muito! 😕 Percebi que algo não deu certo. O que aconteceu? Como posso te ajudar a resolver de uma forma melhor?" como 'resposta_direta'.
+   Se a mensagem for uma CONFIRMAÇÃO/REAÇÃO POSITIVA (Ex: "Ok", "Entendi", "Combinado", "Certo", "Perfeito", emojis de confirmação como 👍, 👌) e o assistente não fez uma pergunta direta por último, você deve definir 'eh_saudacao' as true e usar uma resposta simpática de confirmação (Ex: "Perfeito! Qualquer dúvida, estou à disposição." ou "Combinado! Se precisar de algo, é só chamar.") como 'resposta_direta'.
    
-NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que faz sentido dentro do histórico recente, NÃO é apenas saudação, é parte da conversa, logo eh_saudacao deve ser false.
+   NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que responde a uma pergunta direta do histórico recente (ex: a IA perguntou 'Qual seu e-mail?' ou 'Você prefere X ou Y?'), NÃO é apenas confirmação, é parte do fluxo da conversa, logo eh_saudacao deve ser false. (Isso não se aplica a emojis negativos como 👎 que são sempre interceptados).
 
 2. Identificar se a mensagem atual do usuário é uma MENSAGEM AUTOMÁTICA de boas-vindas, saudação comercial ou de AUSÊNCIA enviada pelo outro lado (por exemplo, mensagens automáticas de catálogo, mensagens rápidas do WhatsApp Business do contato, saudações automáticas de consultórios/lojas, mensagens de ausência informando horário de atendimento, etc. Exemplos: "Olá, seja bem-vindo ao Jessika Albuquerque Beauty...", "Olá! No momento não posso atender...", "Aqui quem cuida de você é...", "Obrigado por sua mensagem. Entraremos em contato...").
    Se você identificar que a mensagem do usuário é uma mensagem automática/ausência/saudação do outro lado:
@@ -227,7 +313,12 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
                         result["resposta_direta"] = getattr(main_agent, 'initial_message', None) or "Olá! Como posso te ajudar hoje?"
                 else:
                     if not result.get("resposta_direta"):
-                        result["resposta_direta"] = "Olá! Como posso te ajudar hoje?"
+                        # Se contiver termos de confirmação, damos uma resposta de confirmação
+                        is_conf = any(term in msg_clean_no_punct for term in common_confirmations) or has_reaction_emoji
+                        if is_conf:
+                            result["resposta_direta"] = "Perfeito! Qualquer dúvida, estou à disposição. 😊"
+                        else:
+                            result["resposta_direta"] = "Olá! Como posso te ajudar?"
             
         # Metadados para depuração (Raio-X)
         result["_model_used"] = model_to_use

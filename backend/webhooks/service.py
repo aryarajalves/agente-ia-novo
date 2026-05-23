@@ -120,6 +120,7 @@ async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
                     UPDATE {table_name} SET
                         telefone = :telefone, conta_id = :conta_id,
                         inbox_id = :inbox_id, inbox_nome = :inbox_nome,
+                        conversa_id = :conversa_id,
                         mensagem_id = :mensagem_id, contato_id = :contato_id,
                         labels = :labels, contato_nome = :contato_nome, 
                         message_type = :message_type, link = :link,
@@ -142,6 +143,7 @@ async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
                     UPDATE {table_name} SET
                         telefone = :telefone, conta_id = :conta_id,
                         inbox_id = :inbox_id, inbox_nome = :inbox_nome,
+                        conversa_id = :conversa_id,
                         mensagem_id = :mensagem_id, contato_id = :contato_id,
                         labels = :labels, contato_nome = :contato_nome,
                         mensagem = :mensagem, message_type = :message_type, link = :link,

@@ -1,14 +1,16 @@
-import os
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+import asyncio
+from database.connection import SessionLocal
+from sqlalchemy import text
 
-load_dotenv('../.env')
-url = os.getenv('DATABASE_URL')
-if url:
-    url = url.replace('+asyncpg', '')
-    engine = create_engine(url)
-    with engine.connect() as conn:
-        res = conn.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"))
-        print("\n".join(sorted([row[0] for row in res])))
-else:
-    print("DATABASE_URL not found")
+def run():
+    db = SessionLocal()
+    try:
+        res = db.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")).fetchall()
+        print("TABLES:")
+        for r in res:
+            print(f"  {r[0]}")
+    finally:
+        db.close()
+
+if __name__ == '__main__':
+    run()

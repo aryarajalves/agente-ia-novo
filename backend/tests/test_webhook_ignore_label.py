@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 
 @pytest.mark.asyncio
-async def test_webhook_ignore_by_label(client: AsyncClient, db: AsyncSession):
+async def test_webhook_ignore_by_label(client: AsyncClient, db_session: AsyncSession):
     # 1. Criar um webhook com ignore_by_label
     wh_data = {
         "name": "Test Ignore Label",

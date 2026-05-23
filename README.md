@@ -1,6 +1,6 @@
 # 🤖 Plataforma de Agentes de IA para Automação
 
-Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.7.5", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
+Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.8.5", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
 
 
 
@@ -82,6 +82,38 @@ npm run test:frontend
 
 ---
 
+## ✨ Novidades da Versão (v1.8.5)
+
+Esta versão traz o envio da saudação padrão para anúncios puros no primeiro contato de leads:
+- **Envio de Saudação para Anúncios Puros**: Correção no fluxo de anúncios do webhook (`webhook_tasks.py`). Agora, contatos que iniciam conversas vindos de anúncios configurados e sem perguntas adicionais (anúncio puro) não são mais interrompidos com status `ignored`. A pipeline continua a execução e responde o lead com a saudação inicial do agente.
+- **Limpeza do Histórico de Leads**: O trecho de anúncio correspondente continua sendo limpo na tabela local de leads (`leads_table`) para evitar poluição no RAG e histórico local.
+- **Suíte de Testes Unitários Atualizada**: Atualização do teste `test_process_webhook_automation_ad_simple` em `backend/tests/test_ad_webhook_pipeline.py` para validar o status `completed` e a chamada de envio da saudação via Chatwoot.
+
+---
+
+## ✨ Novidades da Versão (v1.8.4)
+
+Esta versão traz o tratamento inteligente e dinâmico de reações/emojis negativos enviados pelo cliente no Chatwoot:
+- **Tratamento de Emojis Negativos no Chatwoot**: Integração programática no Pre-Router para detectar emojis negativos (ex: 👎, 🖕, 😡). 
+- **Lógica de Etiqueta Dupla e Transição Humana**:
+  - No primeiro envio consecutivo de emoji negativo, o robô responde de forma empática sem acionar a LLM principal e aplica a etiqueta de feedback negativo configurada no painel de webhooks (padrão: `feedback_negativo`). A automação de IA continua ativa.
+  - No segundo envio consecutivo de emoji negativo (detectado pela presença da tag na conversa), o robô envia uma mensagem de transição amigável e aplica a etiqueta de ignorar (padrão: `humano`), pausando a automação da IA e passando o controle para o atendimento humano.
+- **Configuração no Painel de Webhooks**: Campo configurável `"Feedback Negativo (1º emoji)"` adicionado na aba Chatwoot do modal de edição de webhook (com design Glassmorphism e seletor dinâmico de etiquetas).
+- **Suíte de Testes Unitários e E2E**: Cobertura de testes unitários do backend (`test_negative_emojis.py`) e validação visual via automação de screenshots com Playwright.
+
+---
+
+## ✨ Novidades da Versão (v1.8.3)
+
+Esta versão traz a funcionalidade de gravação e transcrição de áudio com feedback visual em tempo real no Chat Playground:
+- **Feedback de Transcrição em Tempo Real (Web Speech API)**: Integração da SpeechRecognition API nativa do navegador no hook `useChat`. Ao gravar voz, o texto é transcrito localmente em tempo real e exibido dinamicamente na caixa de input de mensagem.
+- **Transcrição de Alta Fidelidade com Fallback Resiliente**: Envio assíncrono do áudio binário gravado para o backend via endpoint `/transcribe-audio`, processado pelo Whisper-1 da OpenAI. Caso o navegador envie em um formato incompatível, o backend realiza a conversão automática via `ffmpeg` para MP3 em tempo de execução.
+- **Envio Automotivo e Limpeza de Input**: Assim que a transcrição final do Whisper é obtida, a mensagem é disparada automaticamente no chat e a caixa de entrada é limpa.
+- **Interrupção Silenciosa ao Enviar Texto**: Se o usuário enviar uma mensagem de texto manualmente (digitando ou enviando o texto da transcrição acumulado) enquanto a gravação de áudio estiver ativa, o sistema desliga o microfone e cancela a gravação na mesma hora de forma silenciosa, prevenindo envios duplicados ou redundantes do Whisper.
+- **Suíte de Testes Unitários de Ponta a Ponta**: Cobertura estrita e completa com Vitest para o comportamento do SpeechRecognition/MediaRecorder no frontend e Pytest para os endpoints e rotas de fallback no backend.
+
+---
+
 ## ✨ Novidades da Versão (v1.8.2)
 
 Esta versão traz melhorias na detecção de mensagens automáticas e no fluxo de upload do histórico de transcrições:
@@ -119,9 +151,12 @@ Esta versão consolida grandes evoluções no sistema, incluindo o controle fina
 
 ## ✨ Novidades da Versão (v1.7.5)
 
-Esta versão traz melhorias no encerramento de conversas após o registro de dúvidas sem resposta:
+Esta versão traz melhorias no encerramento de conversas após o registro de dúvidas sem resposta, além de refinamentos de UI/UX no painel de testes do chat:
 - **Encerramento Amigável de Conversa após Registro de Dúvida**: Quando o robô informa que verificará uma pergunta com a equipe, respostas curtas contendo concordâncias (como "tá ótimo", "ok", "obrigado", "perfeito") agora encerram a conversa amigavelmente com uma confirmação conclusiva. Isso evita que o agente repita em loop a pergunta "como posso te ajudar com outro assunto agora?".
 - **Nova Cobertura de Testes Unitários de Fluxo**: Inclusão de testes unitários em `backend/tests/test_initial_messages.py` para validar o comportamento conclusivo diante de concordâncias curtas no segundo turno.
+- **Posicionamento e Estilização Premium do Toast de Reset**: O toast de notificação de reset de sessão ("Sessão resetada com sucesso!") no ChatPlayground foi reposicionado do rodapé da tela para o canto superior direito do viewport. A renderização agora utiliza React Portals para garantir posicionamento fixed perfeito no `document.body`, imune a transbordos ou transformações do contêiner pai, e adota design de Glassmorphism Premium com borda neon translúcida.
+- **Sincronização de Expiração do Toast com Regras de Negócio**: O timeout de exibição do toast de reset no ChatPlayground foi sincronizado para 5 segundos (5000ms), atendendo às definições de negócio especificadas no projeto.
+- **Suíte de Testes Unitários e Cobertura E2E de Frontend**: Inclusão de testes unitários em `ChatPlayground.test.jsx` com Vitest para simular o clique no botão "Resetar" e validar o surgimento do toast. O script de teste e2e com Playwright (`take_screenshot_chat.spec.js`) foi atualizado para validar o fluxo visual de ponta a ponta e coletar o screenshot comprobatório.
 
 
 
@@ -160,12 +195,12 @@ Esta versão traz melhorias no encerramento de conversas após o registro de dú
 *(Aviso: Conforme as regras do projeto, nunca gerar ou dar push em tags `latest` no Docker Hub; use sempre tags de versão estritas.)*
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.7.5 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.7.5`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.8.5 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.8.5`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.7.5 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.7.5`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.8.5 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.8.5`
 
 
 

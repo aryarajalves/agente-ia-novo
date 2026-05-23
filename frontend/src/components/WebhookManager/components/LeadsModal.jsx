@@ -227,25 +227,11 @@ const LeadsModal = ({
                             <div key={l.id} className="lead-card-premium" style={{
                                 background: isExpanded ? 'rgba(30, 41, 59, 0.7)' : 'rgba(15, 23, 42, 0.3)',
                                 border: `1px solid ${selectedLeads.has(l.id) ? 'rgba(99, 102, 241, 0.6)' : isExpanded ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.03)'}`,
-                                borderRadius: '16px', padding: '1rem 1.25rem', position: 'relative', 
+                                borderRadius: '16px', padding: '1rem 1.25rem',
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                 boxShadow: isExpanded ? '0 20px 40px -15px rgba(0,0,0,0.6)' : 'none',
                                 marginBottom: isExpanded ? '0.5rem' : '0'
                             }}>
-                                {/* Seleção Individual */}
-                                <div
-                                    onClick={(e) => { e.stopPropagation(); toggleSelectLead(l.id); }}
-                                    style={{
-                                        position: 'absolute', top: '1rem', right: '1.25rem',
-                                        width: '22px', height: '22px', borderRadius: '7px', border: '2px solid rgba(255,255,255,0.1)',
-                                        background: selectedLeads.has(l.id) ? '#6366f1' : 'rgba(255,255,255,0.03)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2,
-                                        boxShadow: selectedLeads.has(l.id) ? '0 0 15px rgba(99, 102, 241, 0.4)' : 'none'
-                                    }}
-                                >
-                                    {selectedLeads.has(l.id) && <span style={{ color: '#fff', fontSize: '0.8rem' }}>✓</span>}
-                                </div>
-
                                 {/* Top Info - Agora clicável para expandir */}
                                 <div
                                     onClick={() => toggleExpandLead(l.id)}
@@ -313,7 +299,7 @@ const LeadsModal = ({
                                             </div>
                                         </div>
                                     </div>
-                                    <div style={{ textAlign: 'right', marginRight: '3.5rem', display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '2rem' }}>
                                         {!isExpanded && (
                                             <div style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: 'italic' }}>
                                                 Última: {l.mensagem || '—'}
@@ -330,6 +316,19 @@ const LeadsModal = ({
                                                 className="btn-action-delete"
                                                 style={{ borderRadius: '10px', padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}
                                             ><span>🗑️</span></button>
+                                        </div>
+                                        {/* Seleção Individual */}
+                                        <div
+                                            onClick={(e) => { e.stopPropagation(); toggleSelectLead(l.id); }}
+                                            style={{
+                                                width: '22px', height: '22px', borderRadius: '7px', border: '2px solid rgba(255,255,255,0.1)',
+                                                background: selectedLeads.has(l.id) ? '#6366f1' : 'rgba(255,255,255,0.03)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                                boxShadow: selectedLeads.has(l.id) ? '0 0 15px rgba(99, 102, 241, 0.4)' : 'none',
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            {selectedLeads.has(l.id) && <span style={{ color: '#fff', fontSize: '0.8rem' }}>✓</span>}
                                         </div>
                                     </div>
                                 </div>
