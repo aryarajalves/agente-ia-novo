@@ -9,9 +9,9 @@ export const INITIAL_FORM_STATE = {
     secondary_agent_ids: [],
     blocked_messages: [], 
     allowed_contacts: [], 
-    chatwoot_url: '', 
-    chatwoot_api_token: '', 
-    chatwoot_inbox_id: '', 
+    zapvoice_url: '', 
+    zapvoice_api_token: '', 
+    zapvoice_client_id: '', 
     labels_on_message: [], 
     delete_keywords: [], 
     delete_message: '', 
@@ -40,7 +40,7 @@ export const INITIAL_FORM_STATE = {
 export const EDIT_TABS = [
     { id: 'geral', label: 'Geral', icon: '⚙️' },
     { id: 'filtros', label: 'Filtros', icon: '🔍' },
-    { id: 'chatwoot', label: 'Chatwoot', icon: '💬' },
+    { id: 'zapvoice', label: 'ZapVoice', icon: '💬' },
     { id: 'memoria', label: 'Memória', icon: '🧠' },
     { id: 'handoff', label: 'Handoff', icon: '🤝' },
     { id: 'delecao', label: 'Deleção', icon: '🗑️' }

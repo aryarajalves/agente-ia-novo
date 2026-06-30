@@ -29,15 +29,27 @@ describe('PromptEditor - Nova Arquitetura com Consultor', () => {
         mockApi.get.mockImplementation((url) => {
             if (url === '/global-variables') {
                 return Promise.resolve({
+                    ok: true,
                     json: () => Promise.resolve({ variables: [] })
                 });
             }
             if (url.startsWith('/agents/')) {
                 return Promise.resolve({
+                    ok: true,
                     json: () => Promise.resolve({ id: '1', main_model: 'gpt-4o-mini' })
                 });
             }
-            return Promise.resolve({ json: () => Promise.resolve({}) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        mockApi.post.mockImplementation((url) => {
+            if (url === '/prompt-chat') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ content: 'Sugestão do Consultor: Adicione mais clareza.' })
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         global.fetch.mockImplementation(() =>
@@ -50,20 +62,20 @@ describe('PromptEditor - Nova Arquitetura com Consultor', () => {
 
     it('deve renderizar o editor e a bolinha flutuante inicialmente', () => {
         render(<PromptEditor value="Teste de Prompt" onChange={() => {}} agentId="1" />);
-        expect(screen.getByText(/instrucoes.prompt/i)).toBeInTheDocument();
-        expect(screen.getByText('💡')).toBeInTheDocument(); // A bolinha flutuante
+        expect(screen.getByText(/Instruções do Sistema/i)).toBeInTheDocument();
+        expect(screen.getByText('🤖')).toBeInTheDocument(); // A bolinha flutuante real do Consultor é 🤖
     });
 
     it('deve alternar a visibilidade do chat flutuante ao clicar na bolinha', () => {
         render(<PromptEditor value="" onChange={() => {}} />);
-        const bubble = screen.getByText('💡');
+        const bubble = screen.getByText('🤖');
         
         // Abre
         fireEvent.click(bubble);
         expect(screen.getAllByText(/Consultor de Prompt/i).length).toBeGreaterThan(0);
         
-        // Fecha
-        const closeBubble = screen.getByTitle(/Fechar Consultor/i);
+        // Fecha clicando novamente na bolinha (que muda o título de texto para ✖)
+        const closeBubble = screen.getByText('✖');
         fireEvent.click(closeBubble);
         expect(screen.queryByText(/IA Especialista/i)).not.toBeInTheDocument();
     });
@@ -72,10 +84,10 @@ describe('PromptEditor - Nova Arquitetura com Consultor', () => {
         render(<PromptEditor value="Prompt inicial" onChange={() => {}} />);
         
         // Abre o chat antes de enviar
-        fireEvent.click(screen.getByText('💡'));
+        fireEvent.click(screen.getByText('🤖'));
         
-        const input = screen.getByPlaceholderText(/Pergunte ao consultor/i);
-        const sendBtn = screen.getByText('🚀');
+        const input = screen.getByPlaceholderText(/Peça para buscar ou alterar algo\.\.\./i);
+        const sendBtn = screen.getByText('✈️');
 
         fireEvent.change(input, { target: { value: 'Como melhorar este prompt?' } });
         fireEvent.click(sendBtn);
@@ -86,16 +98,99 @@ describe('PromptEditor - Nova Arquitetura com Consultor', () => {
             expect(screen.getByText(/Sugestão do Consultor: Adicione mais clareza/i)).toBeInTheDocument();
         });
         
-        expect(global.fetch).toHaveBeenCalled();
+        expect(mockApi.post).toHaveBeenCalled();
     });
 
     it('deve chamar onChange ao digitar no editor', () => {
         const handleChange = vi.fn();
         render(<PromptEditor value="" onChange={handleChange} />);
         
-        const textarea = screen.getByPlaceholderText(/Escreva aqui as instruções principais/i);
+        const textarea = screen.getByPlaceholderText(/Escreva as instruções do agente\.\.\./i);
         fireEvent.change(textarea, { target: { value: 'Novo conteúdo' } });
         
         expect(handleChange).toHaveBeenCalled();
+    });
+
+    it('deve permitir renomear o comentário de título da condicional', async () => {
+        const handleChange = vi.fn();
+        const promptWithCond = [
+            '# Regra de Horário',
+            '[IF:hora_atual >= 08:00]',
+            'Bom dia!',
+            '[ELSE]',
+            'Boa noite!',
+            '[/IF]',
+        ].join('\n');
+
+        render(<PromptEditor value={promptWithCond} onChange={handleChange} />);
+
+        // Abre o modal de edição clicando no card de condicional (ou usando mock de disparo)
+        const insertBtn = screen.getByText(/Inserir Condicional/i);
+        fireEvent.click(insertBtn);
+
+        // Seleciona a variável
+        const varItem = screen.getByTitle(/Clique para configurar condicional para {data_atual}/i);
+        fireEvent.click(varItem);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Configurar Condicional/i)).toBeInTheDocument();
+        });
+
+        // Localiza o input do título/comentário
+        const titleInput = screen.getByLabelText(/🏷️ Título \/ Comentário da Condicional/i);
+        expect(titleInput).toBeInTheDocument();
+        fireEvent.change(titleInput, { target: { value: 'Meu Novo Comentario Legal' } });
+
+        // Salva
+        const saveBtn = screen.getByText(/Inserir no Prompt/i);
+        fireEvent.click(saveBtn);
+
+        expect(handleChange).toHaveBeenCalled();
+        const newValue = handleChange.mock.calls[0][0].target.value;
+        expect(newValue).toContain('# Meu Novo Comentario Legal');
+    });
+
+    it('deve abrir submodal de confirmação de exclusão e deletar o bloco condicional ao confirmar', async () => {
+        const handleChange = vi.fn();
+        const promptWithCond = [
+            'Texto Superior',
+            '# Regra de Horário',
+            '[IF:hora_atual >= 08:00]',
+            'Bom dia!',
+            '[ELSE]',
+            'Boa noite!',
+            '[/IF]',
+            'Texto Inferior',
+        ].join('\n');
+
+        render(<PromptEditor value={promptWithCond} onChange={handleChange} />);
+
+        // O botão de edição deve estar presente no DOM
+        const editBtn = screen.getByTestId('cond-edit-btn-0');
+        expect(editBtn).toBeInTheDocument();
+        fireEvent.click(editBtn);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Editando Condicional/i)).toBeInTheDocument();
+        });
+
+        // Localiza e clica no botão de deletar
+        const deleteBtn = screen.getByText(/Deletar Condicional/i);
+        expect(deleteBtn).toBeInTheDocument();
+        fireEvent.click(deleteBtn);
+
+        // Submodal de confirmação de exclusão deve estar visível
+        expect(screen.getByText(/Confirmar Exclusão/i)).toBeInTheDocument();
+
+        // Clicar em "Sim, Deletar"
+        const confirmBtn = screen.getByText(/Sim, Deletar/i);
+        fireEvent.click(confirmBtn);
+
+        expect(handleChange).toHaveBeenCalled();
+        const newValue = handleChange.mock.calls[0][0].target.value;
+        // O bloco condicional (e seu título) deve ter sido totalmente removido
+        expect(newValue).not.toContain('Regra de Horário');
+        expect(newValue).not.toContain('[IF:hora_atual');
+        expect(newValue.trim()).toBe('Texto Superior\n\nTexto Inferior');
     });
 });

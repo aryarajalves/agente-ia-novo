@@ -24,7 +24,8 @@ const TasksTable = () => {
         }
     };
 
-    const getStatusBadge = (status) => {
+    const getStatusBadge = (task) => {
+        const status = task.status;
         const styles = {
             PENDING: { bg: 'rgba(234, 179, 8, 0.1)', color: '#eab308', label: '⏳ Na Fila' },
             PROCESSING: { bg: 'rgba(99, 102, 241, 0.1)', color: '#818cf8', label: '⚙️ Processando' },
@@ -34,7 +35,11 @@ const TasksTable = () => {
         const style = styles[status] || { bg: 'rgba(148, 163, 184, 0.1)', color: '#94a3b8', label: status };
         
         return (
-            <span className="status-badge" style={{ background: style.bg, color: style.color }}>
+            <span 
+                className="status-badge" 
+                style={{ background: style.bg, color: style.color, cursor: status === 'FAILURE' ? 'help' : 'default' }}
+                title={status === 'FAILURE' ? (task.error_message || 'Erro desconhecido') : undefined}
+            >
                 {style.label}
             </span>
         );
@@ -173,7 +178,7 @@ const TasksTable = () => {
                                         </div>
                                     )}
                                 </td>
-                                <td>{getStatusBadge(task.status)}</td>
+                                <td>{getStatusBadge(task)}</td>
                                 <td style={{ whiteSpace: 'nowrap' }}>{formatDate(task.created_at)}</td>
                                 <td style={{ whiteSpace: 'nowrap', color: '#10b981', fontWeight: '500' }}>
                                     {task.cost_usd ? `$${task.cost_usd.toFixed(2)}` : '$0.00'}

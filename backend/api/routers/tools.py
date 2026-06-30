@@ -82,48 +82,58 @@ async def delete_tool(tool_id: int, db: AsyncSession = Depends(get_db), _: None 
     return {"status": "deleted", "id": tool_id}
 
 @router.get("/chatwoot/labels")
-async def get_chatwoot_labels(db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
-    """Busca as etiquetas disponíveis no Chatwoot via API externa."""
-    url = os.getenv("CHATWOOT_URL")
-    token = os.getenv("CHATWOOT_API_TOKEN")
-    account_id = os.getenv("CHATWOOT_ACCOUNT_ID")
-    
-    # Tentar fallback caso ENV não esteja presente
-    if not url or not token:
-        result = await db.execute(select(WebhookConfigModel).where(WebhookConfigModel.chatwoot_api_token != None).limit(1))
+async def get_chatwoot_labels(db: AsyncSession = Depends(get_db)):
+    """Busca as etiquetas disponíveis no ZapVoice via API."""
+    zapvoice_url = os.getenv("ZAPVOICE_URL", "").rstrip("/")
+    zapvoice_token = os.getenv("ZAPVOICE_API_TOKEN", "")
+
+    # Tentar fallback: pegar zapvoice_client_id de algum webhook configurado
+    client_id_header = None
+    if zapvoice_url and zapvoice_token:
+        result = await db.execute(
+            select(WebhookConfigModel).where(WebhookConfigModel.zapvoice_client_id.isnot(None)).limit(1)
+        )
         config = result.scalars().first()
-        if config:
-            url = config.chatwoot_url
-            token = config.chatwoot_api_token
-            
-    if not url or not token:
+        if config and config.zapvoice_client_id:
+            client_id_header = str(config.zapvoice_client_id)
+        logger.info(f"[LABELS] client_id_header encontrado: {client_id_header}")
+
+    if not zapvoice_url or not zapvoice_token:
+        logger.warning("ZAPVOICE_URL ou ZAPVOICE_API_TOKEN não configurados. Retornando lista vazia.")
         return []
-        
-    url = url.rstrip("/")
+
     try:
+        headers = {
+            "Authorization": f"Bearer {zapvoice_token}",
+        }
+        if client_id_header:
+            headers["X-Client-ID"] = client_id_header
+
+        logger.info(f"[LABELS] Chamando ZapVoice: {zapvoice_url}/api/chat/labels com client_id={client_id_header}")
         async with httpx.AsyncClient() as client:
-            headers = {"api_access_token": token}
-            
-            if not account_id:
-                prof_resp = await client.get(f"{url}/api/v1/profile", headers=headers, timeout=10.0)
-                if prof_resp.status_code == 200:
-                    profile_data = prof_resp.json()
-                    accounts = profile_data.get("accounts", [])
-                    if accounts:
-                        account_id = accounts[0].get("id")
-            
-            if not account_id:
-                return []
-            
-            labels_resp = await client.get(f"{url}/api/v1/accounts/{account_id}/labels", headers=headers, timeout=10.0)
-            if labels_resp.status_code != 200:
-                return []
-            
-            data = labels_resp.json()
-            payload = data.get("payload", [])
-            return [l["title"] for l in payload if "title" in l]
+            resp = await client.get(
+                f"{zapvoice_url}/api/chat/labels",
+                headers=headers,
+                timeout=10.0
+            )
+            logger.info(f"[LABELS] ZapVoice respondeu {resp.status_code}: {resp.text[:200]}")
+            if resp.status_code == 200:
+                data = resp.json()
+                # O ZapVoice retorna lista de strings (etiquetas ordenadas)
+                if isinstance(data, list):
+                    labels = []
+                    for item in data:
+                        if isinstance(item, dict):
+                            title = item.get("title") or item.get("name") or item.get("label")
+                            if title:
+                                labels.append(title)
+                        elif isinstance(item, str):
+                            labels.append(item)
+                    return labels
+            logger.warning(f"ZapVoice retornou status {resp.status_code} ao buscar etiquetas.")
+            return []
     except Exception as e:
-        logger.error(f"Erro ao buscar labels do Chatwoot: {e}")
+        logger.error(f"Erro ao buscar etiquetas do ZapVoice: {e}")
         return []
 
 @router.post("/provision-tools")

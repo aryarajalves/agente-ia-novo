@@ -20,6 +20,9 @@ import PublicSupportView from './components/PublicSupportView';
 import PublicQuestionsView from './components/PublicQuestionsView';
 import WebhookManager from './components/WebhookManager/index';
 import LeadScoring from './components/LeadScoring/index';
+import ObjectionsDashboard from './components/ObjectionsDashboard';
+import Backups from './components/Backups';
+
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('admin_token'));
@@ -75,6 +78,7 @@ function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/playground" element={<ChatPlayground />} />
                     <Route path="/support" element={<SupportDashboard />} />
+                    <Route path="/ranking-duvidas" element={<ObjectionsDashboard />} />
 
                     {/* Rotas restritas para Admin e Super Admin */}
                     {(isAdmin || isSuperAdmin) && (
@@ -93,7 +97,10 @@ function App() {
 
                     {/* Rota restrita APENAS para Super Admin */}
                     {isSuperAdmin && (
-                      <Route path="/users" element={<UserManagement />} />
+                      <>
+                        <Route path="/users" element={<UserManagement />} />
+                        <Route path="/backups" element={<Backups />} />
+                      </>
                     )}
 
                     {/* Redirecionar qualquer acesso não autorizado para a Home */}

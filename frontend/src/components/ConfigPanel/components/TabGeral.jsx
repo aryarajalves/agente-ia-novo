@@ -7,9 +7,6 @@ const TabGeral = () => {
     const {
         name, setName,
         description, setDescription,
-        selectedModel, setSelectedModel,
-        fallbackModel, setFallbackModel,
-        routerEnabled, setRouterEnabled,
         routerSimpleModel, setRouterSimpleModel,
         routerSimpleFallbackModel, setRouterSimpleFallbackModel,
         routerComplexModel, setRouterComplexModel,
@@ -25,7 +22,10 @@ const TabGeral = () => {
         safetySettings, setSafetySettings,
         contextWindow, setContextWindow,
         reasoningEffort, setReasoningEffort,
-        modelSettings
+        modelSettings,
+        routerEnabled,
+        selectedModel,
+        fallbackModel,
     } = useConfig();
 
     const getModelForRole = (role) => {
@@ -75,79 +75,53 @@ const TabGeral = () => {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
                     <div>
                         <span className="section-label" style={{ margin: 0 }}>
-                            {routerEnabled ? '🚦 Roteamento de Modelos (Cost Router)' : 'Inteligência & Modelo'}
+                            🚦 Roteamento de Modelos (Cost Router)
                         </span>
-                        {routerEnabled && (
-                            <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
-                                Economize até 90% desviando perguntas simples para modelos mais baratos.
-                            </p>
-                        )}
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
+                            Economize até 90% desviando perguntas simples para modelos mais baratos.
+                        </p>
                     </div>
                 </div>
 
-                {!routerEnabled && (
-                    <div className="fade-in">
+                <div className="router-grid fade-in">
+                    <div className="router-col">
                         <div className="form-group">
-                            <label>Modelo Principal</label>
-                            <select value={selectedModel || ''} onChange={(e) => setSelectedModel(e.target.value || null)}>
+                            <label style={{ color: '#6ee7b7' }}>⚡ Modelo para Perguntas Simples</label>
+                            <select value={routerSimpleModel || ''} onChange={(e) => setRouterSimpleModel(e.target.value || null)}>
                                 <option value="">— Nenhum —</option>
                                 <ModelOptions />
                             </select>
-                            <PriceDisplay modelId={selectedModel} />
+                            <PriceDisplay modelId={routerSimpleModel} />
                         </div>
-
-                        <div className="form-group" style={{ marginTop: '1rem' }}>
-                            <label style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>Modelo de Fallback (Contingência) <span style={{ fontSize: '0.7em', color: '#64748b' }}>(Opcional)</span></label>
-                            <select value={fallbackModel || ''} onChange={(e) => setFallbackModel(e.target.value || null)}>
-                                <option value="">Nenhum (Usar apenas o principal)</option>
+                        <div className="form-group">
+                            <label style={{ color: '#6ee7b7', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Simples)</label>
+                            <select value={routerSimpleFallbackModel} onChange={(e) => setRouterSimpleFallbackModel(e.target.value)}>
+                                <option value="">Sem fallback</option>
                                 <ModelOptions />
                             </select>
-                            {fallbackModel && <PriceDisplay modelId={fallbackModel} />}
+                            {routerSimpleFallbackModel && <PriceDisplay modelId={routerSimpleFallbackModel} />}
                         </div>
                     </div>
-                )}
 
-                {routerEnabled && (
-                    <div className="router-grid fade-in">
-                        <div className="router-col">
-                            <div className="form-group">
-                                <label style={{ color: '#6ee7b7' }}>⚡ Modelo para Perguntas Simples</label>
-                                <select value={routerSimpleModel || ''} onChange={(e) => setRouterSimpleModel(e.target.value || null)}>
-                                    <option value="">— Nenhum —</option>
-                                    <ModelOptions />
-                                </select>
-                                <PriceDisplay modelId={routerSimpleModel} />
-                            </div>
-                            <div className="form-group">
-                                <label style={{ color: '#6ee7b7', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Simples)</label>
-                                <select value={routerSimpleFallbackModel} onChange={(e) => setRouterSimpleFallbackModel(e.target.value)}>
-                                    <option value="">Sem fallback</option>
-                                    <ModelOptions />
-                                </select>
-                                {routerSimpleFallbackModel && <PriceDisplay modelId={routerSimpleFallbackModel} />}
-                            </div>
+                    <div className="router-col">
+                        <div className="form-group">
+                            <label style={{ color: '#10b981' }}>🧠 Modelo para Perguntas Complexas</label>
+                            <select value={routerComplexModel || ''} onChange={(e) => setRouterComplexModel(e.target.value || null)}>
+                                <option value="">— Nenhum —</option>
+                                <ModelOptions />
+                            </select>
+                            <PriceDisplay modelId={routerComplexModel} />
                         </div>
-
-                        <div className="router-col">
-                            <div className="form-group">
-                                <label style={{ color: '#10b981' }}>🧠 Modelo para Perguntas Complexas</label>
-                                <select value={routerComplexModel || ''} onChange={(e) => setRouterComplexModel(e.target.value || null)}>
-                                    <option value="">— Nenhum —</option>
-                                    <ModelOptions />
-                                </select>
-                                <PriceDisplay modelId={routerComplexModel} />
-                            </div>
-                            <div className="form-group">
-                                <label style={{ color: '#10b981', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Complexas)</label>
-                                <select value={routerComplexFallbackModel} onChange={(e) => setRouterComplexFallbackModel(e.target.value)}>
-                                    <option value="">Sem fallback</option>
-                                    <ModelOptions />
-                                </select>
-                                {routerComplexFallbackModel && <PriceDisplay modelId={routerComplexFallbackModel} />}
-                            </div>
+                        <div className="form-group">
+                            <label style={{ color: '#10b981', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Complexas)</label>
+                            <select value={routerComplexFallbackModel} onChange={(e) => setRouterComplexFallbackModel(e.target.value)}>
+                                <option value="">Sem fallback</option>
+                                <ModelOptions />
+                            </select>
+                            {routerComplexFallbackModel && <PriceDisplay modelId={routerComplexFallbackModel} />}
                         </div>
                     </div>
-                )}
+                </div>
             </div>
 
             <div className="form-section" style={{ marginTop: '2rem' }}>

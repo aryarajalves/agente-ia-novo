@@ -28,11 +28,28 @@ async def handle_unanswered_question(db, context_variables, func_args_str, histo
         func_args = json.loads(func_args_str)
         question = func_args.get("pergunta")
         
-        # Prioriza o telefone real do contato se estiver disponível nas variáveis de contexto
-        session_id = context_variables.get("contact_phone") or context_variables.get("session_id") or "Desconhecida"
+        # ID original da sessão (do playground/chat) — antes de sobrescrever com o telefone
+        original_session_id = context_variables.get("session_id") or ""
         
-        context_text = f"Sessão: {session_id}\nHistórico:\n" + "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history[-5:]])
-        new_q = UnansweredQuestionModel(agent_id=agent_id, session_id=session_id, question=question, context=context_text, status="PENDENTE")
+        # Prioriza o telefone real do contato se estiver disponível nas variáveis de contexto
+        session_id = context_variables.get("contact_phone") or original_session_id or "Desconhecida"
+        
+        # Identificar a origem (se tem webhook_config_id, account_id ou conversation_id, veio do chatwoot/integração)
+        is_chatwoot = any(k in context_variables for k in ["webhook_config_id", "account_id", "conversation_id"])
+        source_val = "chatwoot" if is_chatwoot else "chat"
+        
+        # Preservar o session_id original no contexto para rastreabilidade
+        meta_line = f"SESSION_ID_ORIGINAL: {original_session_id}\n" if original_session_id and original_session_id != session_id else ""
+        context_text = f"Sessão: {session_id}\n{meta_line}Histórico:\n" + "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history[-5:]])
+        
+        new_q = UnansweredQuestionModel(
+            agent_id=agent_id, 
+            session_id=session_id, 
+            question=question, 
+            context=context_text, 
+            status="PENDENTE",
+            source=source_val
+        )
         if db:
             db.add(new_q)
             await db.commit()

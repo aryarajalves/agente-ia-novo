@@ -19,7 +19,14 @@ Este arquivo registra todas as alterações manuais de schema (ALTER TABLE) real
 | 2026-05-21 | user_invites | TODAS | create_user_invites_table.py | Criação da tabela de convites de usuários expiráveis. |
 | 2026-05-22 | webhook_events | is_automatic | add_is_automatic_column.py | Adição de coluna para identificar se a mensagem do webhook é de envio automático do contato. |
 | 2026-05-22 | webhook_configs | negative_feedback_label | add_negative_feedback_label_column.py | Adição de campo configurável para a etiqueta de feedback negativo (1º emoji negativo). |
-
+| 2026-05-28 | agent_config | greeting_mode, question_mode, ad_mode | add_greeting_modes_columns.py | Adição de colunas para configurar o comportamento dinâmico (Painel/Prompt) de saudações, perguntas e anúncios. |
+| 2026-06-01 | agent_config | date_awareness_past_days, date_awareness_future_days | add_date_awareness_custom_days.py | Adição de suporte a quantidade de dias anteriores e posteriores customizados no prompt de Consciência Temporal. |
+| 2026-06-02 | webhook_configs, sales | project_assistant_*, TODAS | create_backup_tables.py | Criação das tabelas de configuração de backup e histórico de execuções no S3. |
+| 2026-06-12 | agent_config | dynamic_prompt | add_dynamic_prompt_column.py | Adição de coluna para o prompt dinâmico do agente de IA (Prompt Caching). |
+| 2026-06-12 | interaction_logs | cached_tokens | add_cached_tokens_column.py | Adição de coluna para rastrear tokens que vieram do cache nas interações da IA. |
+| 2026-06-13 | global_context_variables | extraction_method, extraction_prompt | add_auto_extract_fields.py | Adição de suporte para variáveis de contexto com extração automática com IA. |
+| 2026-06-19 | backup_configs | backup_folder | add_backup_folder_column.py | Adição de campo para configurar a pasta do backup customizada no S3 do Backblaze. |
+| 2026-06-29 | webhook_configs | zapvoice_url, zapvoice_api_token, zapvoice_client_id | add_zapvoice_columns.py | Adição de suporte para credenciais da API do ZapVoice e client_id no lugar do Chatwoot. |
 
 
 

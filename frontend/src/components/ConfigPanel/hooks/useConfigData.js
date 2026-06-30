@@ -10,8 +10,10 @@ export const useConfigData = () => {
         setIsLoadingData, setStatus,
         setName, setDescription, setSelectedModel, setFallbackModel,
         setTemperature, setTopP, setTopK, setPresencePenalty, setFrequencyPenalty,
-        setSafetySettings, setReasoningEffort, setDateAwareness, setSimulatedTime,
-        setSystemPrompt, setContextWindow, setKnowledgeBaseIds, setSelectedTools,
+        setSafetySettings, setReasoningEffort, setDateAwareness,
+        setDateAwarenessPastDays, setDateAwarenessFutureDays,
+        setSimulatedTime,
+        setSystemPrompt, setDynamicPrompt, setContextWindow, setKnowledgeBaseIds, setSelectedTools,
         setRagRetrievalCount, setRagTranslationEnabled, setRagMultiQueryEnabled,
         setRagRerankEnabled, setRagAgenticEvalEnabled, setRagParentExpansionEnabled,
         setInboxCaptureEnabled, setInitialMessage, setInitialQuestionMessage,
@@ -22,7 +24,8 @@ export const useConfigData = () => {
         setRouterSimpleModel, setRouterSimpleFallbackModel, setRouterComplexModel,
         setRouterComplexFallbackModel, setHandoffEnabled, setResponseTranslationEnabled,
         setResponseTranslationFallbackLang, setUiPrimaryColor, setUiHeaderColor,
-        setUiChatTitle, setUiWelcomeMessage, setModelSettings
+        setUiChatTitle, setUiWelcomeMessage, setModelSettings,
+        setGreetingMode, setQuestionMode, setAdMode
     } = useConfig();
 
     useEffect(() => {
@@ -98,7 +101,10 @@ export const useConfigData = () => {
                         if (configData.temperature !== undefined) setTemperature(configData.temperature);
                         if (configData.top_p !== undefined) setTopP(configData.top_p);
                         if (configData.date_awareness !== undefined) setDateAwareness(configData.date_awareness);
+                        setDateAwarenessPastDays(configData.date_awareness_past_days ?? 7);
+                        setDateAwarenessFutureDays(configData.date_awareness_future_days ?? 7);
                         setSystemPrompt(configData.system_prompt || '');
+                        setDynamicPrompt(configData.dynamic_prompt || '');
                         setContextWindow(configData.context_window || 5);
                         setKnowledgeBaseIds(configData.knowledge_base_ids || (configData.knowledge_base_id ? [configData.knowledge_base_id] : []));
                         setRagRetrievalCount(configData.rag_retrieval_count ?? 5);
@@ -112,6 +118,9 @@ export const useConfigData = () => {
                         setSimulatedTime(configData.simulated_time || '');
                         setInitialMessage(configData.initial_message || '');
                         setInitialQuestionMessage(configData.initial_question_message || '');
+                        setGreetingMode(configData.greeting_mode || 'panel');
+                        setQuestionMode(configData.question_mode || 'panel');
+                        setAdMode(configData.ad_mode || 'panel');
                         
                         try {
                             const ignoreData = configData.initial_ignore_message;
@@ -179,6 +188,11 @@ export const useConfigData = () => {
                     setSelectedModel("gpt-4o-mini");
                     setQualificationLabels([]);
                     setQualificationCriteria('');
+                    setGreetingMode('panel');
+                    setQuestionMode('panel');
+                    setAdMode('panel');
+                    setDateAwarenessPastDays(7);
+                    setDateAwarenessFutureDays(7);
                 }
             } catch (err) {
                 console.error("Global load error:", err);

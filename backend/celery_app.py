@@ -29,6 +29,10 @@ app.conf.update(
             'task': 'tasks.check_followup_due',
             'schedule': 300.0,
         },
+        'check-backup-schedule-5min': {
+            'task': 'tasks.check_backup_schedule',
+            'schedule': 300.0,
+        },
     },
 )
 

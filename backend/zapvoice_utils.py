@@ -1,0 +1,153 @@
+import httpx
+import logging
+import json
+import os
+
+logger = logging.getLogger(__name__)
+
+async def sync_conversation_labels(zapvoice_url: str, client_id: str, conversation_id: int, token: str, to_add: list = None, to_remove: list = None):
+    """
+    Sincroniza as etiquetas de uma conversa no ZapVoice de forma idempotente.
+    Retorna uma tupla (sucesso: bool, etiquetas_finais: list)
+    """
+    if not zapvoice_url or not client_id or not conversation_id or not token:
+        logger.warning(f"Dados insuficientes para sincronizar etiquetas ZapVoice: url={zapvoice_url}, client_id={client_id}, conv={conversation_id}")
+        return False, []
+
+    zapvoice_url = zapvoice_url.rstrip("/")
+    if not zapvoice_url.endswith("/api"):
+        zapvoice_url = f"{zapvoice_url}/api"
+    to_add = to_add or []
+    to_remove = to_remove or []
+
+    # 1. Obter etiquetas atuais
+    # No ZapVoice, para ler etiquetas de uma conversa específica, podemos buscar a lista de conversas e filtrar
+    conversas_url = f"{zapvoice_url}/chat/conversations"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Client-ID": str(client_id),
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            cur_resp = await client.get(conversas_url, headers=headers)
+            current_labels = []
+            if cur_resp.status_code == 200:
+                convs = cur_resp.json()
+                for c in convs:
+                    if str(c.get("id")) == str(conversation_id):
+                        current_labels = c.get("labels", [])
+                        break
+            else:
+                logger.error(f"❌ Erro ao listar conversas para buscar etiquetas no ZapVoice: {cur_resp.status_code} - {cur_resp.text}")
+                return False, []
+            
+            # 2. Calcular novo conjunto de etiquetas
+            final_labels = [l for l in current_labels if l not in to_remove]
+            for l in to_add:
+                if l not in final_labels:
+                    final_labels.append(l)
+            
+            # 3. Se não houver mudança e nem to_add/to_remove vazios pendentes, pula o POST
+            if not to_add and not to_remove:
+                return True, current_labels
+
+            if set(final_labels) == set(current_labels):
+                logger.info(f"✅ Etiquetas já sincronizadas para conversa {conversation_id} no ZapVoice")
+                return True, final_labels
+                
+            # 4. Atualizar no ZapVoice
+            labels_url = f"{zapvoice_url}/chat/conversations/{conversation_id}/labels"
+            update_resp = await client.post(labels_url, json={"labels": final_labels}, headers=headers)
+            if update_resp.status_code == 200:
+                logger.info(f"🏷️ Etiquetas sincronizadas no ZapVoice para conversa {conversation_id}: +{to_add} -{to_remove}")
+                return True, final_labels
+            else:
+                logger.error(f"❌ Erro ao atualizar etiquetas no ZapVoice: {update_resp.status_code} - {update_resp.text}")
+                return False, current_labels
+                
+    except Exception as e:
+        logger.error(f"⚠️ Exceção ao sincronizar etiquetas ZapVoice: {e}")
+        return False, []
+
+async def is_conversation_paused(zapvoice_url: str, client_id: str, conversation_id: int, token: str, ignore_label: str) -> bool:
+    """
+    Verifica se uma conversa deve ser ignorada baseada em uma etiqueta de pausa no ZapVoice.
+    Retorna True se a etiqueta estiver presente, False caso contrário.
+    """
+    zapvoice_url = zapvoice_url.rstrip("/")
+    if not zapvoice_url.endswith("/api"):
+        zapvoice_url = f"{zapvoice_url}/api"
+    conversas_url = f"{zapvoice_url}/chat/conversations"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Client-ID": str(client_id),
+        "Content-Type": "application/json"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(conversas_url, headers=headers)
+            if resp.status_code == 200:
+                convs = resp.json()
+                current_labels = []
+                for c in convs:
+                    if str(c.get("id")) == str(conversation_id):
+                        current_labels = c.get("labels", [])
+                        break
+                # Comparação case-insensitive
+                return any(l.lower() == ignore_label.lower().strip() for l in current_labels if isinstance(l, str))
+            else:
+                logger.warning(f"⚠️ Falha ao buscar etiquetas (Status {resp.status_code}) para verificar pausa no ZapVoice")
+    except Exception as e:
+        logger.error(f"⚠️ Erro ao verificar etiquetas para ignorar no ZapVoice: {e}")
+    return False
+
+async def send_zapvoice_message(zapvoice_url: str, client_id: str, conversation_id: int, token: str, content: str, is_private: bool = False):
+    """Envia uma mensagem (normal ou nota privada/handoff) para uma conversa no ZapVoice."""
+    if not zapvoice_url or not client_id or not conversation_id or not token or not content:
+        return False
+    zapvoice_url = zapvoice_url.rstrip("/")
+    if not zapvoice_url.endswith("/api"):
+        zapvoice_url = f"{zapvoice_url}/api"
+    url = f"{zapvoice_url}/chat/conversations/{conversation_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Client-ID": str(client_id),
+        "Content-Type": "application/json"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, json={"content": content, "is_private": is_private}, headers=headers)
+            return resp.status_code in (200, 201)
+    except Exception as e:
+        logger.error(f"Erro ao enviar mensagem ZapVoice: {e}")
+        return False
+
+def get_conversation_labels_sync(zapvoice_url: str, client_id: str, conversation_id: int, token: str) -> list:
+    """
+    Busca as etiquetas de uma conversa de forma síncrona no ZapVoice.
+    """
+    zapvoice_url = zapvoice_url.rstrip("/")
+    if not zapvoice_url.endswith("/api"):
+        zapvoice_url = f"{zapvoice_url}/api"
+    url = f"{zapvoice_url}/chat/conversations"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Client-ID": str(client_id)
+    }
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code == 200:
+                convs = resp.json()
+                for c in convs:
+                    if str(c.get("id")) == str(conversation_id):
+                        return c.get("labels", [])
+                return []
+            else:
+                logger.error(f"Erro ao obter etiquetas do ZapVoice síncronamente (Status {resp.status_code}): {resp.text}")
+                return None
+    except Exception as e:
+        logger.error(f"Exceção ao obter etiquetas do ZapVoice síncronamente: {e}")
+        return None

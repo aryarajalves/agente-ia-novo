@@ -7,14 +7,15 @@ export const useLeads = () => {
     const [selectedLeads, setSelectedLeads] = useState(new Set());
     const [bulkDeleteModal, setBulkDeleteModal] = useState(null);
 
-    const fetchLeads = useCallback(async (webhook, page = 1, pageSize = 20, search = '', podeEnviar = 'all', ds = '', de = '', janelaAberta = 'all') => {
+    const fetchLeads = useCallback(async (webhook, page = 1, pageSize = 20, search = '', podeEnviar = 'all', ds = '', de = '', janelaAberta = 'all', semMensagens = 'all') => {
         setLeadsModal(prev => ({ 
             ...(prev || { webhook }), 
             loading: true, 
             leads: prev?.leads || [],
             page, pageSize, search, podeEnviar, 
             dateStart: ds, dateEnd: de,
-            janelaAberta
+            janelaAberta,
+            semMensagens
         }));
         
         try {
@@ -22,6 +23,7 @@ export const useLeads = () => {
             if (search) url += `&q=${encodeURIComponent(search)}`;
             if (podeEnviar !== 'all') url += `&pode_enviar=${podeEnviar === 'true'}`;
             if (janelaAberta !== 'all') url += `&janela_aberta=${janelaAberta === 'true'}`;
+            if (semMensagens !== 'all') url += `&sem_mensagem=${semMensagens === 'true'}`;
             if (ds) url += `&date_start=${ds}`;
             if (de) url += `&date_end=${de}`;
 

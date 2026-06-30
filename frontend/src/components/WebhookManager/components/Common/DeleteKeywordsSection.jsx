@@ -69,7 +69,7 @@ export const DeleteKeywordsSection = ({
                     accentColor="#818cf8"
                 />
                 <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '0.35rem 0 0', lineHeight: 1.4 }}>
-                    Ao resetar a conversa via palavra-chave, todas as etiquetas existentes no Chatwoot serão substituídas por esta lista.
+                    Ao resetar a conversa via palavra-chave, todas as etiquetas existentes no ZapVoice serão substituídas por esta lista.
                 </p>
             </div>
         )}

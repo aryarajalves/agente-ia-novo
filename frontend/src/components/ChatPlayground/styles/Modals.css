@@ -75,3 +75,17 @@
 .status-badge.green { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
 .status-badge.yellow { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
 .status-badge.red { background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
+
+/* Custom styles to prevent layout bugs in tabs */
+.modal-tabs {
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none !important; /* Firefox */
+    overflow-y: hidden !important;
+}
+
+.modal-tabs::-webkit-scrollbar {
+    display: none !important; /* Chrome, Safari, Opera, Edge */
+}
+

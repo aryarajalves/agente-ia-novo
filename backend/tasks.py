@@ -13,7 +13,7 @@ from database import SessionLocal
 from models import TranscriptionTaskModel, WebhookEventModel, InteractionLog
 from sqlalchemy import text as _text
 import tiktoken
-from chatwoot_utils import is_conversation_paused
+from zapvoice_utils import is_conversation_paused
 from config_store import USD_TO_BRL, MODEL_INFO
 
 logger = logging.getLogger(__name__)
@@ -151,6 +151,7 @@ def check_window_expiry():
                 processed_ids = []
                 for lead_id, conta_id, conversa_id, telefone in expired:
                     success = False
+                    updated_labels = None
                     try:
                         labels_url = f"{cw_url}/api/v1/accounts/{conta_id}/conversations/{conversa_id}/labels"
                         headers = {"api_access_token": cw_token}
@@ -169,11 +170,13 @@ def check_window_expiry():
                                     if post_resp.status_code in (200, 201):
                                         logger.info(f"[WindowExpiry] Removidas etiquetas {labels_to_remove} de {telefone} (conversa {conversa_id})")
                                         success = True
+                                        updated_labels = updated
                                     else:
                                         logger.warning(f"[WindowExpiry] Erro ao remover etiquetas no Chatwoot (POST retornou {post_resp.status_code}) para lead {lead_id}")
                                 else:
                                     logger.info(f"[WindowExpiry] Conversa {conversa_id} do lead {lead_id} já não possui etiquetas {labels_to_remove}")
                                     success = True
+                                    updated_labels = current_labels
                             else:
                                 logger.warning(f"[WindowExpiry] Erro ao buscar etiquetas no Chatwoot (GET retornou {cur.status_code}) para lead {lead_id}")
                     except Exception as e:
@@ -181,10 +184,26 @@ def check_window_expiry():
                     
                     if success:
                         processed_ids.append(lead_id)
+                        try:
+                            # Sincroniza a remoção da etiqueta localmente no banco para que o dashboard mostre as etiquetas corretas
+                            if updated_labels is None:
+                                row_labels = db.execute(_text(f"SELECT labels FROM {leads_table} WHERE id = :id"), {"id": lead_id}).fetchone()
+                                current_lbls = []
+                                if row_labels and row_labels[0]:
+                                    try:
+                                        current_lbls = json.loads(row_labels[0])
+                                    except Exception:
+                                        current_lbls = []
+                                updated_labels = [l for l in current_lbls if l not in labels_to_remove]
 
-                if processed_ids:
-                    db.execute(_text(f"UPDATE {leads_table} SET window_close_processed = TRUE WHERE id = ANY(:ids)"), {"ids": processed_ids})
-                    db.commit()
+                            db.execute(
+                                _text(f"UPDATE {leads_table} SET window_close_processed = TRUE, labels = :labels WHERE id = :id"),
+                                {"labels": json.dumps(updated_labels, ensure_ascii=False), "id": lead_id}
+                            )
+                            db.commit()
+                        except Exception as db_err:
+                            logger.warning(f"[WindowExpiry] Erro ao atualizar labels do lead {lead_id} no banco local: {db_err}")
+                            db.rollback()
 
             except Exception as e:
                 logger.error(f"[WindowExpiry] Erro na config {config_id}: {e}")
@@ -507,5 +526,52 @@ def check_followup_due():
                 except Exception as e:
                     logger.error(f"[FollowUp] Erro no step {step_index} config {config_id}: {e}")
                     db.rollback()
+    finally:
+        db.close()
+
+
+@app.task(name="tasks.check_backup_schedule")
+def check_backup_schedule():
+    """Verifica se há backup agendado devido e executa se necessário."""
+    db = SessionLocal()
+    try:
+        from services.backup_service import BackupService
+        config = BackupService.get_config(db)
+        if not config.enabled:
+            return
+
+        now = datetime.now(timezone.utc)
+        if not config.next_run:
+            config.next_run = BackupService.calculate_next_run(config.frequency_type, config.interval_value)
+            db.commit()
+            return
+
+        # Próxima execução no fuso horário UTC (garante comparabilidade direta)
+        next_run_aware = config.next_run
+        if next_run_aware.tzinfo is None:
+            next_run_aware = next_run_aware.replace(tzinfo=timezone.utc)
+
+        if now >= next_run_aware:
+            logger.info("⏰ Horário do backup agendado atingido. Disparando backup...")
+            # Atualiza next_run antes de rodar para evitar loops em caso de travamento
+            config.next_run = BackupService.calculate_next_run(config.frequency_type, config.interval_value)
+            db.commit()
+            
+            BackupService.run_backup(db, is_automatic=True)
+    except Exception as e:
+        logger.error(f"[BackupSchedule] Erro ao verificar cronograma de backup: {e}")
+    finally:
+        db.close()
+
+
+@app.task(name="tasks.trigger_manual_backup")
+def trigger_manual_backup():
+    """Executa um backup manual em background."""
+    db = SessionLocal()
+    try:
+        from services.backup_service import BackupService
+        BackupService.run_backup(db, is_automatic=False)
+    except Exception as e:
+        logger.error(f"[ManualBackup] Erro ao disparar backup manual: {e}")
     finally:
         db.close()

@@ -1,9 +1,10 @@
 class UsageLog:
-    def __init__(self, mp=0, mc=0, xp=0, xc=0):
+    def __init__(self, mp=0, mc=0, xp=0, xc=0, ct=0):
         self.mini_prompt = mp
         self.mini_completion = mc
         self.main_prompt = xp
         self.main_completion = xc
+        self.cached_tokens = ct
 
     @property
     def prompt_tokens(self):
@@ -29,6 +30,7 @@ class UsageLog:
             "mini_completion": self.mini_completion,
             "main_prompt": self.main_prompt,
             "main_completion": self.main_completion,
+            "cached_tokens": self.cached_tokens,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens

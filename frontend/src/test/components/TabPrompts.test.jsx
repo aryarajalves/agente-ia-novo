@@ -50,6 +50,10 @@ const mockConfigValues = {
     setQualificationLabels: mockSetQualificationLabels,
     dateAwareness: false,
     setDateAwareness: mockSetDateAwareness,
+    dateAwarenessPastDays: 7,
+    setDateAwarenessPastDays: vi.fn(),
+    dateAwarenessFutureDays: 7,
+    setDateAwarenessFutureDays: vi.fn(),
     simulatedTime: '',
     setSimulatedTime: mockSetSimulatedTime,
     toolsList: [{ id: 'tool_qualif', name: 'lead_qualificado' }],
@@ -168,5 +172,18 @@ describe('TabPrompts Component', () => {
 
         expect(mockSetQualificationQuestions).not.toHaveBeenCalled();
         expect(screen.queryByText('Você tem certeza que deseja apagar esta pergunta qualificatória?')).not.toBeInTheDocument();
+    });
+
+    it('deve abrir o modal explicativo de consciência temporal ao clicar no botão de interrogação ❓', () => {
+        render(<TabPrompts />);
+        
+        const helpBtn = screen.getByTitle('Saiba mais sobre a Consciência Temporal');
+        expect(helpBtn).toBeInTheDocument();
+        
+        fireEvent.click(helpBtn);
+        
+        expect(screen.getByText(/Entendendo as Opções Temporais/)).toBeInTheDocument();
+        expect(screen.getAllByText(/Ativar Consciência Temporal/).length).toBeGreaterThan(1);
+        expect(screen.getByText(/Forçar Horário Específico/)).toBeInTheDocument();
     });
 });

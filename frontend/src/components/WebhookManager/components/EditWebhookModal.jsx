@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
     LabelMultiSelect, 
     LabelSingleSelect 
@@ -10,7 +10,9 @@ import {
 import MemorySection from './Common/MemorySection';
 import DeleteKeywordsSection from './Common/DeleteKeywordsSection';
 import AgentTabSection from './Common/AgentTabSection';
-import { normalizeContact } from '../utils/helpers';
+import { normalizeContact, showToast } from '../utils/helpers';
+import { api } from '../../../api/client';
+import ConfirmModal from './ConfirmModal';
 
 const EditWebhookModal = ({
     editingWebhook,
@@ -38,12 +40,96 @@ const EditWebhookModal = ({
 }) => {
     const isCreateMode = editingWebhook?.id === 'new';
 
+    const [cwWebhooks, setCwWebhooks] = useState([]);
+    const [cwWebhooksLoading, setCwWebhooksLoading] = useState(false);
+    const [cwWebhooksError, setCwWebhooksError] = useState('');
+    const [creatingCwWebhook, setCreatingCwWebhook] = useState(false);
+    const [cwWebhookToDelete, setCwWebhookToDelete] = useState(null);
+
+    const fetchCwWebhooks = useCallback(async () => {
+        if (isCreateMode || !editingWebhook?.id) return;
+        setCwWebhooksLoading(true);
+        setCwWebhooksError('');
+        try {
+            const res = await api.get(`/webhooks/${editingWebhook.id}/chatwoot-webhooks`);
+            if (res.ok) {
+                const data = await res.json();
+                setCwWebhooks(data);
+            } else {
+                const errData = await res.json();
+                setCwWebhooksError(errData.detail || 'Erro ao carregar webhooks');
+            }
+        } catch (err) {
+            setCwWebhooksError('Erro ao conectar ao servidor');
+        } finally {
+            setCwWebhooksLoading(false);
+        }
+    }, [editingWebhook?.id, isCreateMode]);
+
+    const handleCreateCwWebhook = async () => {
+        if (isCreateMode || !editingWebhook?.id) return;
+        setCreatingCwWebhook(true);
+        try {
+            const inboxId = safeEditForm.chatwoot_inbox_id ? parseInt(safeEditForm.chatwoot_inbox_id, 10) : null;
+            const res = await api.post(`/webhooks/${editingWebhook.id}/chatwoot-webhooks`, {
+                inbox_id: isNaN(inboxId) ? null : inboxId
+            });
+            if (res.ok) {
+                showToast('Webhook criado no Chatwoot com sucesso!', 'success');
+                fetchCwWebhooks();
+            } else {
+                const errData = await res.json();
+                showToast(errData.detail || 'Erro ao criar webhook', 'error');
+            }
+        } catch (err) {
+            showToast('Erro ao conectar ao servidor', 'error');
+        } finally {
+            setCreatingCwWebhook(false);
+        }
+    };
+
+    const handleDeleteCwWebhook = async (cwWebhookId) => {
+        try {
+            const res = await api.delete(`/webhooks/${editingWebhook.id}/chatwoot-webhooks/${cwWebhookId}`);
+            if (res.ok) {
+                showToast('Webhook excluído do Chatwoot com sucesso!', 'success');
+                fetchCwWebhooks();
+            } else {
+                const errData = await res.json();
+                showToast(errData.detail || 'Erro ao excluir webhook', 'error');
+            }
+        } catch (err) {
+            showToast('Erro ao conectar ao servidor', 'error');
+        }
+    };
+
+    useEffect(() => {
+        if (editTab === 'chatwoot' && !isCreateMode && editingWebhook?.id) {
+            fetchCwWebhooks();
+        }
+    }, [editTab, editingWebhook?.id, isCreateMode, fetchCwWebhooks]);
+
     // Bloquear scroll ao montar o modal
     useEffect(() => {
         const originalStyle = window.getComputedStyle(document.body).overflow;
         document.body.style.overflow = 'hidden';
         return () => { document.body.style.overflow = originalStyle; };
     }, []);
+
+    let safeCwWebhooks = [];
+    if (Array.isArray(cwWebhooks)) {
+        safeCwWebhooks = cwWebhooks;
+    } else if (cwWebhooks && typeof cwWebhooks === 'object') {
+        if (cwWebhooks.payload) {
+            if (Array.isArray(cwWebhooks.payload)) {
+                safeCwWebhooks = cwWebhooks.payload;
+            } else if (cwWebhooks.payload.webhooks && Array.isArray(cwWebhooks.payload.webhooks)) {
+                safeCwWebhooks = cwWebhooks.payload.webhooks;
+            }
+        } else if (cwWebhooks.webhooks && Array.isArray(cwWebhooks.webhooks)) {
+            safeCwWebhooks = cwWebhooks.webhooks;
+        }
+    }
 
     // Safety checks for editForm fields
     const safeEditForm = {
@@ -65,6 +151,9 @@ const EditWebhookModal = ({
         delete_keywords: [],
         delete_message: '',
         delete_labels: [],
+        zapvoice_url: '',
+        zapvoice_api_token: '',
+        zapvoice_client_id: '',
         labels_on_message: [],
         ignore_by_label: '',
         negative_feedback_label: '',
@@ -77,6 +166,11 @@ const EditWebhookModal = ({
         ai_handoff_labels_to_add: [],
         ai_handoff_keyword: '',
         ai_handoff_message: '',
+        project_assistant_label: '',
+        project_assistant_keyword: '',
+        project_assistant_deactivate_keyword: '',
+        project_assistant_entry_message: '',
+        project_assistant_exit_message: '',
         ...editForm
     };
 
@@ -103,6 +197,9 @@ const EditWebhookModal = ({
     safeEditForm.ai_handoff_labels_to_remove = parseList(safeEditForm.ai_handoff_labels_to_remove);
 
 
+    const targetPath = `/webhooks/receive/${safeEditForm.token || editingWebhook?.token}`;
+    const platformCwWebhooks = safeCwWebhooks.filter(wh => wh && wh.url && wh.url.toLowerCase().includes(targetPath.toLowerCase()));
+
     const agentsList = agents || [];
     const labelsList = chatwootLabels || [];
 
@@ -124,7 +221,7 @@ const EditWebhookModal = ({
                                 { id: 'agente', label: 'Agente IA', icon: '🤖' },
                                 { id: 'memoria', label: 'Memória', icon: '🧠' },
                                 { id: 'filtros', label: 'Segurança', icon: '🛡️' },
-                                { id: 'chatwoot', label: 'Chatwoot', icon: '🏷️' }
+                                { id: 'zapvoice', label: 'ZapVoice', icon: '💬' }
                             ].map((t) => (
                                 <button
                                     key={t.id}
@@ -341,32 +438,37 @@ const EditWebhookModal = ({
                                 </div>
                             )}
 
-                            {editTab === 'chatwoot' && (
+                            {editTab === 'zapvoice' && (
                                 <div className="tab-pane animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                                    {/* Configuração do ID do Inbox */}
+                                    {/* Configurações de Credenciais do ZapVoice */}
                                     <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#3b82f622', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>📥</div>
-                                            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#fff' }}>Filtro de Inbox</h4>
+                                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#0ea5e922', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>🔑</div>
+                                            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#fff' }}>Integração ZapVoice</h4>
                                         </div>
-                                        <div className="form-group-premium">
-                                            <label className="premium-label">ID do Inbox Chatwoot</label>
-                                            <input 
-                                                type="text" 
-                                                placeholder="Ex: 4 (Deixe vazio para processar todos)" 
-                                                value={safeEditForm.chatwoot_inbox_id || ''} 
-                                                onChange={e => setEditForm({ ...safeEditForm, chatwoot_inbox_id: e.target.value })} 
-                                                className="premium-input" 
-                                            />
-                                            <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
-                                                Processa apenas mensagens recebidas deste Inbox específico. Útil para separar inboxes no mesmo Chatwoot.
-                                            </p>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            <div className="form-group-premium">
+                                                <label className="premium-label">ID do Cliente (Client ID)</label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Ex: client_123" 
+                                                    value={safeEditForm.zapvoice_client_id || ''} 
+                                                    onChange={e => setEditForm({ ...safeEditForm, zapvoice_client_id: e.target.value })} 
+                                                    className="premium-input" 
+                                                />
+                                                <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                    Esse ID é usado para saber qual é o ID do cliente do ZapVoice que estamos utilizando neste exato momento.
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
 
+                                    {/* Configuração de Etiquetas */}
                                     <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
                                         <label className="premium-label">🏷️ Etiquetas Automáticas</label>
-                                        {!labelsLoading && labelsList.length > 0 ? (
+                                        {labelsLoading ? (
+                                            <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '1rem' }}>⏳ Carregando etiquetas do ZapVoice...</p>
+                                        ) : labelsList.length > 0 ? (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
                                                 <div className="form-group-premium">
                                                     <label className="premium-label" style={{ color: '#34d399', fontSize: '0.65rem' }}>💬 Em cada mensagem</label>
@@ -407,15 +509,22 @@ const EditWebhookModal = ({
                                                         accentColor="#f59e0b"
                                                     />
                                                     <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
-                                                        Esta etiqueta será removida automaticamente do contato no Chatwoot quando as 24 horas sem interação do cliente expirarem.
+                                                        Esta etiqueta será removida automaticamente do contato no ZapVoice quando as 24 horas sem interação do cliente expirarem.
                                                     </p>
                                                 </div>
                                             </div>
+                                        ) : safeEditForm.zapvoice_client_id ? (
+                                            <p style={{ fontSize: '0.8rem', color: '#f59e0b', marginTop: '1rem' }}>
+                                                ⚠️ Nenhuma etiqueta encontrada nas conversas do ZapVoice (ID: {safeEditForm.zapvoice_client_id}). Adicione etiquetas nas suas conversas do ZapVoice para que elas apareçam aqui.
+                                            </p>
                                         ) : (
-                                            <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '1rem' }}>{labelsLoading ? 'Carregando...' : 'Chatwoot não configurado.'}</p>
+                                            <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '1rem' }}>
+                                                ℹ️ ZapVoice/Client ID não configurado.
+                                            </p>
                                         )}
                                     </div>
 
+                                    {/* Suporte Humano */}
                                     <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                                             <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ec489922', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>🆘</div>
@@ -470,6 +579,46 @@ const EditWebhookModal = ({
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Assistente de Projeto */}
+                                    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#a855f722', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>📊</div>
+                                            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#fff' }}>Assistente de Projeto</h4>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            <div className="form-group-premium">
+                                                <label className="premium-label" style={{ color: '#a855f7', fontSize: '0.65rem' }}>Etiqueta do Assistente</label>
+                                                <LabelSingleSelect 
+                                                    selected={safeEditForm.project_assistant_label || ''} 
+                                                    options={labelsList} 
+                                                    onChange={v => setEditForm({ ...safeEditForm, project_assistant_label: v })} 
+                                                    accentColor="#a855f7" 
+                                                />
+                                                <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                    Quando a conversa tiver esta etiqueta, o agente passa a atuar como Assistente de Projeto.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                <div className="form-group-premium">
+                                                    <label className="premium-label">Palavra-chave (Ativar)</label>
+                                                    <input type="text" placeholder="Ex: #projeto" value={safeEditForm.project_assistant_keyword || ''} onChange={e => setEditForm({ ...safeEditForm, project_assistant_keyword: e.target.value })} className="premium-input" />
+                                                </div>
+                                                <div className="form-group-premium">
+                                                    <label className="premium-label">Palavra-chave (Desativar)</label>
+                                                    <input type="text" placeholder="Ex: #sair_projeto" value={safeEditForm.project_assistant_deactivate_keyword || ''} onChange={e => setEditForm({ ...safeEditForm, project_assistant_deactivate_keyword: e.target.value })} className="premium-input" />
+                                                </div>
+                                            </div>
+                                            <div className="form-group-premium">
+                                                <label className="premium-label">Mensagem de Entrada</label>
+                                                <textarea placeholder="Mensagem enviada ao ativar o assistente..." value={safeEditForm.project_assistant_entry_message || ''} onChange={e => setEditForm({ ...safeEditForm, project_assistant_entry_message: e.target.value })} className="premium-input" style={{ minHeight: '60px', resize: 'vertical' }} />
+                                            </div>
+                                            <div className="form-group-premium">
+                                                <label className="premium-label">Mensagem de Saída</label>
+                                                <textarea placeholder="Mensagem enviada ao desativar o assistente..." value={safeEditForm.project_assistant_exit_message || ''} onChange={e => setEditForm({ ...safeEditForm, project_assistant_exit_message: e.target.value })} className="premium-input" style={{ minHeight: '60px', resize: 'vertical' }} />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -491,6 +640,15 @@ const EditWebhookModal = ({
                     </button>
                 </div>
             </div>
+            <ConfirmModal
+                type="cw-webhook"
+                isOpen={cwWebhookToDelete !== null}
+                onClose={() => setCwWebhookToDelete(null)}
+                onConfirm={() => {
+                    handleDeleteCwWebhook(cwWebhookToDelete);
+                    setCwWebhookToDelete(null);
+                }}
+            />
         </div>
     );
 };

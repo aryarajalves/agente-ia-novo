@@ -8,6 +8,9 @@ from datetime import datetime
 async def test_get_lead_history(client: AsyncClient, db_session: AsyncSession):
     # 1. Criar um webhook de teste
     import uuid
+    from webhooks.service import ensure_leads_table
+    await ensure_leads_table("leads_test_history")
+    
     token = f"history-token-{uuid.uuid4().hex[:8]}"
     webhook = WebhookConfigModel(
         name="Test Webhook History",
@@ -44,7 +47,7 @@ async def test_get_lead_history(client: AsyncClient, db_session: AsyncSession):
     await db_session.commit()
 
     # 3. Chamar o endpoint
-    response = await client.get(f"/webhooks/{webhook.id}/leads/{telefone}/history?page=1&page_size=20")
+    response = await client.get(f"/webhooks/{webhook.id}/leads-by-phone/{telefone}/history?page=1&page_size=20")
     assert response.status_code == 200
     
     data = response.json()

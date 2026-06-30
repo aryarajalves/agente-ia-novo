@@ -300,6 +300,8 @@ class AgentConfig(BaseModel):
     model_settings: dict = {} # Map of role -> {temperature, top_p, etc}
     is_active: bool = True
     date_awareness: bool = False
+    date_awareness_past_days: int = 7
+    date_awareness_future_days: int = 7
     system_prompt: str = "Você é um assistente útil e inteligente."
     context_window: int = 5
     knowledge_base: list = [] # Manual FAQs

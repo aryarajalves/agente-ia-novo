@@ -18,13 +18,14 @@ import HistoryModal from './components/HistoryModal/index';
 import LeadsModal from './components/LeadsModal';
 import EditWebhookModal from './components/EditWebhookModal';
 import LeadHistoryModal from './components/LeadHistoryModal';
+import ConfirmModal from './components/ConfirmModal';
 
 // Utils & Constants
 import { showToast, getReceiveUrl } from './utils/helpers';
 
 const WebhookManager = () => {
     // Estado Local
-    const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
     const [selectedWebhooks, setSelectedWebhooks] = useState(new Set());
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, webhookId: null, webhookName: '', isBulk: false });
     const [confirmLeadDelete, setConfirmLeadDelete] = useState({ isOpen: false, lead: null, isBulk: false });
@@ -44,7 +45,8 @@ const WebhookManager = () => {
         chatwootGlobal,
         chatwootLabels,
         labelsLoading,
-        handleGenerateDescription
+        handleGenerateDescription,
+        fetchChatwootLabels
     } = useWebhooks(showToast);
 
     const {
@@ -76,7 +78,7 @@ const WebhookManager = () => {
         editAllowedInput, setEditAllowedInput,
         editBlockedInput, setEditBlockedInput,
         editDeleteInput, setEditDeleteInput
-    } = useWebhookOperations(fetchWebhooks, setSelectedWebhook);
+    } = useWebhookOperations(fetchWebhooks, setSelectedWebhook, fetchChatwootLabels);
 
     const {
         leadsModal, setLeadsModal,
@@ -91,16 +93,7 @@ const WebhookManager = () => {
         deletingLeads
     } = useLeads();
 
-    // Efeito para capturar toasts globais do WebhookManager
-    useEffect(() => {
-        const handleToast = (e) => {
-            const { message, type } = e.detail;
-            setToast({ show: true, message, type: type || 'success' });
-            setTimeout(() => setToast(prev => ({ ...prev, show: false })), 5000);
-        };
-        window.addEventListener('app:toast', handleToast);
-        return () => window.removeEventListener('app:toast', handleToast);
-    }, []);
+
 
     // Bloquear scroll do body quando qualquer modal estiver aberto
     useEffect(() => {
@@ -282,9 +275,9 @@ const WebhookManager = () => {
                         onBulkDelete={() => setConfirmLeadDelete({ isOpen: true, lead: null, isBulk: true })}
                         onDeleteLead={(lead) => setConfirmLeadDelete({ isOpen: true, lead, isBulk: false })}
                         onSyncAll={() => handleSyncAll(leadsModal.webhook)}
-                        onSearch={(q) => fetchLeads(leadsModal.webhook, 1, leadsModal.pageSize, q, leadsModal.podeEnviar, leadsModal.dateStart, leadsModal.dateEnd, leadsModal.janelaAberta)}
-                        onFilterChange={(f) => fetchLeads(leadsModal.webhook, 1, leadsModal.pageSize, leadsModal.search, f.podeEnviar ?? leadsModal.podeEnviar, f.dateStart ?? leadsModal.dateStart, f.dateEnd ?? leadsModal.dateEnd, f.janelaAberta ?? leadsModal.janelaAberta)}
-                        onPageChange={(p) => fetchLeads(leadsModal.webhook, p, leadsModal.pageSize, leadsModal.search, leadsModal.podeEnviar, leadsModal.dateStart, leadsModal.dateEnd, leadsModal.janelaAberta)}
+                        onSearch={(q) => fetchLeads(leadsModal.webhook, 1, leadsModal.pageSize, q, leadsModal.podeEnviar, leadsModal.dateStart, leadsModal.dateEnd, leadsModal.janelaAberta, leadsModal.semMensagens)}
+                        onFilterChange={(f) => fetchLeads(leadsModal.webhook, 1, f.pageSize ?? leadsModal.pageSize, f.search ?? leadsModal.search, f.podeEnviar ?? leadsModal.podeEnviar, f.dateStart ?? leadsModal.dateStart, f.dateEnd ?? leadsModal.dateEnd, f.janelaAberta ?? leadsModal.janelaAberta, f.semMensagens ?? leadsModal.semMensagens)}
+                        onPageChange={(p) => fetchLeads(leadsModal.webhook, p, leadsModal.pageSize, leadsModal.search, leadsModal.podeEnviar, leadsModal.dateStart, leadsModal.dateEnd, leadsModal.janelaAberta, leadsModal.semMensagens)}
                         onViewHistory={(lead) => {
                             setLeadHistoryModal({ lead, webhook: leadsModal.webhook });
                             setLeadsModal(null); 
@@ -332,183 +325,81 @@ const WebhookManager = () => {
                     />
                 )}
 
-                {/* Confirmação de Deleção de Webhook */}
-                {confirmModal.isOpen && (
-                    <div className="premium-modal-overlay">
-                        <div className="premium-modal-content compact" onClick={e => e.stopPropagation()}>
-                            <div className="modal-header-premium">
-                                <div className="header-info">
-                                    <span className="header-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>⚠️</span>
-                                    <span className="header-title">Confirmar Exclusão</span>
-                                </div>
-                            </div>
-                            <div style={{ padding: '2.5rem 2rem', textAlign: 'center' }}>
-                                <p style={{ color: 'var(--wh-text-secondary)', marginBottom: '2rem', fontSize: '1.05rem', lineHeight: '1.6' }}>
-                                    {confirmModal.isBulk 
-                                        ? `Tem certeza que deseja excluir permanentemente as ${confirmModal.webhookName} selecionadas?`
-                                        : `Tem certeza que deseja excluir permanentemente a integração "${confirmModal.webhookName}"?`
-                                    }
-                                    <br/><span style={{ opacity: 0.7, fontSize: '0.9rem' }}>Esta ação não pode ser desfeita.</span>
-                                </p>
-                                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                                    <button 
-                                        onClick={() => setConfirmModal({ ...confirmModal, isOpen: false, isBulk: false })} 
-                                        className="btn-action-edit"
-                                        style={{ padding: '0.8rem 2rem', borderRadius: '14px' }}
-                                    >Cancelar</button>
-                                    <button 
-                                        onClick={handleDeleteWebhook}
-                                        className="btn-new-webhook" 
-                                        style={{ background: '#ef4444', borderColor: '#ef4444', padding: '0.8rem 2rem', borderRadius: '14px', boxShadow: '0 8px 20px rgba(239, 68, 68, 0.2)' }}
-                                    >Sim, Excluir</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* Modais de Confirmação Modularizados */}
+                <ConfirmModal
+                    type="webhook"
+                    isOpen={confirmModal.isOpen}
+                    isBulk={confirmModal.isBulk}
+                    name={confirmModal.webhookName}
+                    onClose={() => setConfirmModal({ ...confirmModal, isOpen: false, isBulk: false })}
+                    onConfirm={handleDeleteWebhook}
+                />
 
-                {/* Confirmação de Remoção de Follow-up Step */}
-                {confirmRemoveFU && (
-                    <div className="premium-modal-overlay">
-                        <div className="premium-modal-content compact" style={{ maxWidth: '380px' }} onClick={e => e.stopPropagation()}>
-                             <div className="modal-header-premium">
-                                 <div className="header-info">
-                                     <span className="header-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>🗑️</span>
-                                     <span className="header-title">Remover Passo</span>
-                                 </div>
-                             </div>
-                             <div style={{ padding: '2.5rem 2rem', textAlign: 'center' }}>
-                                 <p style={{ color: 'var(--wh-text-secondary)', fontSize: '1rem', marginBottom: '2rem', lineHeight: '1.6' }}>
-                                     Tem certeza que deseja remover este passo do follow-up?
-                                 </p>
-                                 <div style={{ display: 'flex', gap: '1rem' }}>
-                                     <button className="btn-action-edit" onClick={() => setConfirmRemoveFU(null)} style={{ flex: 1, padding: '0.8rem', borderRadius: '14px' }}>Não, Manter</button>
-                                     <button className="btn-action-delete" onClick={() => removeFollowupStep(confirmRemoveFU.index, confirmRemoveFU.modal)} style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '14px', fontWeight: 600, cursor: 'pointer', padding: '0.8rem', boxShadow: '0 8px 20px rgba(239, 68, 68, 0.2)' }}>Sim, Remover</button>
-                                 </div>
-                             </div>
-                        </div>
-                    </div>
-                )}
-                {/* Confirmação de Exclusão de Lead */}
-                {confirmLeadDelete.isOpen && (
-                    <div className="premium-modal-overlay">
-                        <div className="premium-modal-content compact" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
-                             <div className="modal-header-premium">
-                                 <div className="header-info">
-                                     <span className="header-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>⚠️</span>
-                                     <span className="header-title">Confirmar Exclusão</span>
-                                 </div>
-                             </div>
-                             <div style={{ padding: '2.5rem 2rem', textAlign: 'center' }}>
-                                 <p style={{ color: 'var(--wh-text-secondary)', fontSize: '1.05rem', marginBottom: '2rem', lineHeight: '1.6' }}>
-                                     {confirmLeadDelete.isBulk 
-                                         ? `Tem certeza que deseja excluir permanentemente os ${selectedLeads.size} contatos selecionados?`
-                                         : <>Tem certeza que deseja excluir o contato <strong>{confirmLeadDelete.lead?.telefone}</strong>?</>
-                                     }
-                                     <br/>
-                                     <span style={{ opacity: 0.7, fontSize: '0.9rem' }}>Esta ação é permanente e removerá todo o histórico.</span>
-                                 </p>
-                                 <div style={{ display: 'flex', gap: '1rem' }}>
-                                     <button className="btn-action-edit" onClick={() => setConfirmLeadDelete({ isOpen: false, lead: null, isBulk: false })} style={{ flex: 1, padding: '0.8rem', borderRadius: '14px' }}>Cancelar</button>
-                                     <button 
-                                         className="btn-action-delete" 
-                                         disabled={isDeletingLead}
-                                         onClick={async () => {
-                                             setIsDeletingLead(true);
-                                             try {
-                                                 const ids = confirmLeadDelete.isBulk ? Array.from(selectedLeads) : [confirmLeadDelete.lead.id];
-                                                 const res = await api.post(`/webhooks/${leadsModal.webhook.id}/leads/delete-batch`, { lead_ids: ids });
-                                                 
-                                                 if (res.ok) {
-                                                     fetchLeads(leadsModal.webhook, leadsModal.page, leadsModal.pageSize, leadsModal.search);
-                                                     if (confirmLeadDelete.isBulk) setSelectedLeads(new Set());
-                                                     setConfirmLeadDelete({ isOpen: false, lead: null, isBulk: false });
-                                                     showToast(confirmLeadDelete.isBulk ? 'Contatos excluídos!' : 'Lead excluído com sucesso!');
-                                                 } else {
-                                                     showToast('Erro ao excluir contato(s)', 'error');
-                                                 }
-                                             } catch (err) {
-                                                 console.error("Erro ao excluir leads:", err);
-                                                 showToast('Erro de conexão ao excluir contatos', 'error');
-                                             } finally {
-                                                 setIsDeletingLead(false);
-                                             }
-                                         }}
-                                         style={{ 
-                                             flex: 1, background: '#ef4444', color: '#fff', border: 'none', 
-                                             borderRadius: '14px', fontWeight: 600, cursor: isDeletingLead ? 'not-allowed' : 'pointer', 
-                                             padding: '0.8rem', boxShadow: '0 8px 20px rgba(239, 68, 68, 0.2)',
-                                             opacity: isDeletingLead ? 0.7 : 1,
-                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                         }}
-                                     >
-                                         {isDeletingLead ? (
-                                             <>
-                                                 <span className="spinner-small" style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></span>
-                                                 Excluindo...
-                                             </>
-                                         ) : 'Sim, Excluir'}
-                                     </button>
-                                 </div>
-                             </div>
-                        </div>
-                    </div>
-                )}
-                {/* Confirmação de Exclusão de Evento */}
-                {confirmEventDelete.isOpen && (
-                    <div className="premium-modal-overlay" style={{ zIndex: 1020 }}>
-                        <div className="premium-modal-content compact" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
-                             <div className="modal-header-premium">
-                                 <div className="header-info">
-                                     <span className="header-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>⚠️</span>
-                                     <span className="header-title">Excluir Mensagem</span>
-                                 </div>
-                             </div>
-                             <div style={{ padding: '2.5rem 2rem', textAlign: 'center' }}>
-                                 <p style={{ color: 'var(--wh-text-secondary)', fontSize: '1.05rem', marginBottom: '2rem', lineHeight: '1.6' }}>
-                                     {confirmEventDelete.isBulk 
-                                         ? `Tem certeza que deseja excluir permanentemente os ${selectedEvents.size} eventos selecionados?`
-                                         : <>Tem certeza que deseja excluir permanentemente a mensagem <strong>#{confirmEventDelete.event?.id}</strong>?</>
-                                     }
-                                     <br/>
-                                     <span style={{ opacity: 0.7, fontSize: '0.9rem' }}>Esta ação não pode ser desfeita.</span>
-                                 </p>
-                                 <div style={{ display: 'flex', gap: '1rem' }}>
-                                     <button className="btn-action-edit" onClick={() => setConfirmEventDelete({ isOpen: false, event: null, isBulk: false })} style={{ flex: 1, padding: '0.8rem', borderRadius: '14px' }}>Cancelar</button>
-                                     <button 
-                                         className="btn-action-delete" 
-                                         onClick={() => {
-                                             const ids = confirmEventDelete.isBulk ? Array.from(selectedEvents) : [confirmEventDelete.event.id];
-                                             api.post(`/webhooks/${selectedWebhook.id}/events/bulk-delete`, { event_ids: ids })
-                                             .then((res) => {
-                                                 if (res.ok) {
-                                                     fetchEvents(selectedWebhook);
-                                                     if (confirmEventDelete.isBulk) setSelectedEvents(new Set());
-                                                     setConfirmEventDelete({ isOpen: false, event: null, isBulk: false });
-                                                     showToast(confirmEventDelete.isBulk ? 'Eventos excluídos!' : 'Mensagem excluída!');
-                                                 } else {
-                                                     showToast('Erro ao excluir evento(s)', 'error');
-                                                 }
-                                             })
-                                             .catch(() => {
-                                                 setConfirmEventDelete({ isOpen: false, event: null, isBulk: false });
-                                                 showToast('Erro de conexão ao excluir eventos', 'error');
-                                             });
-                                         }}
-                                         style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '14px', fontWeight: 600, cursor: 'pointer', padding: '0.8rem', boxShadow: '0 8px 20px rgba(239, 68, 68, 0.2)' }}
-                                     >Sim, Excluir</button>
-                                 </div>
-                             </div>
-                        </div>
-                    </div>
-                )}
-                {/* Toast System — Agora dentro do portal para sobrepor tudo */}
-                {toast.show && (
-                    <div className={`toast-premium ${toast.type}`}>
-                        <span>{toast.type === 'error' ? '⚠️' : '✅'}</span>
-                        {toast.message}
-                    </div>
-                )}
+                <ConfirmModal
+                    type="followup"
+                    isOpen={!!confirmRemoveFU}
+                    onClose={() => setConfirmRemoveFU(null)}
+                    onConfirm={() => removeFollowupStep(confirmRemoveFU.index, confirmRemoveFU.modal)}
+                />
+
+                <ConfirmModal
+                    type="lead"
+                    isOpen={confirmLeadDelete.isOpen}
+                    isBulk={confirmLeadDelete.isBulk}
+                    name={selectedLeads.size}
+                    phone={confirmLeadDelete.lead?.telefone}
+                    isDeleting={isDeletingLead}
+                    onClose={() => setConfirmLeadDelete({ isOpen: false, lead: null, isBulk: false })}
+                    onConfirm={async () => {
+                        setIsDeletingLead(true);
+                        try {
+                            const ids = confirmLeadDelete.isBulk ? Array.from(selectedLeads) : [confirmLeadDelete.lead.id];
+                            const res = await api.post(`/webhooks/${leadsModal.webhook.id}/leads/delete-batch`, { lead_ids: ids });
+                            
+                            if (res.ok) {
+                                fetchLeads(leadsModal.webhook, leadsModal.page, leadsModal.pageSize, leadsModal.search);
+                                if (confirmLeadDelete.isBulk) setSelectedLeads(new Set());
+                                setConfirmLeadDelete({ isOpen: false, lead: null, isBulk: false });
+                                showToast(confirmLeadDelete.isBulk ? 'Contatos excluídos!' : 'Lead excluído com sucesso!');
+                            } else {
+                                showToast('Erro ao excluir contato(s)', 'error');
+                            }
+                        } catch (err) {
+                            console.error("Erro ao excluir leads:", err);
+                            showToast('Erro de conexão ao excluir contatos', 'error');
+                        } finally {
+                            setIsDeletingLead(false);
+                        }
+                    }}
+                />
+
+                <ConfirmModal
+                    type="event"
+                    isOpen={confirmEventDelete.isOpen}
+                    isBulk={confirmEventDelete.isBulk}
+                    name={selectedEvents.size}
+                    id={confirmEventDelete.event?.id}
+                    onClose={() => setConfirmEventDelete({ isOpen: false, event: null, isBulk: false })}
+                    onConfirm={() => {
+                        const ids = confirmEventDelete.isBulk ? Array.from(selectedEvents) : [confirmEventDelete.event.id];
+                        api.post(`/webhooks/${selectedWebhook.id}/events/bulk-delete`, { event_ids: ids })
+                        .then((res) => {
+                            if (res.ok) {
+                                fetchEvents(selectedWebhook);
+                                if (confirmEventDelete.isBulk) setSelectedEvents(new Set());
+                                setConfirmEventDelete({ isOpen: false, event: null, isBulk: false });
+                                showToast(confirmEventDelete.isBulk ? 'Eventos excluídos!' : 'Mensagem excluída!');
+                            } else {
+                                showToast('Erro ao excluir evento(s)', 'error');
+                            }
+                        })
+                        .catch(() => {
+                            setConfirmEventDelete({ isOpen: false, event: null, isBulk: false });
+                            showToast('Erro de conexão ao excluir eventos', 'error');
+                        });
+                    }}
+                />
+
             </div>,
             document.body
         )}

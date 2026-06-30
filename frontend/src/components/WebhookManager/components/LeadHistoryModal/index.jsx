@@ -7,6 +7,7 @@ import AutomationPipelineModal from '../AutomationPipelineModal';
 // Import subcomponents
 import LeadHistoryTableRow from './components/LeadHistoryTableRow';
 import ConfirmDeleteModal from './components/ConfirmDeleteModal';
+import ConfirmRetryModal from './components/ConfirmRetryModal';
 import MaximizedTextModal from './components/MaximizedTextModal';
 
 const LeadHistoryModal = ({
@@ -21,6 +22,7 @@ const LeadHistoryModal = ({
     const [limit, setLimit] = useState(20);
     const [selectedPipelineEvent, setSelectedPipelineEvent] = useState(null);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, eventId: null });
+    const [confirmRetry, setConfirmRetry] = useState({ isOpen: false, eventId: null });
     const [maximizedText, setMaximizedText] = useState(null);
     const [retryingEvents, setRetryingEvents] = useState(new Set());
 
@@ -71,14 +73,21 @@ const LeadHistoryModal = ({
         }
     };
 
-    const handleRetryEvent = async (eventId) => {
-        if (retryingEvents.has(eventId)) return;
+    const handleRetryEvent = (eventId) => {
+        setConfirmRetry({ isOpen: true, eventId });
+    };
+
+    const confirmRetryEvent = async () => {
+        const eventId = confirmRetry.eventId;
+        if (!eventId || retryingEvents.has(eventId)) return;
 
         setRetryingEvents(prev => {
             const next = new Set(prev);
             next.add(eventId);
             return next;
         });
+
+        setConfirmRetry({ isOpen: false, eventId: null });
 
         try {
             const res = await api.post(`/webhooks/${webhook.id}/events/${eventId}/retry`);
@@ -102,69 +111,109 @@ const LeadHistoryModal = ({
         }
     };
 
-    // Conexão WebSocket para atualização em tempo real
+    // Polling automático silencioso para atualizar a lista enquanto houver mensagens em processamento
+    useEffect(() => {
+        const hasProcessingEvent = events.some(evt => evt.status === 'processing' || (!evt.agent_response && evt.dono !== 'agente' && evt.dono !== 'bot'));
+        if (!hasProcessingEvent) return;
+
+        const interval = setInterval(async () => {
+            if (!webhook || !webhook.id) return;
+            try {
+                const cleanPhone = (lead.telefone || '').replace('+', '');
+                const res = await api.get(`/webhooks/${webhook.id}/events?search=${cleanPhone}&page=${page}&limit=${limit}&event_type=all`);
+                const data = await res.json();
+                setEvents(data.items || data.events || []);
+                setTotal(data.total || 0);
+            } catch (e) {
+                console.error('Erro no polling silencioso:', e);
+            }
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [events, page, limit, webhook, lead.telefone]);
+
+    // Conexão WebSocket para atualização em tempo real com auto-reconexão
     useEffect(() => {
         if (!webhook || !webhook.id) return;
         
-        const wsUrl = API_URL.replace('http', 'ws') + '/ws/events';
         let ws;
+        let reconnectTimeout;
+        const cleanPhone = (lead.telefone || '').replace('+', '');
         
-        try {
-            ws = new WebSocket(wsUrl);
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'new_event' && data.webhook_id === webhook.id) {
-                        const cleanPhone = (lead.telefone || '').replace('+', '');
-                        const eventPhone = (data.event.telefone || '').replace('+', '');
-                        
-                        if (eventPhone === cleanPhone) {
-                            setEvents(prev => {
-                                if (prev.some(e => e.id === data.event.id)) return prev;
-                                return [data.event, ...prev];
-                            });
-                            setTotal(prev => prev + 1);
-                        }
-                    } else if (data.type === 'status_update' && data.webhook_id === webhook.id) {
-                        setEvents(prev => prev.map(evt => {
-                            if (evt.id === data.event_id) {
-                                return {
-                                    ...evt,
-                                    status: data.status,
-                                    processing_steps: JSON.stringify(data.steps)
-                                };
+        const connectWS = () => {
+            const wsUrl = API_URL.replace('http', 'ws') + '/ws/events';
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'new_event' && data.webhook_id === webhook.id) {
+                            const eventPhone = (data.event.telefone || '').replace('+', '');
+                            if (eventPhone === cleanPhone) {
+                                setEvents(prev => {
+                                    if (prev.some(e => e.id === data.event.id)) return prev;
+                                    return [data.event, ...prev];
+                                });
+                                setTotal(prev => prev + 1);
                             }
-                            return evt;
-                        }));
+                        } else if (data.type === 'status_update' && data.webhook_id === webhook.id) {
+                            setEvents(prev => prev.map(evt => {
+                                if (evt.id === data.event_id) {
+                                    return {
+                                        ...evt,
+                                        status: data.status,
+                                        processing_steps: JSON.stringify(data.steps)
+                                    };
+                                }
+                                return evt;
+                            }));
 
-                        if (['completed', 'error', 'ignored'].includes(data.status)) {
-                            api.get(`/webhooks/${webhook.id}/events/${data.event_id}`)
-                                .then(res => res.json())
-                                .then(updatedEvent => {
-                                    setEvents(prev => prev.map(evt => {
-                                        if (evt.id === data.event_id) {
-                                            return {
-                                                ...evt,
-                                                ...updatedEvent
-                                            };
-                                        }
-                                        return evt;
-                                    }));
-                                })
-                                .catch(err => console.error("Erro ao buscar detalhes do evento pós-update:", err));
+                            if (['completed', 'error', 'ignored'].includes(data.status)) {
+                                api.get(`/webhooks/${webhook.id}/events/${data.event_id}`)
+                                    .then(res => res.json())
+                                    .then(updatedEvent => {
+                                        setEvents(prev => prev.map(evt => {
+                                            if (evt.id === data.event_id) {
+                                                return {
+                                                    ...evt,
+                                                    ...updatedEvent
+                                                };
+                                            }
+                                            return evt;
+                                        }));
+                                    })
+                                    .catch(err => console.error("Erro ao buscar detalhes do evento pós-update:", err));
+                            }
                         }
+                    } catch (e) {
+                        console.error('Erro ao processar mensagem WS:', e);
                     }
-                } catch (e) {
-                    console.error('Erro ao processar mensagem WS:', e);
-                }
-            };
-            ws.onerror = (err) => console.error('Erro WS:', err);
-        } catch (e) {
-            console.error('Falha ao conectar WS:', e);
-        }
+                };
+
+                ws.onclose = () => {
+                    // Tentar reconectar em 5 segundos se o modal ainda estiver aberto
+                    reconnectTimeout = setTimeout(connectWS, 5000);
+                };
+
+                ws.onerror = (err) => {
+                    console.error('Erro WS:', err);
+                    ws.close();
+                };
+            } catch (e) {
+                console.error('Falha ao conectar WS:', e);
+                reconnectTimeout = setTimeout(connectWS, 5000);
+            }
+        };
+
+        connectWS();
 
         return () => {
-            if (ws) ws.close();
+            if (ws) {
+                ws.onclose = null; // desativa callback para não disparar reconexão ao fechar
+                ws.close();
+            }
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
         };
     }, [webhook.id, lead.telefone]);
 
@@ -311,6 +360,13 @@ const LeadHistoryModal = ({
                     eventId={confirmDelete.eventId}
                     onCancel={() => setConfirmDelete({ isOpen: false, eventId: null })}
                     onConfirm={confirmDeleteEvent}
+                />
+
+                <ConfirmRetryModal
+                    isOpen={confirmRetry.isOpen}
+                    eventId={confirmRetry.eventId}
+                    onCancel={() => setConfirmRetry({ isOpen: false, eventId: null })}
+                    onConfirm={confirmRetryEvent}
                 />
 
                 <MaximizedTextModal

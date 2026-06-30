@@ -43,9 +43,45 @@ const QuestionCard = ({ question, index }) => {
                     />
                 </label>
                 <span className="uq-badge">⚠️ Pendente</span>
+                {question.source && (
+                    <span 
+                        className="uq-badge" 
+                        style={{
+                            background: question.source === 'chatwoot' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: question.source === 'chatwoot' ? '#818cf8' : '#34d399',
+                            border: '1px solid rgba(255, 255, 255, 0.05)'
+                        }}
+                    >
+                        {question.source === 'chatwoot' ? '💬 Chatwoot' : '💻 Chat'}
+                    </span>
+                )}
                 {question.session_id && (
                     <span className="uq-phone-tag">
                         📞 {cleanPhoneNumber(question.session_id)}
+                        {question.session_id_raw && question.session_id_raw !== question.session_id && (
+                            <span style={{ opacity: 0.6, fontSize: '0.62rem', marginLeft: '4px' }}>
+                                (ID: {question.session_id_raw})
+                            </span>
+                        )}
+                    </span>
+                )}
+                {question.chat_session_id && (
+                    <span 
+                        className="uq-session-tag"
+                        title={`ID da sessão: ${question.chat_session_id}`}
+                        style={{
+                            background: 'rgba(251, 191, 36, 0.12)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(251, 191, 36, 0.2)',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.7rem',
+                            fontFamily: 'monospace',
+                            letterSpacing: '0.04em',
+                            cursor: 'default'
+                        }}
+                    >
+                        🔑 Sessão: {question.chat_session_id}
                     </span>
                 )}
                 {question.agent_id && <span className="uq-agent-tag">🤖 Agente #{question.agent_id}</span>}

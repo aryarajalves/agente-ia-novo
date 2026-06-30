@@ -49,17 +49,43 @@ const OutlineSidebar = () => {
     return (
         <div className="outline-sidebar">
             <div className="sidebar-title">Tópicos do Prompt</div>
-            <div className="outline-items">
-                {promptOutline.map((item, idx) => (
-                    <div 
-                        key={idx} 
-                        className={`outline-item level-${item.level} ${activeSection === idx ? 'active' : ''}`}
-                        onClick={() => scrollToSection(item, idx)}
-                    >
-                        {item.text}
+            {promptOutline.length === 0 ? (
+                <div className="empty-outline-container">
+                    <div className="empty-outline-icon">📌</div>
+                    <div className="empty-outline-title">Sem tópicos ainda</div>
+                    <p className="empty-outline-text">
+                        Crie um índice interativo de tópicos para navegar facilmente pelo seu prompt.
+                    </p>
+                    <div className="empty-outline-guide">
+                        <div className="guide-subtitle">Como criar tópicos:</div>
+                        <p className="guide-step">
+                            Adicione o símbolo <code>#</code> seguido de um espaço no início de qualquer linha do seu prompt.
+                        </p>
+                        <div className="guide-examples">
+                            <div className="example-item">
+                                <code># 1. Saudação</code>
+                                <span className="example-desc">Tópico Principal</span>
+                            </div>
+                            <div className="example-item">
+                                <code>## Regras de Preço</code>
+                                <span className="example-desc">Subtópico</span>
+                            </div>
+                        </div>
                     </div>
-                ))}
-            </div>
+                </div>
+            ) : (
+                <div className="outline-items">
+                    {promptOutline.map((item, idx) => (
+                        <div 
+                            key={idx} 
+                            className={`outline-item level-${item.level} ${activeSection === idx ? 'active' : ''}`}
+                            onClick={() => scrollToSection(item, idx)}
+                        >
+                            {item.text}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

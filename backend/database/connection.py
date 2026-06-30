@@ -41,7 +41,7 @@ async_session = async_sessionmaker(
 )
 
 # Engine Síncrono (Celery / Scripts)
-SYNC_DATABASE_URL = DATABASE_URL.replace("+asyncpg", "")
+SYNC_DATABASE_URL = DATABASE_URL.replace("+asyncpg", "").replace("+aiosqlite", "")
 engine_sync = create_engine(SYNC_DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine_sync)
 

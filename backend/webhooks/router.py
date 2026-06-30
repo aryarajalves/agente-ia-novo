@@ -3,6 +3,7 @@ import uuid
 import json
 import logging
 import os
+import asyncio
 import httpx
 import tempfile
 import redis as redis_lib
@@ -15,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from core.timezone import get_now_br, get_now_utc
 
 from database import get_db, engine
+from api.deps import verify_api_key
 from core.websocket import manager
 from models import (
     WebhookConfigModel, WebhookEventModel, InteractionLog, 
@@ -52,9 +54,9 @@ class WebhookConfigCreate(BaseModel):
     agent_id: Optional[int] = None
     blocked_messages: List[str] = []
     allowed_contacts: List[str] = []
-    chatwoot_url: Optional[str] = None
-    chatwoot_api_token: Optional[str] = None
-    chatwoot_inbox_id: Optional[str] = None
+    zapvoice_url: Optional[str] = None
+    zapvoice_api_token: Optional[str] = None
+    zapvoice_client_id: Optional[str] = None
     labels_on_message: List[str] = []
     delete_keywords: List[str] = []
     delete_message: Optional[str] = None
@@ -81,6 +83,11 @@ class WebhookConfigCreate(BaseModel):
     token: Optional[str] = None
     memory_token: Optional[str] = None
     secondary_agent_ids: List[int] = []
+    project_assistant_label: Optional[str] = None
+    project_assistant_keyword: Optional[str] = None
+    project_assistant_deactivate_keyword: Optional[str] = None
+    project_assistant_entry_message: Optional[str] = None
+    project_assistant_exit_message: Optional[str] = None
 
 class WebhookConfigResponse(BaseModel):
     id: int
@@ -94,9 +101,9 @@ class WebhookConfigResponse(BaseModel):
     agent_id: Optional[int] = None
     blocked_messages: Union[List[str], Any, None] = []
     allowed_contacts: Union[List[str], Any, None] = []
-    chatwoot_url: Optional[str] = None
-    chatwoot_api_token: Optional[str] = None
-    chatwoot_inbox_id: Optional[str] = None
+    zapvoice_url: Optional[str] = None
+    zapvoice_api_token: Optional[str] = None
+    zapvoice_client_id: Optional[str] = None
     labels_on_message: Union[List[str], Any, None] = []
     delete_keywords: Union[List[str], Any, None] = []
     delete_message: Optional[str] = None
@@ -120,6 +127,11 @@ class WebhookConfigResponse(BaseModel):
     ai_handoff_keyword: Optional[str] = None
     ai_handoff_message: Optional[str] = None
     secondary_agent_ids: Union[List[int], Any, None] = []
+    project_assistant_label: Optional[str] = None
+    project_assistant_keyword: Optional[str] = None
+    project_assistant_deactivate_keyword: Optional[str] = None
+    project_assistant_entry_message: Optional[str] = None
+    project_assistant_exit_message: Optional[str] = None
     created_at: Optional[datetime] = None
 
     @field_validator(
@@ -151,9 +163,9 @@ class WebhookConfigUpdate(BaseModel):
     agent_id: Optional[int] = None
     blocked_messages: Optional[List[str]] = None
     allowed_contacts: Optional[List[str]] = None
-    chatwoot_url: Optional[str] = None
-    chatwoot_api_token: Optional[str] = None
-    chatwoot_inbox_id: Optional[str] = None
+    zapvoice_url: Optional[str] = None
+    zapvoice_api_token: Optional[str] = None
+    zapvoice_client_id: Optional[str] = None
     labels_on_message: Optional[List[str]] = None
     delete_keywords: Optional[List[str]] = None
     delete_message: Optional[str] = None
@@ -180,6 +192,11 @@ class WebhookConfigUpdate(BaseModel):
     token: Optional[str] = None
     memory_token: Optional[str] = None
     secondary_agent_ids: Optional[List[int]] = None
+    project_assistant_label: Optional[str] = None
+    project_assistant_keyword: Optional[str] = None
+    project_assistant_deactivate_keyword: Optional[str] = None
+    project_assistant_entry_message: Optional[str] = None
+    project_assistant_exit_message: Optional[str] = None
 
 class LeadHistoryItem(BaseModel):
     id: int
@@ -331,6 +348,19 @@ async def delete_webhook(webhook_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(config)
     await db.commit()
 
+@router.get("/receive/{token}", status_code=200)
+async def check_webhook_active(token: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(WebhookConfigModel).where(WebhookConfigModel.token == token, WebhookConfigModel.is_active == True))
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=404, detail="Webhook inativo ou token inválido")
+    
+    return {
+        "status": "online",
+        "webhook_name": config.name,
+        "message": f"O webhook '{config.name}' está ativo e pronto para receber requisições POST!"
+    }
+
 @router.post("/receive/{token}", status_code=200)
 async def receive_webhook(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(WebhookConfigModel).where(WebhookConfigModel.token == token, WebhookConfigModel.is_active == True))
@@ -341,78 +371,98 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
     except: raise HTTPException(status_code=400, detail="JSON inválido")
 
     # Extração Básica e Completa
-    conv = body.get("conversation", {}) or {}
-    sender = body.get("sender", {}) or {}
-    inbox = body.get("inbox", {}) or {}
-    account = body.get("account", {}) or {}
-    is_out = str(body.get("message_type")) in ("1", "outgoing")
-    if is_out and "meta" in conv: sender = conv["meta"].get("sender", sender)
+    is_zapvoice = "event" in body and "message" in body and "contact" in body
+    if is_zapvoice:
+        zap_msg = body.get("message", {}) or {}
+        zap_contact = body.get("contact", {}) or {}
+        sender_type = zap_msg.get("sender_type", "contact")
+        
+        is_out = sender_type in ("user", "system")
+        phone = normalize_phone(str(zap_contact.get("phone") or ""))
+        msg_id = str(zap_msg.get("id") or "")
+        
+        labels_raw = zap_contact.get("labels", [])
+        if not labels_raw:
+            labels_raw = body.get("labels", [])
+        labels_str = json.dumps(labels_raw) if isinstance(labels_raw, list) else str(labels_raw or "[]")
+        
+        content_type = zap_msg.get("message_type", "text")
+        
+        media_url_raw = str(zap_msg.get("media_url") or "")
+        if media_url_raw.startswith("media_id:"):
+            media_id = media_url_raw.split("media_id:")[1]
+            zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+            if zv_url and not zv_url.endswith("/api"):
+                zv_url = f"{zv_url}/api"
+            zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
+            client_id = str(body.get("client_id") or "")
+            media_url_raw = f"{zv_url}/chat/media/{media_id}?client_id={client_id}&token={zv_token}"
+        
+        extracted = {
+            "conta_id": str(body.get("client_id") or ""),
+            "inbox_id": str(body.get("client_id") or ""),
+            "inbox_nome": "ZapVoice Canal",
+            "conversa_id": str(zap_msg.get("conversation_id") or ""),
+            "mensagem_id": msg_id,
+            "contato_id": str(zap_contact.get("phone") or ""),
+            "telefone": phone,
+            "contato_nome": str(zap_contact.get("name") or "Contato Desconhecido"),
+            "mensagem": str(zap_msg.get("content") or ""),
+            "labels": labels_str,
+            "link": media_url_raw,
+            "dono": "agente" if is_out else "usuario",
+            "message_type": content_type
+        }
+    else:
+        conv = body.get("conversation", {}) or {}
+        sender = body.get("sender", {}) or {}
+        inbox = body.get("inbox", {}) or {}
+        account = body.get("account", {}) or {}
+        is_out = str(body.get("message_type")) in ("1", "outgoing")
+        if is_out and "meta" in conv: sender = conv["meta"].get("sender", sender)
 
-    phone = normalize_phone(str(sender.get("phone_number") or ""))
-    msg_id = str(body.get("id") or "")
-    
-    # Extrair etiquetas se disponíveis
-    labels_raw = body.get("labels", [])
-    if not labels_raw and conv:
-        labels_raw = conv.get("labels", [])
-    labels_str = json.dumps(labels_raw) if isinstance(labels_raw, list) else str(labels_raw or "[]")
+        phone = normalize_phone(str(sender.get("phone_number") or ""))
+        msg_id = str(body.get("id") or "")
+        
+        # Extrair etiquetas se disponíveis
+        labels_raw = body.get("labels", [])
+        if not labels_raw and conv:
+            labels_raw = conv.get("labels", [])
+        labels_str = json.dumps(labels_raw) if isinstance(labels_raw, list) else str(labels_raw or "[]")
 
-    if msg_id:
-        dup = await db.execute(select(WebhookEventModel).where(WebhookEventModel.webhook_config_id == config.id, WebhookEventModel.mensagem_id == msg_id))
-        if dup.scalar(): 
-            logger.info(f"Mensagem duplicada ignorada: {msg_id}")
-            return {"ok": True, "status": "duplicate"}
+        # Detecção refinada do tipo de conteúdo (Chatwoot)
+        attachments = body.get("attachments", [])
+        content_type = "text"
+        if attachments and len(attachments) > 0:
+            file_type = attachments[0].get("file_type", "")
+            if "image" in file_type: content_type = "image"
+            elif "audio" in file_type: content_type = "audio"
+            elif "video" in file_type: content_type = "video"
+            elif "file" in file_type or "application" in file_type: content_type = "document"
+            else: content_type = file_type or "file"
 
-    # Filtro por contatos permitidos (Allowed Contacts)
-    if config.allowed_contacts and not is_out:
-        try:
-            allowed_list = json.loads(config.allowed_contacts) if isinstance(config.allowed_contacts, str) else config.allowed_contacts
-            if isinstance(allowed_list, list) and len(allowed_list) > 0:
-                # Normalizar lista para comparação
-                allowed_list_norm = [str(x).strip().lower() for x in allowed_list]
-                
-                # Nome do contato (se disponível)
-                contact_name = str(sender.get("name") or "").lower().strip()
-                
-                # Verificar se o telefone ou o nome estão na lista
-                if phone not in allowed_list_norm and contact_name not in allowed_list_norm:
-                    logger.info(f"🚫 [BLOQUEIO DE SEGURANÇA] A automação NÃO funcionou para o contato {phone} ({contact_name}) porque ele não possui permissão (não está na lista de contatos permitidos).")
-                    return {"ok": True, "status": "blocked", "reason": "contact not in allowed list"}
-        except Exception as e:
-            logger.error(f"Erro ao processar lista de contatos permitidos: {e}")
-
-    # Detecção refinada do tipo de conteúdo (Chatwoot)
-    attachments = body.get("attachments", [])
-    content_type = "text"
-    if attachments and len(attachments) > 0:
-        file_type = attachments[0].get("file_type", "")
-        if "image" in file_type: content_type = "image"
-        elif "audio" in file_type: content_type = "audio"
-        elif "video" in file_type: content_type = "video"
-        elif "file" in file_type or "application" in file_type: content_type = "document"
-        else: content_type = file_type or "file"
-
-    extracted = {
-        "conta_id": str(body.get("account_id") or account.get("id") or conv.get("account_id") or ""),
-        "inbox_id": str(inbox.get("id") or body.get("inbox_id") or conv.get("inbox_id") or ""),
-        "inbox_nome": str(inbox.get("name") or ""),
-        "conversa_id": str(conv.get("id") or body.get("conversation_id") or ""),
-        "mensagem_id": msg_id,
-        "contato_id": str(sender.get("id") or body.get("contact_id") or ""),
-        "telefone": phone,
-        "contato_nome": str(sender.get("name") or "Contato Desconhecido"),
-        "mensagem": str(body.get("content") or (body.get("message", {}) or {}).get("content") or ""),
-        "labels": labels_str,
-        "link": str(attachments[0].get("data_url") if attachments else ""),
-        "dono": "agente" if is_out else "usuario",
-        "message_type": content_type
-    }
+        extracted = {
+            "conta_id": str(body.get("account_id") or account.get("id") or conv.get("account_id") or ""),
+            "inbox_id": str(inbox.get("id") or body.get("inbox_id") or conv.get("inbox_id") or ""),
+            "inbox_nome": str(inbox.get("name") or ""),
+            "conversa_id": str(conv.get("id") or body.get("conversation_id") or ""),
+            "mensagem_id": msg_id,
+            "contato_id": str(sender.get("id") or body.get("contact_id") or ""),
+            "telefone": phone,
+            "contato_nome": str(sender.get("name") or "Contato Desconhecido"),
+            "mensagem": str(body.get("content") or (body.get("message", {}) or {}).get("content") or ""),
+            "labels": labels_str,
+            "link": str(attachments[0].get("data_url") if attachments else ""),
+            "dono": "agente" if is_out else "usuario",
+            "message_type": content_type
+        }
     
     logger.info(f"📩 Webhook: {config.name} | De: {phone} | Msg: {extracted['mensagem'][:30]}... | Account: {extracted['conta_id']} | Inbox: {extracted['inbox_id']} | Conv: {extracted['conversa_id']} | Contact: {extracted['contato_id']}")
 
-    # Filtro por ID do Inbox do Chatwoot (se configurado)
-    if config.chatwoot_inbox_id and str(extracted.get("inbox_id") or "").strip() != str(config.chatwoot_inbox_id).strip():
-        logger.info(f"⏭️ Webhook ignorado: inbox_id '{extracted.get('inbox_id')}' não corresponde ao configurado '{config.chatwoot_inbox_id}'")
+    # Filtro por ID do Cliente do ZapVoice (ou ID do Inbox do Chatwoot legado)
+    target_client_id = config.zapvoice_client_id or getattr(config, 'chatwoot_inbox_id', None)
+    if target_client_id and str(extracted.get("inbox_id") or "").strip() != str(target_client_id).strip():
+        logger.info(f"⏭️ Webhook ignorado: inbox_id '{extracted.get('inbox_id')}' não corresponde ao configurado '{target_client_id}'")
         return {"ok": True, "status": "ignored_inbox"}
 
     # --- FILTRO DE MENSAGENS DE SAÍDA (ECHO) ---
@@ -766,11 +816,43 @@ async def get_lead_history(webhook_id: int, phone: str, page: int = 1, page_size
     if not config: raise HTTPException(status_code=404, detail="Webhook não encontrado")
     
     offset = (page - 1) * page_size
-    query = text(f"SELECT id, contato_id, telefone, mensagem, dono, created_at FROM {config.leads_table} WHERE webhook_config_id = :wid AND telefone = :tel ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
+    query = text("SELECT id, contato_id, telefone, mensagem, dono, created_at, agent_response FROM webhook_events WHERE webhook_config_id = :wid AND telefone = :tel ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
     res = await db.execute(query, {"wid": webhook_id, "tel": phone, "limit": page_size, "offset": offset})
     rows = res.fetchall()
     
-    items = [LeadHistoryItem(id=r[0], contato_id=r[1], telefone=r[2], conteudo=r[3], dono="Humano" if r[4]=="cliente" else "Agente", timestamp=r[5], index=offset+i+1) for i, r in enumerate(rows)]
+    # Processar as mensagens individuais (mensagem e agent_response se existirem)
+    items = []
+    for r in rows:
+        evt_id, contato_id, telefone, mensagem, dono, created_at, agent_response = r
+        # Mensagem do usuário
+        if mensagem:
+            items.append(LeadHistoryItem(
+                id=evt_id,
+                contato_id=contato_id,
+                telefone=telefone,
+                conteudo=mensagem,
+                dono="Humano" if (dono and dono.lower() in ["cliente", "usuario"]) or not dono else "Agente",
+                timestamp=created_at,
+                index=0  # Será indexado depois
+            ))
+        # Resposta do bot/agente
+        if agent_response:
+            items.append(LeadHistoryItem(
+                id=evt_id,
+                contato_id=contato_id,
+                telefone=telefone,
+                conteudo=agent_response,
+                dono="Agente",
+                timestamp=created_at,
+                index=0  # Será indexado depois
+            ))
+            
+    # Inverter para ordem cronológica inversa (mais novos no topo, indexados crescentemente do início)
+    items.reverse()
+    for idx, item in enumerate(items):
+        item.index = idx + offset + 1
+    items.reverse()
+    
     return LeadHistoryResponse(total=len(items), page=page, page_size=page_size, items=items)
 
 @router.post("/{webhook_id}/events/bulk-delete", status_code=204)
@@ -812,7 +894,15 @@ async def retry_webhook_event_endpoint(webhook_id: int, event_id: int, db: Async
         raise HTTPException(status_code=404, detail="Evento de webhook não encontrado")
         
     if event.status == "processing":
-        raise HTTPException(status_code=400, detail="Este evento já está sendo processado no momento.")
+        # Se estiver em processamento por mais de 2 minutos, permitimos reprocessar (timeout de segurança)
+        from datetime import timezone
+        last_update = event.updated_at or event.created_at
+        if last_update.tzinfo is None:
+            last_update = last_update.replace(tzinfo=timezone.utc)
+        
+        time_elapsed = get_now_utc() - last_update
+        if time_elapsed.total_seconds() < 120:
+            raise HTTPException(status_code=400, detail="Este evento já está sendo processado no momento.")
         
     # Importar Celery task de forma lazy para evitar imports circulares
     from webhook_tasks import process_webhook_automation
@@ -864,6 +954,7 @@ async def list_webhook_leads(
     janela_aberta: Optional[bool] = None,
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
+    sem_mensagem: Optional[bool] = None,
     db: AsyncSession = Depends(get_db)
 ):
     config = await db.get(WebhookConfigModel, webhook_id)
@@ -873,6 +964,9 @@ async def list_webhook_leads(
     where_clauses = ["webhook_config_id = :wid"]
     params = {"wid": webhook_id, "limit": page_size, "offset": offset}
     
+    is_sqlite = db.bind.dialect.name == "sqlite"
+    interval_expr = "datetime('now', '-24 hours')" if is_sqlite else "(NOW() - INTERVAL '24 hours')"
+    
     if q:
         where_clauses.append("(telefone LIKE :q OR contato_nome ILIKE :q)")
         params["q"] = f"%{q}%"
@@ -881,9 +975,28 @@ async def list_webhook_leads(
         params["pe"] = pode_enviar
     if janela_aberta is not None:
         if janela_aberta:
-            where_clauses.append("(ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= (NOW() - INTERVAL '24 hours'))")
+            where_clauses.append(f"(ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= {interval_expr})")
         else:
-            where_clauses.append("(ultima_mensagem_em IS NULL OR ultima_mensagem_em < (NOW() - INTERVAL '24 hours'))")
+            where_clauses.append(f"(ultima_mensagem_em IS NULL OR ultima_mensagem_em < {interval_expr})")
+    if sem_mensagem is not None:
+        if sem_mensagem:
+            where_clauses.append(f"""
+                NOT EXISTS (
+                    SELECT 1 FROM webhook_events 
+                    WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone)
+                    AND webhook_events.webhook_config_id = :wid 
+                    AND webhook_events.dono = 'usuario'
+                )
+            """)
+        else:
+            where_clauses.append(f"""
+                EXISTS (
+                    SELECT 1 FROM webhook_events 
+                    WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone)
+                    AND webhook_events.webhook_config_id = :wid 
+                    AND webhook_events.dono = 'usuario'
+                )
+            """)
     if date_start:
         where_clauses.append("created_at >= :ds")
         params["ds"] = date_start
@@ -901,8 +1014,14 @@ async def list_webhook_leads(
     query = text(f"""
         SELECT *, 
                pode_enviar_mensagem AS pode_enviar,
-               (ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= (NOW() - INTERVAL '24 hours')) AS janela_24h_aberta,
-               (SELECT COUNT(*) FROM webhook_events WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone) AND webhook_events.webhook_config_id = :wid) AS total_disparos
+               (ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= {interval_expr}) AS janela_24h_aberta,
+               (SELECT COUNT(*) FROM webhook_events WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone) AND webhook_events.webhook_config_id = :wid) AS total_disparos,
+               (NOT EXISTS (
+                   SELECT 1 FROM webhook_events 
+                   WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone)
+                   AND webhook_events.webhook_config_id = :wid 
+                   AND webhook_events.dono = 'usuario'
+               )) AS sem_mensagem_usuario
         FROM {config.leads_table} 
         WHERE {where_str} 
         ORDER BY updated_at DESC 
@@ -911,7 +1030,45 @@ async def list_webhook_leads(
     logger.info(f"📊 Buscando leads para webhook {webhook_id} na tabela {config.leads_table} (Page: {page}, Size: {page_size}, Search: {q})")
     res = await db.execute(query, params)
     columns = res.keys()
-    leads = [dict(zip(columns, row)) for row in res.fetchall()]
+    leads = []
+    for row in res.fetchall():
+        lead_dict = dict(zip(columns, row))
+        lead_dict["janela_24h_aberta"] = bool(lead_dict.get("janela_24h_aberta"))
+        lead_dict["sem_mensagem_usuario"] = bool(lead_dict.get("sem_mensagem_usuario"))
+        leads.append(lead_dict)
+    
+    # Sincronizar etiquetas de forma transparente e em tempo real com o ZapVoice
+    zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+    if zv_url and not zv_url.endswith("/api"):
+        zv_url = f"{zv_url}/api"
+    zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
+    
+    if zv_url and zv_token and leads:
+        from zapvoice_utils import sync_conversation_labels
+        
+        async def sync_lead_labels(lead):
+            c_id = lead.get("inbox_id")
+            conv_id = lead.get("conversa_id")
+            if c_id and conv_id:
+                try:
+                    success, final_labels = await sync_conversation_labels(
+                        zapvoice_url=zv_url,
+                        client_id=str(c_id),
+                        conversation_id=int(conv_id),
+                        token=zv_token
+                    )
+                    if success:
+                        lead["labels"] = json.dumps(final_labels, ensure_ascii=False)
+                        update_q = text(f"UPDATE {config.leads_table} SET labels = :labels, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+                        await db.execute(update_q, {
+                            "labels": json.dumps(final_labels, ensure_ascii=False),
+                            "id": lead["id"]
+                        })
+                except Exception as e_sync:
+                    logger.error(f"Erro ao auto-sincronizar etiquetas do lead {lead['id']}: {e_sync}")
+        
+        await asyncio.gather(*(sync_lead_labels(l) for l in leads))
+        await db.commit()
     
     logger.info(f"✅ Encontrados {len(leads)} leads de um total de {total}.")
     return {"total": total, "leads": leads}
@@ -1016,22 +1173,22 @@ async def sync_all_leads_endpoint(webhook_id: int, db: AsyncSession = Depends(ge
     if not config: 
         raise HTTPException(status_code=404, detail="Webhook não encontrado")
         
-    cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-    cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
+    zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+    zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
     
-    if not cw_url or not cw_token:
-        raise HTTPException(status_code=400, detail="Configurações ou credenciais do Chatwoot não configuradas")
+    if not zv_url or not zv_token:
+        raise HTTPException(status_code=400, detail="Configurações ou credenciais do ZapVoice não configuradas")
         
     if not config.leads_table:
         return {"ok": False, "message": "Tabela de leads não configurada para este webhook"}
         
     try:
         # Buscar todos os leads vinculados ao webhook
-        query = text(f"SELECT id, conta_id, conversa_id FROM {config.leads_table} WHERE webhook_config_id = :wid")
+        query = text(f"SELECT id, inbox_id, conversa_id FROM {config.leads_table} WHERE webhook_config_id = :wid")
         res = await db.execute(query, {"wid": webhook_id})
         leads = res.fetchall()
         
-        from chatwoot_utils import sync_conversation_labels
+        from zapvoice_utils import sync_conversation_labels
         
         semaphore = asyncio.Semaphore(5)
         updated_count = 0
@@ -1041,10 +1198,10 @@ async def sync_all_leads_endpoint(webhook_id: int, db: AsyncSession = Depends(ge
             async with semaphore:
                 try:
                     success, final_labels = await sync_conversation_labels(
-                        cw_url=cw_url,
-                        account_id=int(c_id),
+                        zapvoice_url=zv_url,
+                        client_id=str(c_id),
                         conversation_id=int(conv_id),
-                        token=cw_token
+                        token=zv_token
                     )
                     if success:
                         update_q = text(f"UPDATE {config.leads_table} SET labels = :labels, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
@@ -1086,3 +1243,7 @@ async def get_webhook_event_detail(webhook_id: int, event_id: int, db: AsyncSess
         "created_at": event.created_at,
         "server_now": get_now_br()
     }
+
+
+# End of webhooks router
+

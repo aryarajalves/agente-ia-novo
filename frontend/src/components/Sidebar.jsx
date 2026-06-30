@@ -152,7 +152,7 @@ const Sidebar = ({ onLogout }) => {
                                 </NavLink>
                             </div>
 
-                            {(isSuperAdmin || isAdmin) && (
+                            {(isSuperAdmin || isAdmin) ? (
                                 <>
                                     <div className="nav-section">
                                         <span className="nav-section-title">ATENDIMENTO</span>
@@ -182,6 +182,14 @@ const Sidebar = ({ onLogout }) => {
                                         >
                                             <span className="nav-icon">🔥</span>
                                             <span className="nav-label">Lead Scoring</span>
+                                            <div className="active-indicator"></div>
+                                        </NavLink>
+                                        <NavLink
+                                            to="/ranking-duvidas"
+                                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                        >
+                                            <span className="nav-icon">🏆</span>
+                                            <span className="nav-label">Ranking de Dúvidas</span>
                                             <div className="active-indicator"></div>
                                         </NavLink>
                                     </div>
@@ -222,9 +230,23 @@ const Sidebar = ({ onLogout }) => {
                                         </NavLink>
                                     </div>
                                 </>
+                            ) : (
+                                /* Usuário comum vê apenas o Ranking de Dúvidas */
+                                <div className="nav-section">
+                                    <span className="nav-section-title">ATENDIMENTO</span>
+                                    <NavLink
+                                        to="/ranking-duvidas"
+                                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                    >
+                                        <span className="nav-icon">🏆</span>
+                                        <span className="nav-label">Ranking de Dúvidas</span>
+                                        <div className="active-indicator"></div>
+                                    </NavLink>
+                                </div>
                             )}
                         </>
                     )}
+
 
 
                     {isSuperAdmin && (
@@ -236,6 +258,14 @@ const Sidebar = ({ onLogout }) => {
                             >
                                 <span className="nav-icon">👥</span>
                                 <span className="nav-label">Gestão de Usuários</span>
+                                <div className="active-indicator"></div>
+                            </NavLink>
+                            <NavLink
+                                to="/backups"
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <span className="nav-icon">🗄️</span>
+                                <span className="nav-label">Backups do Sistema</span>
                                 <div className="active-indicator"></div>
                             </NavLink>
                         </div>

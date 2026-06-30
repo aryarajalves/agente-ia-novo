@@ -7,7 +7,7 @@ const GlobalContextManager = () => {
     const [variables, setVariables] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
-    const [newVar, setNewVar] = useState({ key: '', value: '', type: 'string', description: '' });
+    const [newVar, setNewVar] = useState({ key: '', value: '', type: 'string', description: '', extraction_method: 'integration', extraction_prompt: '' });
     const [deleteVar, setDeleteVar] = useState(null);
     const [saving, setSaving] = useState(null); // ID of var being saved
 
@@ -44,7 +44,7 @@ const GlobalContextManager = () => {
         try {
             const res = await api.post(`/global-variables`, newVar);
             if (res.ok) {
-                setNewVar({ key: '', value: '', type: 'string', description: '' });
+                setNewVar({ key: '', value: '', type: 'string', description: '', extraction_method: 'integration', extraction_prompt: '' });
                 setIsAdding(false);
                 fetchVariables();
             } else {
@@ -116,7 +116,49 @@ const GlobalContextManager = () => {
                                 className="var-input"
                             />
                         </div>
-                        <div className="var-meta">
+
+                        {/* Configuração de Origem e Prompt para Variáveis Existentes */}
+                        <div style={{ marginTop: '0.8rem', display: 'flex', gap: '0.75rem', flexDirection: 'column', borderTop: '1px dashed rgba(255,255,255,0.03)', paddingTop: '0.8rem' }}>
+                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Origem:</label>
+                                <select
+                                    className="var-type-select"
+                                    value={v.extraction_method || 'integration'}
+                                    onChange={e => {
+                                        const updated = { ...v, extraction_method: e.target.value };
+                                        setVariables(variables.map(item => item.id === v.id ? updated : item));
+                                        handleUpdate(updated);
+                                    }}
+                                >
+                                    <option value="integration">Pegar da Integração (Chatwoot)</option>
+                                    <option value="ai">Extrair com IA da conversa</option>
+                                </select>
+                            </div>
+                            {v.extraction_method === 'ai' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Prompt de Extração:</label>
+                                    <textarea
+                                        placeholder="Regras de extração para a IA..."
+                                        value={v.extraction_prompt || ''}
+                                        onChange={e => setVariables(variables.map(item => item.id === v.id ? { ...item, extraction_prompt: e.target.value } : item))}
+                                        onBlur={() => handleUpdate(v)}
+                                        className="var-desc-input"
+                                        style={{ 
+                                            minHeight: '60px', 
+                                            padding: '8px 12px', 
+                                            resize: 'vertical', 
+                                            fontFamily: 'sans-serif',
+                                            background: 'rgba(0,0,0,0.2)',
+                                            border: '1px solid rgba(255,255,255,0.05)',
+                                            borderRadius: '8px',
+                                            color: 'white'
+                                        }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="var-meta" style={{ borderTop: 'none', paddingTop: '0.4rem' }}>
                             <input
                                 placeholder="Descrição opcional..."
                                 value={v.description || ''}
@@ -193,6 +235,47 @@ const GlobalContextManager = () => {
                                         </select>
                                     </div>
                                 </div>
+                                <div className="form-group-glow">
+                                    <label>Origem dos Dados</label>
+                                    <div className="input-wrapper-modern">
+                                        <span className="input-icon">📡</span>
+                                        <select
+                                            className="modal-type-select"
+                                            value={newVar.extraction_method || 'integration'}
+                                            onChange={e => setNewVar({ ...newVar, extraction_method: e.target.value })}
+                                            style={{
+                                                width: '100%', background: 'rgba(0, 0, 0, 0.2)',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                borderRadius: '14px', padding: '14px 14px 14px 44px',
+                                                color: 'white', fontSize: '0.95rem', cursor: 'pointer',
+                                                appearance: 'none', outline: 'none'
+                                            }}
+                                        >
+                                            <option value="integration">Pegar da Integração (Chatwoot/WhatsApp)</option>
+                                            <option value="ai">Extrair com IA da conversa</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                {newVar.extraction_method === 'ai' && (
+                                    <div className="form-group-glow">
+                                        <label>Prompt de Extração com IA</label>
+                                        <div className="input-wrapper-modern" style={{ alignItems: 'flex-start' }}>
+                                            <span className="input-icon" style={{ marginTop: '12px' }}>🤖</span>
+                                            <textarea
+                                                placeholder="Descreva o que esta variável representa e as regras de como a IA deve extrair este valor do diálogo..."
+                                                value={newVar.extraction_prompt || ''}
+                                                onChange={e => setNewVar({ ...newVar, extraction_prompt: e.target.value })}
+                                                style={{
+                                                    width: '100%', background: 'rgba(0, 0, 0, 0.2)',
+                                                    border: '1px solid rgba(255,255,255,0.1)',
+                                                    borderRadius: '14px', padding: '14px 14px 14px 44px',
+                                                    color: 'white', fontSize: '0.95rem', minHeight: '100px',
+                                                    outline: 'none', resize: 'vertical'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="form-group-glow">
                                     <label>Descrição (Opcional)</label>
                                     <div className="input-wrapper-modern">

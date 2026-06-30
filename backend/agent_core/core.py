@@ -29,9 +29,63 @@ async def process_message(
 ):
     active_role = "main"
     context_variables = context_variables or {}
+    
+    # Injetar variáveis temporais do dia atual e hora atual em Brasília
+    from core.timezone import get_now_br
+    now_br = get_now_br()
+    dias_semana_portugues = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
+    
+    if "dia_semana" not in context_variables or context_variables["dia_semana"] is None:
+        context_variables["dia_semana"] = dias_semana_portugues[now_br.weekday()]
+    if "data_atual" not in context_variables or context_variables["data_atual"] is None:
+        context_variables["data_atual"] = now_br.strftime("%Y-%m-%d")
+    if "hora_atual" not in context_variables or context_variables["hora_atual"] is None:
+        context_variables["hora_atual"] = now_br.strftime("%H:%M")
+
+    # Mesclar variáveis de contexto extraídas pela IA da memória (user_memory)
+    session_id = context_variables.get("session_id")
+    if db and session_id:
+        try:
+            from sqlalchemy import select
+            from models import GlobalContextVariableModel, UserMemoryModel
+            # 1. Carregar variáveis que usam extração por IA
+            stmt_vars = select(GlobalContextVariableModel).where(GlobalContextVariableModel.extraction_method == "ai")
+            if isinstance(db, AsyncSession):
+                res_vars = await db.execute(stmt_vars)
+            else:
+                res_vars = db.execute(stmt_vars)
+            ai_vars = res_vars.scalars().all()
+            
+            if ai_vars:
+                ai_keys = [v.key for v in ai_vars]
+                # 2. Buscar na memória se há valor salvo para essas chaves específicas do contato
+                stmt_mem = select(UserMemoryModel).where(
+                    UserMemoryModel.session_id == str(session_id),
+                    UserMemoryModel.key.in_(ai_keys)
+                )
+                if isinstance(db, AsyncSession):
+                    res_mem = await db.execute(stmt_mem)
+                else:
+                    res_mem = db.execute(stmt_mem)
+                memories = res_mem.scalars().all()
+                
+                # Criar um dicionário das memórias existentes
+                mem_dict = {m.key: m.value for m in memories}
+                
+                # 3. Preencher no context_variables
+                for v in ai_vars:
+                    # Se tiver na memória, usa o da memória
+                    if v.key in mem_dict and mem_dict[v.key] is not None:
+                        context_variables[v.key] = mem_dict[v.key]
+                    # Caso contrário, usa o valor padrão inicial como fallback
+                    elif v.key not in context_variables or context_variables[v.key] is None:
+                        context_variables[v.key] = v.value
+        except Exception as e_ctx:
+            print(f"⚠️ Erro ao mesclar variáveis de contexto da memória: {e_ctx}")
+
     performed_tool_calls = performed_tool_calls if performed_tool_calls is not None else []
     
-    pre_router_tokens = {"prompt": 0, "completion": 0}
+    pre_router_tokens = {"prompt": 0, "completion": 0, "model": None}
 
     # 0. Pre-Router (Saudação, Triagem e Datas)
     # Se não houver histórico, ou se for uma mensagem curta, rodamos o Pre-Router
@@ -40,7 +94,7 @@ async def process_message(
         try:
             # Precisamos dos agentes secundários para o roteamento (opcional no playground)
             # Por enquanto, focamos em Saudações e Datas
-            pre_router_result = await run_pre_router_ai(message, history, config)
+            pre_router_result = await run_pre_router_ai(message, history, config, context_variables=context_variables, db=db)
             
             # Se for saudação, encerramos aqui com a resposta configurada
             if pre_router_result.get("eh_saudacao") and pre_router_result.get("resposta_direta"):
@@ -60,6 +114,7 @@ async def process_message(
             pr_usage = pre_router_result.get("_usage", {})
             pre_router_tokens["prompt"] = pr_usage.get("prompt_tokens", 0)
             pre_router_tokens["completion"] = pr_usage.get("completion_tokens", 0)
+            pre_router_tokens["model"] = pre_router_result.get("_model_used")  # Guarda modelo real do pre-router
 
             # Injetar data extraída no contexto
             if pre_router_result.get("data_extraida"):
@@ -99,6 +154,9 @@ async def process_message(
 
     # 3. System Prompt & Variable Injection
     system_prompt = config.system_prompt
+    if system_prompt:
+        # Remove any Markdown heading hashes (#, ##, ###, etc.) at the start of lines to avoid AI confusion
+        system_prompt = re.sub(r'(?m)^[ \t]*#+[ \t]*', '', system_prompt)
     system_prompt += "\n\n⚠️ **REGRA DE OURO:** Não use 'IA', 'Robô', 'Suporte Humano'. Use 'especialista', 'equipe'."
     system_prompt += "\n\n🚨 **PRIORIDADE DE RESPOSTA (SEGUIR À RISCA):**"
     system_prompt += "\n1. Se o usuário fizer uma pergunta sobre algo que NÃO esteja no seu PROMPT DE SISTEMA (as diretrizes/conhecimento descritos acima), no seu conhecimento (RAG) ou nas 'INSTRUÇÕES ADICIONAIS' (Inbox), use OBRIGATORIAMENTE a ferramenta 'registrar_duvida_sem_resposta' e diga que vai verificar com a equipe. No entanto, se houver informações intimamente correlacionadas no prompt (por exemplo, se o usuário perguntar sobre o preço/compra de um equipamento, mas o prompt descrever apenas o aluguel/locação do mesmo), você DEVE responder com confiança de forma contextual e informativa explicando o funcionamento do modelo de negócio disponível (ex: esclarecer que trabalhamos com locação/aluguel e informar as condições de aluguel descritas). Apenas chame a ferramenta 'registrar_duvida_sem_resposta' se o usuário insistir em detalhes que realmente não constam no prompt ou se o assunto for inteiramente desconhecido."
@@ -108,6 +166,14 @@ async def process_message(
     system_prompt = resolve_conditional_blocks(system_prompt, context_variables)
     for k, v in context_variables.items():
         system_prompt = system_prompt.replace("{" + k + "}", str(v) if v is not None else "")
+    
+    # Injeta a parte dinâmica do prompt (Prompt Caching garantido por vir após a parte estática inicial)
+    dynamic_prompt = getattr(config, 'dynamic_prompt', '') or ''
+    if dynamic_prompt:
+        dynamic_prompt = resolve_conditional_blocks(dynamic_prompt, context_variables)
+        for k, v in context_variables.items():
+            dynamic_prompt = dynamic_prompt.replace("{" + k + "}", str(v) if v is not None else "")
+        system_prompt += f"\n\n### DIRETRIZES E REGRAS DINÂMICAS DO AGENTE:\n{dynamic_prompt}"
     
     # --- INJEÇÃO DE CONTEXTO TÉCNICO PARA FERRAMENTAS ---
     if context_variables:
@@ -198,8 +264,36 @@ async def process_message(
     # 4. Memory & RAG & Dates (Simplified for brevity in core)
     session_id = context_variables.get("session_id")
     if db and session_id:
-        mem = await fetch_user_memory(db, session_id)
-        if mem: messages.insert(1, {"role": "system", "content": f"INFORMAÇÃO CRUCIAL:\n{mem}"})
+        # Tenta usar o resumo do pre-router (resumo_usuario e resumo_agente)
+        mem = None
+        if 'pre_router_result' in locals() and pre_router_result and pre_router_result.get("resumo_memorias"):
+            mem = pre_router_result.get("resumo_memorias")
+            mem = f"\n# RESUMO DAS MEMÓRIAS DO USUÁRIO E AGENTE:\n{mem}\n"
+        
+        # Fallback 1: Tenta obter o último resumo salvo no banco de dados (SessionSummary)
+        if not mem:
+            try:
+                from sqlalchemy import select
+                from models import SessionSummary
+                # db pode ser síncrono ou assíncrono
+                stmt = select(SessionSummary).where(SessionSummary.session_id == session_id)
+                if isinstance(db, AsyncSession):
+                    res = await db.execute(stmt)
+                else:
+                    res = db.execute(stmt)
+                summary_record = res.scalars().first()
+                if summary_record and summary_record.summary_text:
+                    mem = summary_record.summary_text
+                    mem = f"\n# RESUMO DAS MEMÓRIAS DO USUÁRIO E AGENTE (BANCO DE DADOS):\n{mem}\n"
+            except Exception as e_db_mem:
+                logger.error(f"Erro ao buscar SessionSummary no fallback: {e_db_mem}")
+        
+        # Fallback 2: Memória tradicional baseada em fatos estruturados
+        if not mem:
+            mem = await fetch_user_memory(db, session_id)
+            
+        if mem:
+            messages.insert(1, {"role": "system", "content": f"INFORMAÇÃO CRUCIAL:\n{mem}"})
 
     # (RAG Logic would go here - keeping it or moving to rag_service.py)
     # For now, let's assume RAG is handled or injected. 
@@ -349,6 +443,16 @@ async def process_message(
                     if completion.usage:
                         total_usage.main_prompt += completion.usage.prompt_tokens
                         total_usage.main_completion += completion.usage.completion_tokens
+                        
+                        # Extrai cached_tokens de forma segura
+                        cached_toks = 0
+                        if hasattr(completion.usage, 'prompt_tokens_details') and completion.usage.prompt_tokens_details:
+                            cached_toks = getattr(completion.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
+                        elif hasattr(completion.usage, 'cache_read_input_tokens'):
+                            cached_toks = getattr(completion.usage, 'cache_read_input_tokens', 0) or 0
+                        elif hasattr(completion.usage, 'extra_fields') and 'prompt_cache_hit_tokens' in completion.usage.extra_fields:
+                            cached_toks = completion.usage.extra_fields.get('prompt_cache_hit_tokens', 0) or 0
+                        total_usage.cached_tokens += cached_toks
                     break
                 except Exception as e:
                     print(f"⚠️ Erro no modelo {m}: {str(e)}")
@@ -513,9 +617,10 @@ async def process_message(
     # anexamos ela ao final da resposta.
     is_first_msg = not history or len(history) == 0
     init_q_msg = getattr(config, 'initial_question_message', None)
+    question_mode = getattr(config, 'question_mode', 'panel')
     is_handoff = handoff_data.get("handoff", False) if isinstance(handoff_data, dict) else False
     
-    if is_first_msg and init_q_msg and final_content and not is_handoff:
+    if is_first_msg and init_q_msg and final_content and not is_handoff and question_mode == "panel":
         # Se o LLM gerar uma pergunta de continuação no final da resposta, nós a removemos
         # do texto gerado para evitar duplicidade com a saudação inicial configurada no agente.
         # Procuramos por expressões de ajuda, dúvidas, perguntas ou continuação no final.
@@ -540,6 +645,11 @@ async def process_message(
         "content": final_content,
         "usage": total_usage,
         "model": config.model,
+        "router_model": pre_router_tokens.get("model"),  # Modelo usado no pre-router (None se foi atalho programático)
+        "router_tokens": {
+            "prompt": pre_router_tokens["prompt"],
+            "completion": pre_router_tokens["completion"]
+        },
         "handoff_data": handoff_data,
         "error": False,
         "debug": {
@@ -547,6 +657,7 @@ async def process_message(
             "rag_items": [i['id'] for i in relevant_items] if relevant_items else [],
             "resolved_prompt": messages[0]["content"], # Inclui RAG e Regras
             "tool_calls": tool_calls_log,
-            "pre_router": pre_router_result if 'pre_router_result' in locals() else None
+            "pre_router": pre_router_result if 'pre_router_result' in locals() else None,
+            "context_variables": context_variables
         }
     }

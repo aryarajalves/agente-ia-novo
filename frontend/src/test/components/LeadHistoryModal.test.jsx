@@ -163,7 +163,7 @@ describe('LeadHistoryModal Component', () => {
         expect(api.get).toHaveBeenCalledTimes(1);
     });
 
-    it('deve exibir o botão de retentativa 🔄 apenas para eventos normais e acionar a API de retry com sucesso', async () => {
+    it('deve exibir o botão de retentativa 🔄 apenas para eventos normais e acionar a API de retry após confirmação no modal', async () => {
         api.post.mockResolvedValue(createMockResponse({ ok: true }, 200));
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
@@ -186,14 +186,21 @@ describe('LeadHistoryModal Component', () => {
         // 3. Clicar no botão de retentativa 🔄
         fireEvent.click(retryButtons[0]);
 
-        // 4. Validar chamada da API
+        // 4. Validar se o modal de confirmação de retry abriu
+        expect(screen.getByText(/Tem certeza que deseja reiniciar a automação para a mensagem/)).toBeInTheDocument();
+
+        // 5. Clicar no botão "Sim, Reiniciar" do modal
+        const confirmBtn = screen.getByText('Sim, Reiniciar');
+        fireEvent.click(confirmBtn);
+
+        // 6. Validar chamada da API
         await vi.waitFor(() => {
             expect(api.post).toHaveBeenCalledWith(
                 `/webhooks/${mockWebhook.id}/events/1/retry`
             );
         });
 
-        // 5. Validar o disparo do toast
+        // 7. Validar o disparo do toast
         expect(dispatchSpy).toHaveBeenCalledWith(
             expect.any(CustomEvent)
         );

@@ -1,0 +1,141 @@
+/* OutlineSidebar Styles */
+.outline-sidebar {
+    width: 300px;
+    background: rgba(0, 0, 0, 0.3);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.sidebar-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #6366f1;
+    font-weight: 800;
+    margin-bottom: 1.5rem;
+    opacity: 0.8;
+}
+
+.outline-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.outline-item {
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.outline-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+.outline-item.active {
+    background: rgba(99, 102, 241, 0.1);
+    color: #818cf8;
+    font-weight: 600;
+}
+
+/* Empty state design for outline topics */
+.empty-outline-container {
+    padding: 1.5rem 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.8rem;
+    margin-top: 0.5rem;
+}
+
+.empty-outline-icon {
+    font-size: 2rem;
+    filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.5));
+    animation: floatIcon 3s ease-in-out infinite;
+}
+
+@keyframes floatIcon {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+}
+
+.empty-outline-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.empty-outline-text {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    line-height: 1.4;
+    margin: 0;
+}
+
+.empty-outline-guide {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: left;
+}
+
+.guide-subtitle {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #818cf8;
+    margin-bottom: 0.5rem;
+}
+
+.guide-step {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    line-height: 1.4;
+    margin: 0 0 0.8rem 0;
+}
+
+.guide-step code,
+.example-item code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Fira Code', monospace;
+    color: #f472b6;
+    font-size: 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.guide-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.example-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.example-desc {
+    font-size: 0.68rem;
+    color: #64748b;
+    padding-left: 4px;
+}

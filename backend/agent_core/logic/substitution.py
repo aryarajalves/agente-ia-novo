@@ -10,7 +10,7 @@ def resolve_conditional_blocks(text: str, context_variables: dict) -> str:
                 return v
         return None
 
-    def evaluate_condition(condition):
+    def evaluate_single_condition(condition):
         condition = condition.strip()
         operators = [">=", "<=", "==", "!=", ">", "<"]
         for op in operators:
@@ -19,16 +19,32 @@ def resolve_conditional_blocks(text: str, context_variables: dict) -> str:
                 v1_raw, v2_raw = parts[0].strip(), parts[1].strip()
                 v1_val = get_var_value(v1_raw, context_variables)
                 v2_val = get_var_value(v2_raw, context_variables)
-                try: val1 = float(v1_val) if v1_val is not None else float(v1_raw)
-                except: val1 = 0.0
-                try: val2 = float(v2_val) if v2_val is not None else float(v2_raw)
-                except: val2 = 0.0
-                if op == ">": return val1 > val2
-                if op == "<": return val1 < val2
-                if op == ">=": return val1 >= val2
-                if op == "<=": return val1 <= val2
-                if op == "==": return val1 == val2
-                if op == "!=": return val1 != val2
+                
+                try:
+                    # Tenta converter ambos para float (comparações numéricas de fato)
+                    val1 = float(v1_val) if v1_val is not None else float(v1_raw)
+                    val2 = float(v2_val) if v2_val is not None else float(v2_raw)
+                    if op == ">": return val1 > val2
+                    if op == "<": return val1 < val2
+                    if op == ">=": return val1 >= val2
+                    if op == "<=": return val1 <= val2
+                    if op == "==": return val1 == val2
+                    if op == "!=": return val1 != val2
+                except:
+                    # Se falhar (ex: datas AAAA-MM-DD ou strings), compara como string alfanumérica pura
+                    str1 = str(v1_val) if v1_val is not None else str(v1_raw)
+                    str2 = str(v2_val) if v2_val is not None else str(v2_raw)
+                    
+                    # Limpa aspas e espaços extras
+                    str1 = str1.strip().strip('"').strip("'")
+                    str2 = str2.strip().strip('"').strip("'")
+                    
+                    if op == "==": return str1 == str2
+                    if op == "!=": return str1 != str2
+                    if op == ">": return str1 > str2
+                    if op == "<": return str1 < str2
+                    if op == ">=": return str1 >= str2
+                    if op == "<=": return str1 <= str2
         
         parts = condition.split(":", 1)
         var_name = parts[0].strip()
@@ -52,6 +68,13 @@ def resolve_conditional_blocks(text: str, context_variables: dict) -> str:
                 elif "exatamente_ha_" in var_name.lower(): is_truthy = dias_reais == days_threshold
             except: pass
         return not is_truthy if expect_false else is_truthy
+
+    def evaluate_condition(condition):
+        condition = condition.strip()
+        logical_parts = re.split(r'\s+AND\s+|\s+&&\s+', condition, flags=re.IGNORECASE)
+        if len(logical_parts) > 1:
+            return all(evaluate_single_condition(p) for p in logical_parts)
+        return evaluate_single_condition(condition)
 
     def process_full_if_block(match):
         full_content = match.group(0)

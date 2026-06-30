@@ -48,8 +48,11 @@ export const ConfigProvider = ({ children }) => {
     const [safetySettings, setSafetySettings] = useState('standard');
     
     const [dateAwareness, setDateAwareness] = useState(false);
+    const [dateAwarenessPastDays, setDateAwarenessPastDays] = useState(7);
+    const [dateAwarenessFutureDays, setDateAwarenessFutureDays] = useState(7);
     const [simulatedTime, setSimulatedTime] = useState('');
     const [systemPrompt, setSystemPrompt] = useState('Você é um assistente útil e inteligente.');
+    const [dynamicPrompt, setDynamicPrompt] = useState('');
     const [contextWindow, setContextWindow] = useState(5);
     
     // Knowledge & Tools
@@ -70,6 +73,11 @@ export const ConfigProvider = ({ children }) => {
     const [qualificationQuestions, setQualificationQuestions] = useState([]);
     const [qualificationLabels, setQualificationLabels] = useState([]);
     const [qualificationCriteria, setQualificationCriteria] = useState('');
+    
+    // Greeting, Question, and Ad Modes
+    const [greetingMode, setGreetingMode] = useState('panel');
+    const [questionMode, setQuestionMode] = useState('panel');
+    const [adMode, setAdMode] = useState('panel');
     
     // Security
     const [securityBlacklist, setSecurityBlacklist] = useState('');
@@ -135,8 +143,11 @@ export const ConfigProvider = ({ children }) => {
         reasoningEffort, setReasoningEffort,
         safetySettings, setSafetySettings,
         dateAwareness, setDateAwareness,
+        dateAwarenessPastDays, setDateAwarenessPastDays,
+        dateAwarenessFutureDays, setDateAwarenessFutureDays,
         simulatedTime, setSimulatedTime,
         systemPrompt, setSystemPrompt,
+        dynamicPrompt, setDynamicPrompt,
         contextWindow, setContextWindow,
         knowledgeBaseIds, setKnowledgeBaseIds,
         selectedTools, setSelectedTools,
@@ -153,6 +164,9 @@ export const ConfigProvider = ({ children }) => {
         qualificationQuestions, setQualificationQuestions,
         qualificationLabels, setQualificationLabels,
         qualificationCriteria, setQualificationCriteria,
+        greetingMode, setGreetingMode,
+        questionMode, setQuestionMode,
+        adMode, setAdMode,
         securityBlacklist, setSecurityBlacklist,
         securityForbidden, setSecurityForbidden,
         securityDiscount, setSecurityDiscount,

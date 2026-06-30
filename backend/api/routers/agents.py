@@ -49,7 +49,10 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         model_settings=json.dumps(config.model_settings) if config.model_settings else "{}",
         is_active=config.is_active,
         date_awareness=config.date_awareness,
+        date_awareness_past_days=config.date_awareness_past_days,
+        date_awareness_future_days=config.date_awareness_future_days,
         system_prompt=config.system_prompt,
+        dynamic_prompt=config.dynamic_prompt,
         context_window=config.context_window,
         knowledge_base=json.dumps(config.knowledge_base),
         rag_retrieval_count=config.rag_retrieval_count,
@@ -76,6 +79,9 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         initial_question_message=config.initial_question_message,
         initial_ignore_message=config.initial_ignore_message,
         inbox_capture_enabled=config.inbox_capture_enabled,
+        greeting_mode=config.greeting_mode,
+        question_mode=config.question_mode,
+        ad_mode=config.ad_mode,
         qualification_questions=config.qualification_questions,
         qualification_labels=config.qualification_labels,
         qualification_criteria=config.qualification_criteria,
@@ -125,6 +131,8 @@ async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None =
         model_settings=json.loads(a.model_settings) if a.model_settings else {},
         is_active=a.is_active,
         date_awareness=a.date_awareness,
+        date_awareness_past_days=a.date_awareness_past_days,
+        date_awareness_future_days=a.date_awareness_future_days,
         system_prompt=a.system_prompt,
         context_window=a.context_window,
         knowledge_base=json.loads(a.knowledge_base) if a.knowledge_base else [],
@@ -156,6 +164,9 @@ async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None =
         initial_question_message=a.initial_question_message,
         initial_ignore_message=a.initial_ignore_message,
         inbox_capture_enabled=a.inbox_capture_enabled,
+        greeting_mode=a.greeting_mode or "panel",
+        question_mode=a.question_mode or "panel",
+        ad_mode=a.ad_mode or "panel",
         qualification_questions=a.qualification_questions,
         qualification_labels=a.qualification_labels,
         qualification_criteria=a.qualification_criteria,
@@ -191,7 +202,10 @@ async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = De
     db_config.model_settings = json.dumps(config.model_settings) if config.model_settings else "{}"
     db_config.is_active = config.is_active
     db_config.date_awareness = config.date_awareness
+    db_config.date_awareness_past_days = config.date_awareness_past_days
+    db_config.date_awareness_future_days = config.date_awareness_future_days
     db_config.system_prompt = config.system_prompt
+    db_config.dynamic_prompt = config.dynamic_prompt
     db_config.context_window = config.context_window
     db_config.knowledge_base = json.dumps(config.knowledge_base)
     db_config.rag_retrieval_count = config.rag_retrieval_count
@@ -218,6 +232,9 @@ async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = De
     db_config.initial_question_message = config.initial_question_message
     db_config.initial_ignore_message = config.initial_ignore_message
     db_config.inbox_capture_enabled = config.inbox_capture_enabled
+    db_config.greeting_mode = config.greeting_mode
+    db_config.question_mode = config.question_mode
+    db_config.ad_mode = config.ad_mode
     db_config.qualification_questions = config.qualification_questions
     db_config.qualification_labels = config.qualification_labels
     db_config.qualification_criteria = config.qualification_criteria
@@ -545,8 +562,7 @@ async def list_finetuned_models(_: None = Depends(verify_api_key)):
 @router.get("/agents/{agent_id}/chatwoot-labels")
 async def get_chatwoot_labels(
     agent_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(verify_api_key)
+    db: AsyncSession = Depends(get_db)
 ):
     """Busca a lista de etiquetas disponíveis no Chatwoot associado ao agente, com fallback global."""
     from models import WebhookConfigModel, WebhookEventModel

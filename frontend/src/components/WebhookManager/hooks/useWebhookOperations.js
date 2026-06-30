@@ -3,7 +3,7 @@ import { api } from '../../../api/client';
 import { showToast, generateToken } from '../utils/helpers';
 import { INITIAL_FORM_STATE } from '../constants';
 
-export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook) => {
+export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook, fetchChatwootLabels) => {
     const [isCreating, setIsCreating] = useState(false);
     const [createForm, setCreateForm] = useState(INITIAL_FORM_STATE);
     const [createSaving, setCreateSaving] = useState(false);
@@ -62,6 +62,9 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook) => {
             setEditingWebhook(null);
             setEditForm(INITIAL_FORM_STATE);
             await fetchWebhooks();
+            if (fetchChatwootLabels) {
+                await fetchChatwootLabels();
+            }
             showToast('Integração criada com sucesso!');
         } catch (e) {
             const msg = `Erro de conexão: ${e.message}`;
@@ -92,6 +95,9 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook) => {
             }
             setEditingWebhook(null);
             await fetchWebhooks();
+            if (fetchChatwootLabels) {
+                await fetchChatwootLabels();
+            }
             showToast('Alterações salvas com sucesso!');
         } catch (e) {
             const msg = `Erro de conexão: ${e.message}`;
@@ -133,9 +139,9 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook) => {
             blocked_messages: webhook.blocked_messages || [],
             delete_keywords: webhook.delete_keywords || [],
             delete_message: webhook.delete_message || '',
-            chatwoot_url: webhook.chatwoot_url || '',
-            chatwoot_api_token: webhook.chatwoot_api_token || '',
-            chatwoot_inbox_id: webhook.chatwoot_inbox_id || '',
+            zapvoice_url: webhook.zapvoice_url || '',
+            zapvoice_api_token: webhook.zapvoice_api_token || '',
+            zapvoice_client_id: webhook.zapvoice_client_id || '',
             labels_on_message: webhook.labels_on_message || [],
             ignore_by_label: webhook.ignore_by_label || '',
             handoff_labels_to_remove: webhook.handoff_labels_to_remove || [],
@@ -156,7 +162,10 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook) => {
         setEditAllowedInput('');
         setEditBlockedInput('');
         setEditDeleteInput('');
-    }, []);
+        if (fetchChatwootLabels) {
+            fetchChatwootLabels();
+        }
+    }, [fetchChatwootLabels]);
 
     const handleOpenCreate = useCallback(() => {
         setEditingWebhook({ id: 'new', isNew: true });

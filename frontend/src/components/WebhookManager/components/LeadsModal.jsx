@@ -35,7 +35,7 @@ const LeadsModal = ({
     onSyncAll,
     onViewHistory
 }) => {
-    const { leads = [], total = 0, loading = false, page = 1, pageSize = 20, search = '', podeEnviar = 'all', dateStart = '', dateEnd = '', janelaAberta = 'all' } = leadsModal;
+    const { leads = [], total = 0, loading = false, page = 1, pageSize = 20, search = '', podeEnviar = 'all', dateStart = '', dateEnd = '', janelaAberta = 'all', semMensagens = 'all' } = leadsModal;
     const safeLeads = Array.isArray(leads) ? leads : [];
 
     // Estado local para controlar qual card está expandido (apenas 1 por vez - Accordion)
@@ -140,7 +140,7 @@ const LeadsModal = ({
                 </div>
 
                 {/* Filtros - Mais compactos */}
-                <div style={{ padding: '1rem 1.5rem', background: 'rgba(15, 23, 42, 0.4)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'grid', gridTemplateColumns: '1fr 110px 110px 130px 130px auto', gap: '0.75rem', alignItems: 'flex-end' }}>
+                <div style={{ padding: '1rem 1.5rem', background: 'rgba(15, 23, 42, 0.4)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'grid', gridTemplateColumns: '1fr 110px 110px 110px 130px 130px auto', gap: '0.75rem', alignItems: 'flex-end' }}>
                     <div>
                         <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: '0.4rem', letterSpacing: '0.05em' }}>Buscar</label>
                         <input
@@ -173,6 +173,18 @@ const LeadsModal = ({
                             <option value="all">Todas</option>
                             <option value="true">Aberta</option>
                             <option value="false">Fechada</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: '0.4rem', letterSpacing: '0.05em' }}>Interação</label>
+                        <select
+                            value={semMensagens}
+                            onChange={e => onFilterChange({ semMensagens: e.target.value })}
+                            style={{ width: '100%', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.5rem 0.5rem', color: '#fff', fontSize: '0.8rem' }}
+                        >
+                            <option value="all">Todos</option>
+                            <option value="true">Sem Mensagens</option>
+                            <option value="false">Com Mensagens</option>
                         </select>
                     </div>
                     <div>
@@ -253,6 +265,11 @@ const LeadsModal = ({
                                                 <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 10px', borderRadius: '20px', background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                                     ● Ativa
                                                 </span>
+                                                {l.sem_mensagem_usuario && (
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 10px', borderRadius: '20px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                        ⚠️ Sem Mensagens
+                                                    </span>
+                                                )}
                                                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: l.janela_24h_aberta ? '#4ade80' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     ⏰ {l.janela_24h_aberta ? `Aberta (${getRemainingTime(l.ultima_mensagem_em)})` : 'Fechada'}
                                                 </span>
@@ -340,11 +357,8 @@ const LeadsModal = ({
                                             {[
                                                 { label: 'CRIADO EM', value: formatDate(l.created_at), icon: '📅' },
                                                 { label: 'ID INTERNO', value: l.id, icon: '🆔' },
-                                                { label: 'INBOX', value: l.inbox_nome || '—', icon: '📥' },
-                                                { label: 'CONVERSA ID', value: l.conversa_id || '—', icon: '🗨️' },
-                                                { label: 'CONTA ID', value: l.conta_id || '—', icon: '🏦' },
+                                                { label: 'ID DO CLIENTE (CLIENT ID)', value: l.inbox_id || '—', icon: '🏦' },
                                                 { label: 'CONTATO ID', value: l.contato_id || '—', icon: '👤' },
-                                                { label: 'INBOX ID', value: l.inbox_id || '—', icon: '📥' },
                                                 { label: 'JANELA 24H', value: getRemainingTime(l.ultima_mensagem_em), icon: '⏰', color: l.janela_24h_aberta ? '#4ade80' : '#ef4444' },
                                                 { label: 'TIPO DE MENSAGEM', value: (l.message_type || 'text').toUpperCase(), icon: '🏷️' },
                                                 { 
@@ -359,7 +373,7 @@ const LeadsModal = ({
                                                 { label: 'ÚLTIMA MENSAGEM DO USUÁRIO', value: l.mensagem || '—', icon: '💬', fullWidth: true },
                                                 { label: 'ÚLTIMA RESPOSTA DO AGENTE', value: l.ultima_resposta_agente || '—', icon: '🤖', fullWidth: true },
                                                 { 
-                                                    label: 'ETIQUETAS DO CHATWOOT', 
+                                                    label: 'ETIQUETAS DO ZAPVOICE', 
                                                     value: parseLabels(l.labels).length > 0 ? (
                                                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                                             {parseLabels(l.labels).map((label, idx) => (

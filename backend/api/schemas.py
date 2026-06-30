@@ -99,7 +99,10 @@ class AgentConfig(BaseModel):
     model_settings: Dict[str, Any] = {}
     is_active: bool = True
     date_awareness: bool = False
+    date_awareness_past_days: Optional[int] = 7
+    date_awareness_future_days: Optional[int] = 7
     system_prompt: str = "Você é um assistente útil e inteligente."
+    dynamic_prompt: Optional[str] = ""
     context_window: int = 5
     knowledge_base: list = []
     knowledge_base_id: Optional[int] = None
@@ -130,6 +133,9 @@ class AgentConfig(BaseModel):
     initial_question_message: Optional[str] = None
     initial_ignore_message: Optional[str] = None
     inbox_capture_enabled: bool = True
+    greeting_mode: str = "panel"
+    question_mode: str = "panel"
+    ad_mode: str = "panel"
     qualification_questions: Optional[str] = None
     qualification_labels: Optional[str] = None
     qualification_criteria: Optional[str] = None
@@ -158,6 +164,7 @@ class MessageResponse(BaseModel):
     cost_brl: float
     input_tokens: int
     output_tokens: int
+    cached_tokens: Optional[int] = 0
     tool_calls: Optional[List[Dict[str, Any]]] = None
     audio: Optional[str] = None
     handoff_data: Optional[Dict[str, Any]] = None
@@ -198,7 +205,10 @@ class GlobalContextVariable(BaseModel):
     type: Optional[str] = "string"
     description: Optional[str] = None
     is_default: Optional[bool] = False
+    extraction_method: Optional[str] = "integration"
+    extraction_prompt: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
 
 # --- MEDIA & TRANSCRIPTION SCHEMAS ---
 
@@ -328,6 +338,7 @@ class SessionMessage(BaseModel):
     tokens: int
     input_tokens: Optional[int] = 0
     output_tokens: Optional[int] = 0
+    cached_tokens: Optional[int] = 0
     model: Optional[str] = None
     debug: Optional[Dict[str, Any]] = None
 
@@ -423,3 +434,42 @@ class TesterEvaluationRequest(BaseModel):
 
 class TesterSentimentRequest(BaseModel):
     history: List[Dict[str, str]]
+
+
+# --- EXPLAIN RESPONSE SCHEMAS ---
+
+class ExplainRequest(BaseModel):
+    user_message: str
+    agent_response: str
+    resolved_prompt: Optional[str] = None
+    pre_router: Optional[Dict[str, Any]] = None
+
+class ExplainFactor(BaseModel):
+    title: str
+    explanation: str
+    section: str  # 'static' | 'dynamic' | 'injected' | 'rag' | 'general'
+    relevance: str  # 'high' | 'medium' | 'low'
+
+class ExplainResponse(BaseModel):
+    factors: List[ExplainFactor]
+    summary: str
+    cost_usd: Optional[float] = 0.0
+    cost_brl: Optional[float] = 0.0
+
+class ChatMessage(BaseModel):
+    role: str  # 'user' | 'assistant'
+    content: str
+
+class ExplainDebateRequest(BaseModel):
+    user_message: str
+    agent_response: str
+    resolved_prompt: Optional[str] = None
+    pre_router: Optional[Dict[str, Any]] = None
+    question: str
+    debate_history: List[ChatMessage] = []
+
+class ExplainDebateResponse(BaseModel):
+    response: str
+    cost_usd: float
+    cost_brl: float
+    debate_history: List[ChatMessage]

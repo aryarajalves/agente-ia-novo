@@ -89,6 +89,9 @@ def transcribe_assemblyai(file_path: str, api_key: str, config_params: dict = No
     transcript = transcriber.transcribe(file_path, config=trans_config)
     
     if transcript.status == aai.TranscriptStatus.error:
+        err_msg = str(transcript.error)
+        if "No audio stream found" in err_msg or "no audio stream" in err_msg.lower():
+            raise Exception("Não existe áudio no arquivo de vídeo enviado.")
         raise Exception(f"Erro AssemblyAI: {transcript.error}")
         
     return {

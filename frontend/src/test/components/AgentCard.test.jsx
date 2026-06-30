@@ -14,6 +14,16 @@ vi.mock('react-router-dom', async () => {
     };
 });
 
+// Mock do módulo de API
+vi.mock('../../api/client', () => ({
+    api: {
+        delete: vi.fn(),
+        post: vi.fn(),
+    },
+}));
+
+import { api } from '../../api/client';
+
 // Mock da API fetch global
 global.fetch = vi.fn();
 
@@ -60,20 +70,18 @@ describe('AgentCard Component', () => {
     });
 
     it('deve chamar a API de exclusão ao confirmar no modal', async () => {
-        fetch.mockResolvedValueOnce({ ok: true });
+        api.delete = vi.fn().mockResolvedValueOnce({ ok: true });
         renderComponent();
-
+ 
         // Abre o modal
         fireEvent.click(screen.getByTitle('Excluir'));
         
         // Clica em "Sim, Excluir" no ConfirmModal
         const confirmBtn = screen.getByText('Sim, Excluir');
         fireEvent.click(confirmBtn);
-
+ 
         await waitFor(() => {
-            expect(fetch).toHaveBeenCalledWith('/api/agents/agent-123', expect.objectContaining({
-                method: 'DELETE'
-            }));
+            expect(api.delete).toHaveBeenCalledWith('/agents/agent-123');
         });
     });
 

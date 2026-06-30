@@ -88,6 +88,7 @@ export const useChat = ({
                 cost: data.cost_brl,
                 tokens: data.input_tokens + data.output_tokens,
                 input_tokens: data.input_tokens,
+                cached_tokens: data.cached_tokens,
                 output_tokens: data.output_tokens,
                 model_used: data.model_used,
                 model_role: data.model_role || 'main',
@@ -251,6 +252,7 @@ export const useChat = ({
                     cost: m.cost,
                     tokens: m.tokens,
                     input_tokens: m.input_tokens,
+                    cached_tokens: m.cached_tokens,
                     output_tokens: m.output_tokens
                 } : null,
                 debug: m.debug,

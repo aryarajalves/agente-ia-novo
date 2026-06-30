@@ -30,7 +30,7 @@ test('Take final validation screenshot of webhooks page', async ({ page }) => {
   
   // 6. Tirar screenshot e salvar no diretório de artefatos do brain
   await page.screenshot({ 
-    path: 'C:/Users/aryar/.gemini/antigravity/brain/cfbb1301-3a08-408b-b448-240d4d34f8ff/screenshot_val_final.png',
+    path: 'C:/Users/aryar/.gemini/antigravity/brain/d6d37790-742f-483b-8986-69d97ccf84c7/screenshot_val_final.png',
     fullPage: true 
   });
 });

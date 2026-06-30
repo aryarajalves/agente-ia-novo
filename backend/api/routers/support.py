@@ -8,13 +8,13 @@ from sqlalchemy import select, desc, update, delete
 
 from models import SupportRequestModel, WebhookConfigModel
 from api.deps import get_db, verify_api_key
-from chatwoot_utils import sync_conversation_labels, send_chatwoot_message
+from zapvoice_utils import sync_conversation_labels, send_zapvoice_message
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Support"])
 
 async def _resumir_atendimento_robo(req: SupportRequestModel, db: AsyncSession):
-    """Executa a lógica de retorno ao robô no Chatwoot."""
+    """Executa a lógica de retorno ao robô no ZapVoice."""
     if not req.webhook_config_id or not req.conversation_id or not req.account_id:
         return
     
@@ -25,10 +25,10 @@ async def _resumir_atendimento_robo(req: SupportRequestModel, db: AsyncSession):
         if not config:
             return
 
-        cw_url = config.chatwoot_url or os.getenv("CHATWOOT_URL")
-        cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN")
+        zv_url = config.zapvoice_url or os.getenv("ZAPVOICE_URL")
+        zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN")
         
-        if not cw_url or not cw_token:
+        if not zv_url or not zv_token:
             return
 
         # 2. Definir etiquetas para adicionar/remover
@@ -42,18 +42,18 @@ async def _resumir_atendimento_robo(req: SupportRequestModel, db: AsyncSession):
 
         # 3. Sincronizar etiquetas
         await sync_conversation_labels(
-            cw_url, int(req.account_id), int(req.conversation_id), 
-            cw_token, to_add=to_add, to_remove=to_remove
+            zv_url, str(req.account_id), int(req.conversation_id), 
+            zv_token, to_add=to_add, to_remove=to_remove
         )
 
         # 4. Enviar mensagem de retorno se configurada
         if config.ai_handoff_message:
-            await send_chatwoot_message(
-                cw_url, int(req.account_id), int(req.conversation_id),
-                cw_token, config.ai_handoff_message
+            await send_zapvoice_message(
+                zv_url, str(req.account_id), int(req.conversation_id),
+                zv_token, config.ai_handoff_message
             )
             
-        logger.info(f"🤖 Atendimento retomado pela IA para conversa {req.conversation_id}")
+        logger.info(f"🤖 Atendimento retomado pela IA para conversa {req.conversation_id} (ZapVoice)")
         
     except Exception as e:
         logger.error(f"Erro ao processar retorno ao robô: {e}")

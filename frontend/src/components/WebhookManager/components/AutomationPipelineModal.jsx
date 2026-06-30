@@ -242,7 +242,56 @@ const AutomationPipelineModal = ({
                                             color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.6', fontFamily: 'monospace',
                                             whiteSpace: 'pre-wrap', position: 'relative', border: '1px solid rgba(255,255,255,0.02)'
                                         }}>
-                                            {displayedContent}
+                                             {step.title?.includes("Variáveis Extraídas") && step.metadata ? (
+                                                 <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                                     {/* Seção de Extraídas */}
+                                                     <div>
+                                                         <h4 style={{ margin: '0 0 0.75rem 0', color: '#10b981', fontSize: '0.9rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                             <span>✅</span> Extraídas & Salvas
+                                                         </h4>
+                                                         {step.metadata.saved && Object.keys(step.metadata.saved).length > 0 ? (
+                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                                 {Object.entries(step.metadata.saved).map(([key, val]) => (
+                                                                     <div key={key} style={{ 
+                                                                         display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                                                                         background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.1)',
+                                                                         padding: '10px 14px', borderRadius: '12px'
+                                                                     }}>
+                                                                         <code style={{ color: '#34d399', fontWeight: 700, fontSize: '0.8rem', fontFamily: 'monospace' }}>{key}</code>
+                                                                         <span style={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.85rem' }}>{String(val)}</span>
+                                                                     </div>
+                                                                 ))}
+                                                             </div>
+                                                         ) : (
+                                                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>Nenhuma variável foi extraída com sucesso até o momento.</p>
+                                                         )}
+                                                     </div>
+                                                     
+                                                     {/* Seção de Pendentes */}
+                                                     <div>
+                                                         <h4 style={{ margin: '0 0 0.75rem 0', color: '#6366f1', fontSize: '0.9rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                             <span>⏳</span> Aguardando Menção (Pendentes)
+                                                         </h4>
+                                                         {step.metadata.pending && step.metadata.pending.length > 0 ? (
+                                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                 {step.metadata.pending.map((key) => (
+                                                                     <div key={key} style={{ 
+                                                                         background: 'rgba(255, 255, 255, 0.03)', border: '1px dashed rgba(255, 255, 255, 0.1)',
+                                                                         padding: '6px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px'
+                                                                     }}>
+                                                                         <code style={{ color: '#94a3b8', fontSize: '0.75rem', fontFamily: 'monospace' }}>{key}</code>
+                                                                     </div>
+                                                                 ))}
+                                                             </div>
+                                                         ) : (
+                                                             <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>Todas as variáveis de IA foram extraídas!</p>
+                                                         )}
+                                                     </div>
+                                                 </div>
+                                             ) : (
+                                                 displayedContent
+                                             )}
+
                                             {isLarge && (
                                                 <div style={{ 
                                                     marginTop: '1.25rem', display: 'flex', justifyContent: 'center',
@@ -272,9 +321,21 @@ const AutomationPipelineModal = ({
                                                     </span>
                                                 )}
                                                 {step.metadata.usage && (
-                                                    <span style={{ fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
-                                                        💎 {step.metadata.usage.total_tokens} tokens
-                                                    </span>
+                                                    <>
+                                                        <span style={{ fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }} title="Total de tokens consumidos">
+                                                            💎 {step.metadata.usage.total_tokens.toLocaleString()} tokens
+                                                        </span>
+                                                        {step.metadata.usage.cached_tokens ? (
+                                                            <>
+                                                                <span style={{ fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }} title="Tokens de cache (Prompt Caching)">
+                                                                    💾 {step.metadata.usage.cached_tokens.toLocaleString()} CACHED
+                                                                </span>
+                                                                <span style={{ fontSize: '0.7rem', background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }} title="Tokens de entrada efetivamente cobrados">
+                                                                    📥 {(step.metadata.usage.prompt_tokens - step.metadata.usage.cached_tokens).toLocaleString()} IN Cobrado
+                                                                </span>
+                                                            </>
+                                                        ) : null}
+                                                    </>
                                                 )}
                                                 {step.metadata.cost > 0 && (
                                                     <span style={{ fontSize: '0.7rem', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>

@@ -78,6 +78,7 @@ export const PreRouterViewerModal = ({ data, onClose }) => {
 
     const tabs = [
         { id: 'organized', label: '🧠 Decisão Organizada', icon: '🎯' },
+        { id: 'memories', label: '⭐ Resumo das Memórias', icon: '💾' },
         { id: 'prompt', label: '📜 Prompt do Pre-Router', icon: '📝' },
         { id: 'raw', label: 'JSON Bruto', icon: '💻' },
     ];
@@ -253,6 +254,104 @@ export const PreRouterViewerModal = ({ data, onClose }) => {
                                 }}>
                                     {promptStr || "Nenhum prompt disponível."}
                                 </pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'memories' && (
+                        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            {parsedJson.resumo_usuario || parsedJson.resumo_agente ? (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div style={{ background: 'rgba(99, 102, 241, 0.03)', border: '1px solid rgba(99, 102, 241, 0.12)', borderRadius: '16px', padding: '1.25rem' }}>
+                                        <h3 style={{ margin: '0 0 0.75rem 0', color: '#a5b4fc', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span>👤</span> Resumo do Usuário
+                                        </h3>
+                                        <p style={{ fontSize: '0.85rem', lineHeight: '1.5', color: '#cbd5e1', margin: 0 }}>
+                                            {parsedJson.resumo_usuario || "Nenhum resumo disponível para o usuário."}
+                                        </p>
+                                    </div>
+                                    <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.12)', borderRadius: '16px', padding: '1.25rem' }}>
+                                        <h3 style={{ margin: '0 0 0.75rem 0', color: '#34d399', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span>🤖</span> Resumo do Agente
+                                        </h3>
+                                        <p style={{ fontSize: '0.85rem', lineHeight: '1.5', color: '#cbd5e1', margin: 0 }}>
+                                            {parsedJson.resumo_agente || "Nenhum resumo disponível para o agente."}
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '16px', padding: '1.5rem' }}>
+                                    <h3 style={{ margin: '0 0 1rem 0', color: '#fff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span>⭐</span> Resumo Consolidado das Memórias
+                                    </h3>
+                                    <p style={{ fontSize: '0.9rem', lineHeight: '1.6', color: '#e2e8f0', margin: 0, fontStyle: parsedJson.resumo_memorias ? 'normal' : 'italic' }}>
+                                        {parsedJson.resumo_memorias || "Nenhum fato relevante extraído em conversas anteriores para esta sessão ainda."}
+                                    </p>
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <h4 style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    💬 Mensagens que geraram essas memórias ({parsedJson.mensagens_origem_memorias?.length || 0})
+                                </h4>
+                                {parsedJson.mensagens_origem_memorias && parsedJson.mensagens_origem_memorias.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        {parsedJson.mensagens_origem_memorias.map((msg, index) => {
+                                            const isAgent = msg.startsWith("Agente:");
+                                            const isUser = msg.startsWith("Usuário:");
+                                            let displayMsg = msg;
+                                            let sender = "Usuário";
+                                            let icon = "👤";
+                                            let badgeColor = "#a5b4fc";
+                                            let badgeBg = "rgba(99, 102, 241, 0.15)";
+                                            let borderStyle = "1px solid rgba(99, 102, 241, 0.15)";
+                                            let bgStyle = "rgba(99, 102, 241, 0.03)";
+
+                                            if (isAgent) {
+                                                displayMsg = msg.substring(7).trim();
+                                                sender = "Agente";
+                                                icon = "🤖";
+                                                badgeColor = "#34d399";
+                                                badgeBg = "rgba(16, 185, 129, 0.15)";
+                                                borderStyle = "1px solid rgba(16, 185, 129, 0.15)";
+                                                bgStyle = "rgba(16, 185, 129, 0.03)";
+                                            } else if (isUser) {
+                                                displayMsg = msg.substring(8).trim();
+                                            }
+
+                                            return (
+                                                <div 
+                                                    key={index}
+                                                    style={{ 
+                                                        background: bgStyle, 
+                                                        border: borderStyle, 
+                                                        padding: '1rem', 
+                                                        borderRadius: '12px', 
+                                                        fontSize: '0.85rem', 
+                                                        color: '#cbd5e1', 
+                                                        lineHeight: 1.5,
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: '6px'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, color: badgeColor }}>
+                                                        <span style={{ background: badgeBg, padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            {icon} {sender}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ color: '#e2e8f0' }}>
+                                                        "{displayMsg}"
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.85rem', color: '#64748b', fontStyle: 'italic' }}>
+                                        Nenhuma mensagem de origem registrada para as memórias atuais.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
+import { parseConditionalBlocks, collapsePrompt, reconstructPrompt } from './utils/conditionalParser';
 import { api } from '../../api/client';
 import { showToast } from '../WebhookManager/utils/helpers';
 
 const PromptContext = createContext();
 
 export const PromptProvider = ({ children, initialProps }) => {
-    const { value, onChange, agentId } = initialProps;
+    const { value, onChange, dynamicValue, onChangeDynamic, agentId } = initialProps;
+    const [activePromptTab, setActivePromptTab] = useState('static'); // 'static' | 'dynamic'
 
     const [advisorMessages, setAdvisorMessages] = useState([
         { role: 'assistant', content: 'Olá! Sou seu **Consultor de Prompt**. \n\nPosso analisar a estrutura das suas instruções, sugerir melhorias estratégicas ou ajudar você a localizar e atualizar regras específicas. Como posso ajudar?' }
@@ -16,6 +18,29 @@ export const PromptProvider = ({ children, initialProps }) => {
     const [showAdvisorChat, setShowAdvisorChat] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
     
+    // Carrega variáveis globais dinamicamente no mount
+    React.useEffect(() => {
+        const loadVars = async () => {
+            try {
+                const res = await api.get('/global-variables');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data)) {
+                        setValidVarKeys(data.map(v => v.key));
+                        setGlobalVarsList(data);
+                    } else if (data && Array.isArray(data.variables)) {
+                        // Fallback seguro para suportar mocks legados
+                        setValidVarKeys(data.variables.map(v => v.key));
+                        setGlobalVarsList(data.variables);
+                    }
+                }
+            } catch (error) {
+                console.error("Erro ao carregar variáveis para o editor:", error);
+            }
+        };
+        loadVars();
+    }, []);
+
     // Search State
     const [showSearch, setShowSearch] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -27,7 +52,48 @@ export const PromptProvider = ({ children, initialProps }) => {
     const [playgroundChat, setPlaygroundChat] = useState([]);
 
     const [validVarKeys, setValidVarKeys] = useState([]);
+    const [globalVarsList, setGlobalVarsList] = useState([]);
     const [activeSection, setActiveSection] = useState(null);
+
+    // Estado para abrir o modal de edição de condicional a partir da overlay
+    const [openCondEdit, setOpenCondEdit] = useState(null); // block | null
+
+    // Blocos condicionais com índices de linha mapeados para a versão colapsada
+    const conditionalBlocks = useMemo(() => {
+        const originalBlocks = parseConditionalBlocks(value);
+        let totalShrunkLines = 0;
+        return originalBlocks.map(block => {
+            const shrunk = block.blockEndLine - block.ifLineIdx;
+            const collapsedIfLineIdx = block.ifLineIdx - totalShrunkLines;
+            const collapsedStartLine = block.blockStartLine - totalShrunkLines;
+            const collapsedEndLine = collapsedIfLineIdx; // 1 linha no total na visualização colapsada
+            
+            totalShrunkLines += shrunk;
+            
+            return {
+                ...block,
+                originalBlockStartLine: block.blockStartLine,
+                originalBlockEndLine: block.blockEndLine,
+                originalIfLineIdx: block.ifLineIdx,
+                blockStartLine: collapsedStartLine,
+                blockEndLine: collapsedEndLine,
+                ifLineIdx: collapsedIfLineIdx,
+            };
+        });
+    }, [value]);
+
+    // O valor do prompt exibido no editor (colapsado)
+    const promptValue = useMemo(() => {
+        return collapsePrompt(value);
+    }, [value]);
+
+    // Handler customizado que reconstrói o prompt com blocos completos antes de salvar
+    const onChangePrompt = useCallback((e) => {
+        const newDisplayedValue = e.target.value;
+        const originalBlocks = parseConditionalBlocks(value); // Busca blocos com conteúdo original completo
+        const reconstructedFullValue = reconstructPrompt(newDisplayedValue, originalBlocks);
+        onChange({ target: { value: reconstructedFullValue } });
+    }, [onChange, value]);
 
     const textareaRef = React.useRef(null);
 
@@ -227,10 +293,83 @@ export const PromptProvider = ({ children, initialProps }) => {
         showToast("Memória do assistente reiniciada.");
     };
 
+    const insertTextAtCursor = (textToInsert) => {
+        if (!textareaRef.current) return;
+        const textarea = textareaRef.current;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const currentValue = promptValue || '';
+        
+        const newValue = currentValue.substring(0, start) + textToInsert + currentValue.substring(end);
+        const originalBlocks = parseConditionalBlocks(value);
+        const reconstructedFullValue = reconstructPrompt(newValue, originalBlocks);
+        
+        // Atualiza o estado
+        onChange({ target: { value: reconstructedFullValue } });
+        
+        // Aguarda a renderização e restaura o cursor/foco
+        setTimeout(() => {
+            textarea.focus();
+            const newCursorPos = start + textToInsert.length;
+            textarea.setSelectionRange(newCursorPos, newCursorPos);
+            
+            // Força a sincronização do scroll do backdrop
+            const event = { target: textarea };
+            if (textarea.onScroll) {
+                textarea.onScroll(event);
+            }
+        }, 50);
+    };
+
+    const insertTextAtEnd = (textToInsert) => {
+        const currentValue = promptValue || '';
+        const newValue = currentValue ? `${currentValue}\n\n${textToInsert}` : textToInsert;
+        const originalBlocks = parseConditionalBlocks(value);
+        const reconstructedFullValue = reconstructPrompt(newValue, originalBlocks);
+
+        onChange({ target: { value: reconstructedFullValue } });
+
+        setTimeout(() => {
+            if (textareaRef.current) {
+                textareaRef.current.focus();
+                const len = collapsePrompt(reconstructedFullValue).length;
+                textareaRef.current.setSelectionRange(len, len);
+                textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+            }
+        }, 50);
+    };
+
+    /**
+     * Substitui o conteúdo entre startLine e endLine (inclusive, 0-indexed) pelo newText.
+     * Usado para atualizar um bloco condicional existente após edição.
+     */
+    const replaceTextRange = useCallback((startLine, endLine, newText) => {
+        const lines = (value || '').split('\n');
+        const before = lines.slice(0, startLine);
+        const after = lines.slice(endLine + 1);
+        const newLines = [...before, ...newText.split('\n'), ...after];
+        const newValue = newLines.join('\n');
+        onChange({ target: { value: newValue } });
+
+        setTimeout(() => {
+            if (textareaRef.current) {
+                textareaRef.current.focus();
+                // Posiciona o cursor no início do bloco substituído
+                let cursorPos = 0;
+                for (let i = 0; i < startLine; i++) {
+                    cursorPos += newLines[i].length + 1;
+                }
+                textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+            }
+        }, 50);
+    }, [value, onChange]);
+
     const valueContext = {
         textareaRef,
-        promptValue: value,
-        onChangePrompt: onChange,
+        promptValue: activePromptTab === 'static' ? promptValue : (dynamicValue || ''),
+        onChangePrompt: activePromptTab === 'static' ? onChangePrompt : onChangeDynamic,
+        activePromptTab,
+        setActivePromptTab,
         agentId,
         advisorMessages, setAdvisorMessages,
         advisorInput, setAdvisorInput,
@@ -245,8 +384,11 @@ export const PromptProvider = ({ children, initialProps }) => {
         showPlayground, setShowPlayground,
         playgroundChat, setPlaygroundChat,
         validVarKeys, setValidVarKeys,
+        globalVarsList, setGlobalVarsList,
         activeSection, setActiveSection,
         promptOutline,
+        conditionalBlocks,
+        openCondEdit, setOpenCondEdit,
         handleAdvisorMessage,
         handleApplySuggestions,
         handleAdvisorSearch,
@@ -254,7 +396,10 @@ export const PromptProvider = ({ children, initialProps }) => {
         handleResetAdvisorMemory,
         isApplyingSuggestion,
         saveDraft,
-        isSavingDraft
+        isSavingDraft,
+        insertTextAtCursor,
+        insertTextAtEnd,
+        replaceTextRange,
     };
 
     return <PromptContext.Provider value={valueContext}>{children}</PromptContext.Provider>;

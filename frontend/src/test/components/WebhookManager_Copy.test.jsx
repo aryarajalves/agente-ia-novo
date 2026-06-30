@@ -56,7 +56,8 @@ describe('WebhookManager - Copy Functionality', () => {
         });
     });
 
-    it('deve copiar a URL correta e mostrar o toast', async () => {
+    it('deve copiar a URL correta e disparar o evento de toast', async () => {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
         render(<WebhookManager />);
 
         // Aguarda renderização do webhook
@@ -70,10 +71,19 @@ describe('WebhookManager - Copy Functionality', () => {
         const expectedUrl = 'http://localhost:8000/webhooks/receive/test-token';
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expectedUrl);
 
-        // Verifica se o toast aparece
-        expect(await screen.findByText(/URL copiada para a área de transferência!/i)).toBeInTheDocument();
+        // Verifica se o evento de toast foi disparado
+        await waitFor(() => {
+            const toastEvent = dispatchSpy.mock.calls.find(
+                call => call[0].type === 'app:toast'
+            )?.[0];
+            expect(toastEvent).toBeDefined();
+            expect(toastEvent.detail.message).toBe('URL copiada para a área de transferência!');
+            expect(toastEvent.detail.type).toBe('success');
+        });
         
         // Verifica se o ícone mudou para check (✓)
         expect(screen.getByText('✓')).toBeInTheDocument();
+
+        dispatchSpy.mockRestore();
     });
 });

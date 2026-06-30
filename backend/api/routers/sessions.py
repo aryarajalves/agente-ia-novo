@@ -113,6 +113,7 @@ async def get_session_messages(
             cost=log.cost_brl,
             tokens=log.input_tokens + log.output_tokens,
             input_tokens=log.input_tokens,
+            cached_tokens=log.cached_tokens or 0,
             output_tokens=log.output_tokens,
             model=log.model_used,
             debug=json.loads(log.debug_info) if log.debug_info else None

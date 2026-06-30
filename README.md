@@ -1,17 +1,53 @@
 # 🤖 Plataforma de Agentes de IA para Automação
 
-Esta é uma solução completa para criação, gerenciamento e treinamento de agentes de IA "version": "1.8.5", integrando RAG (Retrieval-Augmented Generation), automação de calendário e ferramentas de fine-tuning.
-
-
+Esta é uma solução completa e profissional de nível corporativo para criação, gerenciamento, monitoramento e treinamento de agentes de IA. A plataforma integra múltiplos motores de linguagem (LLMs), RAG (Retrieval-Augmented Generation), otimização de cache de prompts, automações de calendário e agendamento, tratamento inteligente de webhooks e dashboards analíticos de ponta.
 
 ---
 
 ## 🏗️ Estrutura do Ecossistema
 
--   **Backend:** FastAPI com PostgreSQL (SQLAlchemy + pgvector).
--   **Frontend:** Dashboard Admin em React + Vite.
--   **Database:** PostgreSQL 15 com suporte a vetores para busca semântica.
--   **Infra:** Dockerizada para fácil deploy e escalabilidade.
+O projeto é estruturado de forma modular e escalável, dividido em três frentes principais:
+
+1. **Backend (Python / FastAPI):**
+   - Roteamento inteligente de mensagens (`Pre-Router AI`) para classificação rápida de intenções.
+   - Integração com APIs externas (OpenAI GPT-4o, GPT-4o-Audio, Whisper, Chatwoot, ZapVoice).
+   - Filas de tarefas assíncronas utilizando **Celery** e **Redis** para processamento resiliente de webhooks e disparos em segundo plano.
+   - Banco de dados PostgreSQL (SQLite em modo de teste/desenvolvimento) gerenciado via SQLAlchemy.
+
+2. **Frontend (React / Vite / Vanilla CSS):**
+   - Dashboard Admin moderno e responsivo com estética **Glassmorphism Premium** e Dark Mode.
+   - Componente `PromptEditor` avançado com suporte a condicionais interativas e alternância de Prompt Caching (Estático vs. Dinâmico).
+   - `ChatPlayground` para testes em tempo real de personas dos agentes de IA, incluindo recursos de gravação e transcrição de áudio via Web Speech API / Whisper, além do painel de debug "Raio-X" com meta-análise e auditoria de respostas baseada em LLM.
+   - Painel Whitelabel customizável para geração rápida de snippets de widgets de chat.
+
+3. **Automação de Webhooks (Chatwoot & Vendas):**
+   - Criação e registro automático de webhooks no Chatwoot via API com um clique.
+   - Rota unificada de captura de conversões/vendas (`POST /sales/receive`) compatível com plataformas líderes de mercado (Hotmart, Kiwify).
+   - Pipeline robusta com regras de negócio personalizadas por agente (ex: tratamento empático de emojis negativos, desduplicação de histórico de contexto e ignorar/parsear mensagens automáticas).
+
+---
+
+## 💡 Como Funciona o Projeto (Arquitetura e Recursos)
+
+### 1. Triagem e Roteamento Inteligente (Pre-Router AI)
+Antes do agente de IA principal gerar uma resposta detalhada (que consome mais tokens e tempo), as mensagens recebidas passam pelo `Pre-Router AI`. Ele classifica a mensagem em frações de segundo:
+- Se for uma saudação curta ou mensagem trivial, responde imediatamente usando modelos de baixo custo.
+- Se for uma mensagem automática de ausência ou catálogo comercial, isola e evita a contaminação do histórico do cliente no RAG.
+- Se o cliente enviar emojis negativos consecutivos (como 👎 ou 😡), a IA detecta, insere tags de feedback e realiza a transição amigável para atendimento humano se necessário.
+
+### 2. Otimização de Custos com Prompt Caching (Estático vs. Dinâmico)
+A plataforma divide os prompts dos agentes de IA em duas seções chaveadas:
+- **Prompt Estático:** Onde ficam as diretrizes permanentes da persona e as bases de conhecimento (RAG). Esse bloco é enviado como cabeçalho para habilitar o **Prompt Caching** da API da OpenAI, reduzindo os custos de tokens de entrada em até 50%.
+- **Prompt Dinâmico:** Contém as variáveis de contexto, condicionais baseadas em qualificação e datas temporárias. Ele é concatenado ao final do prompt para garantir que alterações frequentes de contexto não invalidem o cache estático.
+
+### 3. Assistente de Projeto e Auditoria Financeira
+- **Ativação por Tags:** Através de palavras-chave como `#projeto`, o agente muda temporariamente de persona para fornecer métricas consolidadas sobre leads qualificados, vendas recentes e análise de objeções registradas nos últimos 7 dias.
+- **Relatório de Custos:** Um painel financeiro no admin consolida o custo de processamento de cada interação por agente, filtrando automaticamente registros zerados e exibindo os valores convertidos para BRL.
+
+### 4. Gravação e Transcrição em Tempo Real
+No ambiente de testes `ChatPlayground`, o usuário pode utilizar o microfone para conversar com o robô. O sistema utiliza a `Web Speech API` para fornecer feedback visual instantâneo do texto falado no input. Ao terminar, o áudio binário é processado com alta fidelidade no Whisper-1 da OpenAI com conversão automática fallback resiliente via `ffmpeg` no backend.
+
+---
 
 ---
 
@@ -79,6 +115,74 @@ npm run test:backend
 # Apenas Frontend
 npm run test:frontend
 ```
+
+## ✨ Novidades da Versão (v2.4.0)
+
+Esta versão introduz a separação do prompt de instruções do sistema do agente em duas partes (Estático e Dinâmico), otimizando custos e latência por meio de **Prompt Caching**:
+- **Prompt Estático (Prompt Cache):** Instruções fundamentais de persona, diretrizes de comportamento e base de conhecimento fixa, enviadas no início do prompt.
+- **Prompt Dinâmico:** Instruções de variáveis de contexto, condicionais e regras temporárias, concatenadas no final para não invalidar o cache estático do prefixo.
+- **Interface Chaveada (Abas):** Visualização e edição chaveadas no `PromptEditor` via botões `🔒 Estático (Prompt Cache)` e `⚡ Dinâmico`.
+- **Script de Migração Automático:** Inclusão e verificação da coluna `dynamic_prompt` na tabela `agent_config` no banco de dados.
+
+## ✨ Novidades da Versão (v2.3.0)
+
+Esta versão traz o recurso de Assistente de Projeto integrado à automação e captura inteligente de conversões/vendas:
+- **Assistente de Projeto via Etiqueta e Palavras-Chave**: Permite que o robô seja alternado de sua persona padrão de atendimento de produto para um assistente analítico e estratégico do projeto através de palavras-chave customizadas (ex: `#projeto` e `#sair_projeto`) que adicionam ou removem a tag configurada na integração.
+- **Métricas e Relatórios Analíticos em Tempo Real**: Quando no modo assistente de projeto, a IA responde com dados consolidados do mês de leads, total e contagem de vendas na nova tabela do banco, solicitações recentes de suporte humano dos últimos 7 dias e uma análise inteligente de objeções com propostas de melhoria de conversão baseadas em contatos frios/mornos.
+- **Webhook e Rota de Vendas (`POST /sales/receive`)**: Rota pública e unificada para capturar vendas diretas de plataformas como Hotmart e Kiwify para persistência no banco de dados local.
+- **Configuração no Painel de Webhooks (Chatwoot)**: Novos inputs de configuração de palavra-chave de ativação/desativação, tag do assistente e mensagens personalizadas de entrada/saída direto no modal de edição.
+- **Suíte de Testes Unitários de Backend**: Cobertura estrita desenvolvida em `backend/tests/test_project_assistant.py` garantindo o correto fluxo de rotas, banco e IA.
+
+## ✨ Novidades da Versão (v2.3.0)
+
+Esta versão traz a integração automatizada de webhooks do Chatwoot via API:
+- **Gerenciamento de Webhooks via API**: Adicionado suporte para listar, criar e excluir webhooks diretamente na aba "Chatwoot" do modal de configurações de integração.
+- **Registro Automático de Callback**: Cria webhooks no Chatwoot apontando automaticamente para a URL de recebimento público do backend com um único clique.
+- **Suíte de Testes Automatizados**: Desenvolvido conjunto de testes unitários robustos em `backend/tests/test_chatwoot_webhooks.py` mockando as respostas de API do Chatwoot com isolamento completo.
+
+## ✨ Novidades da Versão (v2.2.0)
+
+Esta versão traz o colapso visual inteligente e edição interativa de blocos condicionais no Prompt Editor:
+- **Colapso Inteligente de Condicionais**: Substituição visual automática de blocos condicionais multilinhas extensos (`[IF:...` até `[/IF]`) por uma única linha compactada no estilo Glassmorphism Neon com badge brilhante (`🔀 CONDICIONAL [expressão] ✏️ Clique para editar`). O parser de colapso e reconstrução foi flexibilizado para aceitar espaços adicionais em volta das reticências (`{...}` ou `{ ... }`).
+- **Clique Direto Inline e Cursor Pointer**: Suporte completo a `pointer-events: auto` e `cursor: pointer` no botão `✏️ Editar` embutido na linha do editor, acompanhado de um efeito premium de hover com elevação e brilho suave rosa neon. Adicionado listener de cliques diretos no backdrop do editor, resolvendo problemas de simulação em testes do Vitest/Testing Library.
+- **Edição Simplificada e Sem Botão "Voltar"**: Quando acessada a edição de um bloco condicional (`ConditionalBuilderModal`), a opção `⬅️ Voltar` é removida em modo de edição (`editMode = true`), restando apenas o botão `❌ Cancelar` para fechar o popup, limpando o fluxo de ações.
+- **Mapeamento Bidirecional de Estado**: Algoritmo de parser robusto que reconstrói transparentemente o prompt completo e expandido ao sincronizar ou salvar com o backend/API, garantindo total integridade.
+- **Suíte de Testes Ampliada e 100% Corrigida**: Novos testes unitários no Vitest em `conditionalParser.test.js` e em `PromptEditor.test.jsx` corrigidos para validar a estabilidade lógica do colapso e reconstrução de blocos simples e combinados, e a usabilidade de cliques da UI.
+
+## ✨ Novidades da Versão (v2.1.0)
+
+Esta versão traz o controle dinâmico (Painel vs Prompt) de saudações, perguntas e anúncios:
+- **Modos de Saudação, Pergunta e Anúncio (Painel vs Prompt)**: Adição de botões seletores HSL Glassmorphic no editor de prompts do painel do agente para escolher se cada fluxo (Saudação curta "Oi", Resposta inicial à pergunta e mensagens de anúncio) deve seguir o padrão estático programado (Painel) ou ser delegado para a Inteligência Artificial (Prompt) com base no prompt de sistema do agente.
+- **Injeção Dinâmica de Prompt no Pre-Router**: A IA do Pre-Router agora lê dinamicamente as novas diretrizes do agente principal, permitindo gerar respostas curtas contextuais personalizadas de forma rápida e integrada.
+- **Suíte de Testes Dedicada**: Criação de cobertura de testes automatizados com o Pytest em `backend/tests/test_pre_router_modes.py` para certificar o funcionamento das rotas e comportamentos estático e dinâmico.
+
+## ✨ Novidades da Versão (v2.0.0)
+
+Esta versão traz estabilidade a nível de ecossistema, verificação de integridade e a nova página de status do backend:
+- **Página de Status Premium na Raiz (`/`)**: Substituição da resposta de erro padrão `404/Not Found` na raiz do backend por uma interface de status extremamente moderna e premium (Dark Mode requintado com HSL-tailored colors, glassmorphism blur e um indicador em pulso verde neon). A página de status exibe a estabilidade de conexão, a versão da API (`v2.0.0`) e calcula a latência em milissegundos dinamicamente.
+- **Suíte de Testes Dedicada**: Criação de cobertura de testes automatizados com o Pytest em `backend/tests/test_status_page.py` para certificar a saúde e as respostas esperadas na raiz da API.
+- **Evolução de Orquestração Docker**: Provisionamento e rebuild com `--force-recreate` garantindo resiliência e estabilidade total no boot dos containers do projeto localmente.
+
+---
+
+## ✨ Novidades da Versão (v1.8.7)
+
+Esta versão traz o recurso completo de análise semântica e treinamento de RAG a partir das dúvidas de clientes:
+- **Ranking Semântico de Dúvidas e Objeções (Clustering DBSCAN)**: Agrupamento automático e matemático local de mensagens dos usuários em grupos semânticos de dúvidas parecidas utilizando similaridade de cosseno nos embeddings armazenados, sem consumo de tokens de API.
+- **Nomeação por IA e Geração de Scripts de Contrabalanço**: Uso de LLM (`gpt-4o-mini`) para gerar títulos amigáveis para as categorias e scripts persuasivos de 2-3 frases sugerindo respostas de quebra de objeção para cada grupo.
+- **Aba de Visualização Premium Dark Mode e Roteamento**: Rota `/ranking-duvidas` e seu respectivo link na sidebar de Atendimento seguindo o design visual da plataforma (cards glassmorphic, badges de ranking brilhantes neon e barras de progresso HSL de volume).
+- **Treinamento de RAG Integrado (1-Click)**: Modal interativo para adicionar perguntas e respostas ideais diretamente na base de conhecimento do agente.
+- **Suíte de Testes Robustos**: Inclusão de testes automatizados unitários em `backend/tests/test_objections.py` cobrando a lógica de banco, endpoints e rate-limit.
+
+---
+
+## ✨ Novidades da Versão (v1.8.6)
+
+Esta versão traz a filtragem e identificação visual de contatos que ainda não enviaram mensagens na plataforma:
+- **Identificação de Contatos Sem Mensagens**: Exibição da badge `"⚠️ Sem Mensagens"` de forma proeminente nos cards de contatos capturados no painel de controle (modal de leads do webhook) quando a última interação contiver mensagem nula ou vazia.
+- **Filtro de Interação no Webhook Manager**: Adição de um novo select de filtro no painel de contatos ("Interação"), permitindo que o administrador filtre rapidamente contatos entre "Todos", "Sem Mensagens" e "Com Mensagens" na interface, integrando as seleções com a paginação e busca existentes.
+- **Resiliência e Portabilidade de Banco (SQLite e PostgreSQL)**: Ajuste da consulta raw da API no backend para calcular a expiração da janela de 24h e o tipo de retorno booleano de forma compatível e resiliente, operando sem problemas em SQLite (testes locais) e no PostgreSQL (ambiente de produção).
+- **Suíte de Testes de Backend Ampliada**: Inclusão de testes automatizados com o Pytest em `backend/tests/test_webhook_leads.py` cobrindo o filtro de leads com e sem mensagens.
 
 ---
 
@@ -149,6 +253,17 @@ Esta versão consolida grandes evoluções no sistema, incluindo o controle fina
 
 ---
 
+## ✨ Novidades da Versão (v1.8.6)
+
+Esta versão traz a nova ferramenta de meta-análise de respostas baseada em LLM no ChatPlayground:
+- **Funcionalidade "Por que essa resposta?" no Raio-X**: Ao abrir o painel de debug "Raio-X" sob a resposta da IA no Chat Playground, o usuário agora tem acesso ao botão "🔬 Explicar Raciocínio". Este botão realiza uma chamada on-demand para meta-analisar o resolved_prompt, a pergunta do usuário e a resposta gerada usando o modelo `gpt-4o-mini`, explicando em português de forma detalhada o raciocínio central da IA.
+- **Visualização Premium com Cards de Fatores**: A resposta do meta-analisador é renderizada na forma de cards elegantes divididos por categorias de prompt (📄 Estático, ⚡ Dinâmico, 🔌 Injetado, 📚 RAG, 🧠 Geral) e níveis de relevância visual (🔴 Alto, 🟡 Médio, 🟢 Baixo) com estados de loading polidos.
+- **Chat de Debate da Resposta (IA Auditora)**: Adicionada a seção "Debater resposta com IA Auditora" que permite iniciar uma conversa interativa em tempo real com um modelo auditor para fazer perguntas de acompanhamento sobre a decisão e comportamento do bot frente ao prompt.
+- **Contabilização de Custos de Análise e Debate**: A UI agora calcula dinamicamente e exibe de forma clara na conversa os gastos de tokens reais gerados pela análise da resposta e do debate interativo da resposta analisada em reais (BRL).
+- **Suíte de Testes Unitários de Integração**: Testes de ponta a ponta criados e estabilizados no frontend (`MessageBubble.test.jsx`) com 7/7 testes vitest aprovados e no backend (`test_explain_response.py`) testando cenários de sucesso de explicação/debate, erro de API e de custos de tokens com pytest, todos aprovados.
+
+---
+
 ## ✨ Novidades da Versão (v1.7.5)
 
 Esta versão traz melhorias no encerramento de conversas após o registro de dúvidas sem resposta, além de refinamentos de UI/UX no painel de testes do chat:
@@ -195,12 +310,12 @@ Esta versão traz melhorias no encerramento de conversas após o registro de dú
 *(Aviso: Conforme as regras do projeto, nunca gerar ou dar push em tags `latest` no Docker Hub; use sempre tags de versão estritas.)*
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.8.5 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.8.5`
+1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.8.6 ./backend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.8.6`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.8.5 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.8.5`
+1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.8.6 ./frontend`
+2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.8.6`
 
 
 

@@ -58,6 +58,8 @@ async def create_global_variable(
         value=variable.value,
         type=variable.type or "string",
         description=variable.description,
+        extraction_method=variable.extraction_method or "integration",
+        extraction_prompt=variable.extraction_prompt,
         is_default=False
     )
     db.add(db_var)
@@ -86,6 +88,8 @@ async def update_global_variable(
     db_var.value = variable.value
     db_var.description = variable.description
     db_var.type = variable.type or "string"
+    db_var.extraction_method = variable.extraction_method or "integration"
+    db_var.extraction_prompt = variable.extraction_prompt
     
     # Só permite mudar a chave se não for uma variável padrão do sistema
     if not db_var.is_default:
@@ -94,6 +98,7 @@ async def update_global_variable(
     await db.commit()
     await db.refresh(db_var)
     return db_var
+
 
 @router.put("/global-variables/key/{key}")
 async def update_variable_by_key(

@@ -14,7 +14,7 @@ from config_store import AgentConfig
 from agent import process_message
 from agent_core.logic.pre_router import run_pre_router_ai
 from rag_service import get_embedding
-from chatwoot_utils import is_conversation_paused, sync_conversation_labels
+from zapvoice_utils import is_conversation_paused, sync_conversation_labels
 from core.timezone import get_now_br, get_now_utc
 from core.websocket import manager
 from agent_core.services.media_service import process_media_content
@@ -27,7 +27,12 @@ from webhook_services import (
     retrieve_context_history,
     _get_cost,
     _build_agent_config,
-    _send_chatwoot_message
+    _send_zapvoice_message,
+    auto_migrate_webhook_columns,
+    resolve_grouped_media,
+    proactive_update_lead_table,
+    save_interaction_log,
+    get_project_assistant_context
 )
 
 logger = logging.getLogger(__name__)
@@ -80,24 +85,8 @@ def _add_step(db, event_id: int, step: str, detail: str = "", metadata: dict = N
 _typing_indicator_supported = True
 
 def _toggle_typing_indicator(config, account_id, conversation_id, command="on"):
-    """Liga ou desliga o status 'digitando' no Chatwoot."""
-    global _typing_indicator_supported
-    if not _typing_indicator_supported:
-        return
-    try:
-        url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-        token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
-        if not url or not token:
-            return
-        
-        full_url = f"{url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/typing_indicators"
-        headers = {"api_access_token": token, "Content-Type": "application/json"}
-        with httpx.Client(timeout=3.0) as client:
-            resp = client.post(full_url, json={"command": command}, headers=headers)
-            if resp.status_code == 404:
-                _typing_indicator_supported = False
-    except Exception:
-        pass
+    """ZapVoice não suporta typing indicator nativo via API REST por padrão."""
+    pass
 
 
 # A função _send_chatwoot_message foi movida para webhook_services.py
@@ -126,7 +115,7 @@ def process_media_content_task(webhook_config_id: int, event_id: int):
         _add_step(db, event_id, f"🔍 Processamento Imediato ({msg_type})", "Iniciando extração de conteúdo em paralelo...")
         
         openai_key = os.getenv("OPENAI_API_KEY")
-        cw_token = config.chatwoot_api_token
+        cw_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
         
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -167,15 +156,7 @@ def process_webhook_automation(self, event_id: int):
     db = SessionLocal()
     try:
         # --- AUTO-MIGRAÇÃO: garante colunas necessárias ---
-        try:
-            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS response_delay_seconds INTEGER DEFAULT 0"))
-            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_audio BOOLEAN DEFAULT TRUE"))
-            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_image BOOLEAN DEFAULT TRUE"))
-            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS delete_labels TEXT"))
-            db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS negative_feedback_label TEXT"))
-            db.commit()
-        except Exception:
-            db.rollback()
+        auto_migrate_webhook_columns(db)
 
         event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
         if not event:
@@ -203,47 +184,7 @@ def process_webhook_automation(self, event_id: int):
 
         # --- RESOLUÇÃO DE MÍDIAS AGRUPADAS ---
         if "[AUDIO PENDENTE]" in (event.mensagem or "") or "[IMAGE PENDENTE]" in (event.mensagem or ""):
-            _add_step(db, event_id, "⏳ Aguardando mídias", "Algumas mídias deste grupo ainda estão sendo processadas. Aguardando conclusão...")
-            
-            for attempt in range(12): 
-                media_events = db.query(WebhookEventModel).filter(
-                    WebhookEventModel.webhook_config_id == config.id,
-                    WebhookEventModel.telefone == event.telefone,
-                    WebhookEventModel.message_type.in_(["audio", "image"]),
-                    WebhookEventModel.status.in_(["media_ready", "grouped", "completed"]),
-                    WebhookEventModel.created_at >= event.created_at - timedelta(minutes=5)
-                ).all()
-                
-                changed = False
-                current_msg = event.mensagem
-                for me in media_events:
-                    placeholder = f"[{me.message_type.upper()} PENDENTE]"
-                    
-                    if placeholder in current_msg and me.mensagem and placeholder not in me.mensagem:
-                        content = me.mensagem
-                        if me.message_type == "image":
-                            content = f"[IMAGEM: {me.mensagem}]"
-                        
-                        idx = current_msg.find(placeholder)
-                        after_placeholder = current_msg[idx + len(placeholder):]
-                        if after_placeholder and not after_placeholder.startswith((" ", "\n", "?", "!", ".", ",")):
-                            content += " "
-                            
-                        current_msg = current_msg.replace(placeholder, content, 1)
-                        changed = True
-                
-                if changed:
-                    event.mensagem = current_msg
-                    db.commit()
-                
-                if "[AUDIO PENDENTE]" not in event.mensagem and "[IMAGE PENDENTE]" not in event.mensagem:
-                    _add_step(db, event_id, "✅ Mídias Resolvidas", "Todas as transcrições/análises foram integradas com sucesso.")
-                    break
-                
-                if attempt < 11:
-                    time.sleep(5)
-                else:
-                    _add_step(db, event_id, "⚠️ Timeout de Mídia", "Algumas mídias não terminaram a tempo. Processando com o que temos.")
+            resolve_grouped_media(db, event, config, event_id)
 
         msg_type = (event.message_type or "text").lower()
         if msg_type in ["video", "document"]:
@@ -286,13 +227,61 @@ def process_webhook_automation(self, event_id: int):
                 logger.error(f"Erro no processamento de auto-deleção: {e}")
                 _add_step(db, event_id, "⚠️ Erro na Auto-Deleção", str(e))
 
+        # --- TRAP DE ASSISTENTE DE PROJETO POR PALAVRA-CHAVE ---
+        msg_limpa_raw = (event.mensagem or "").strip().lower()
+        proj_kw = (config.project_assistant_keyword or "").strip().lower()
+        proj_exit_kw = (config.project_assistant_deactivate_keyword or "").strip().lower()
+        proj_label = (config.project_assistant_label or "").strip()
+
+        if proj_label and event.conversa_id and event.conta_id:
+            zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+            zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
+            acc_id = str(event.conta_id)
+            conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
+
+            # Ativação
+            if proj_kw and msg_limpa_raw == proj_kw:
+                _add_step(db, event_id, "⚙️ Ativando Assistente de Projeto", f"Palavra-chave '{config.project_assistant_keyword}' detectada.")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(sync_conversation_labels(zv_url, acc_id, conv_id, zv_token, to_add=[proj_label]))
+                finally:
+                    loop.close()
+                
+                entry_msg = config.project_assistant_entry_message or "Assistente de Projeto ativado. Como posso te ajudar com as métricas do projeto?"
+                _send_zapvoice_message(db, event_id, event.conversa_id, event.conta_id, entry_msg, config)
+                
+                event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
+                event.status = "completed"
+                db.commit()
+                return
+
+            # Desativação
+            elif proj_exit_kw and msg_limpa_raw == proj_exit_kw:
+                _add_step(db, event_id, "⚙️ Desativando Assistente de Projeto", f"Palavra-chave '{config.project_assistant_deactivate_keyword}' detectada.")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(sync_conversation_labels(zv_url, acc_id, conv_id, zv_token, to_remove=[proj_label]))
+                finally:
+                    loop.close()
+                
+                exit_msg = config.project_assistant_exit_message or "Assistente de Projeto desativado. Retornando ao atendimento padrão do robô."
+                _send_zapvoice_message(db, event_id, event.conversa_id, event.conta_id, exit_msg, config)
+                
+                event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
+                event.status = "completed"
+                db.commit()
+                return
+
         # --- TRAP DE AUTOMAÇÃO E SEGURANÇA ---
         lead_internal_id = None
         last_msg = None
         lead_created_at = None
         if config.leads_table:
             try:
-                _add_step(db, event_id, "🔍 Verificando status do contato", "Validando etiquetas do Chatwoot e janela de 24h...")
+                _add_step(db, event_id, "🔍 Verificando status do contato", "Validando etiquetas do ZapVoice e janela de 24h...")
                 
                 query = text(f"SELECT id, ultima_mensagem_em, created_at FROM {config.leads_table} WHERE telefone = :tel LIMIT 1")
                 res = db.execute(query, {"tel": event.telefone}).fetchone()
@@ -377,7 +366,14 @@ def process_webhook_automation(self, event_id: int):
                 _add_step(db, event_id, "🧠 Analisando Intenção (Pre-Router)", "A IA está decidindo o roteamento e entendendo o contexto da mensagem...")
                 db.commit()
                 
-                pre_router_result = await run_pre_router_ai(mensagem, history, db_agent, secondary_agents)
+                pre_router_result = await run_pre_router_ai(
+                    mensagem, 
+                    history, 
+                    db_agent, 
+                    secondary_agents,
+                    context_variables={"session_id": session_id},
+                    db=db
+                )
                 
                 # Se for mensagem automática, salva o estado no banco de dados do evento
                 if pre_router_result.get("eh_mensagem_automatica"):
@@ -427,12 +423,17 @@ def process_webhook_automation(self, event_id: int):
                 if pr_usage:
                     rates = {
                         "gpt-4o-mini": {"in": 0.15 / 1_000_000, "out": 0.60 / 1_000_000},
-                        "gpt-4o": {"in": 5.00 / 1_000_000, "out": 15.00 / 1_000_000}
+                        "gpt-4o": {"in": 5.00 / 1_000_000, "out": 15.00 / 1_000_000},
+                        "gpt-5-mini": {"in": 0.30 / 1_000_000, "out": 1.20 / 1_000_000}
                     }
                     rate = rates.get(pr_model, rates.get(db_agent.model) or rates["gpt-4o-mini"])
                     p_tokens = pr_usage.get("prompt_tokens", 0)
                     c_tokens = pr_usage.get("completion_tokens", 0)
-                    pr_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
+                    usd_cost = (p_tokens * rate["in"]) + (c_tokens * rate["out"])
+                    # Converter para Reais (USD_TO_BRL = 5.30) e aplicar o piso de R$ 0.01 se houver consumo
+                    brl_cost = usd_cost * 5.30
+                    if brl_cost > 0:
+                        pr_cost = max(0.01, brl_cost)
 
                 import json as _json
                 decision_copy = {k: v for k, v in pre_router_result.items() if not k.startswith("_")}
@@ -458,24 +459,37 @@ def process_webhook_automation(self, event_id: int):
                     neg_label = (config.negative_feedback_label or "feedback_negativo").strip()
                     ignore_label = (config.ignore_by_label or "humano").strip()
                     
-                    cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-                    cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
+                    cw_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+                    if cw_url and not cw_url.endswith("/api"):
+                        cw_url = f"{cw_url}/api"
+                    cw_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
                     
                     has_neg_label = False
-                    if cw_url and cw_token and event.conversa_id and event.conta_id:
-                        acc_id = int(event.conta_id) if str(event.conta_id).isdigit() else 0
+                    if cw_url and cw_token and event.conversa_id and event.inbox_id:
+                        acc_id = str(event.inbox_id)
                         conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
                         
-                        success, current_labels = await sync_conversation_labels(cw_url, acc_id, conv_id, cw_token)
+                        success, current_labels = await sync_conversation_labels(
+                            zapvoice_url=cw_url,
+                            client_id=acc_id,
+                            conversation_id=conv_id,
+                            token=cw_token
+                        )
                         if success:
                             has_neg_label = any(l.lower() == neg_label.lower() for l in current_labels if isinstance(l, str))
                             
                     if has_neg_label:
                         msg_transicao = "Lamento muito pelo ocorrido. Vou transferir seu atendimento para nossa equipe de suporte agora."
-                        if cw_url and cw_token and event.conversa_id and event.conta_id:
-                            acc_id = int(event.conta_id) if str(event.conta_id).isdigit() else 0
+                        if cw_url and cw_token and event.conversa_id and event.inbox_id:
+                            acc_id = str(event.inbox_id)
                             conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
-                            await sync_conversation_labels(cw_url, acc_id, conv_id, cw_token, to_add=[ignore_label])
+                            await sync_conversation_labels(
+                                zapvoice_url=cw_url,
+                                client_id=acc_id,
+                                conversation_id=conv_id,
+                                token=cw_token,
+                                to_add=[ignore_label]
+                            )
                         
                         _add_step(db, event_id, "👎 Emoji Negativo (2ª ocorrência)", f"Enviando mensagem de transição e aplicando etiqueta de pausa: {ignore_label}")
                         return {
@@ -488,10 +502,16 @@ def process_webhook_automation(self, event_id: int):
                             }
                         }
                     else:
-                        if cw_url and cw_token and event.conversa_id and event.conta_id:
-                            acc_id = int(event.conta_id) if str(event.conta_id).isdigit() else 0
+                        if cw_url and cw_token and event.conversa_id and event.inbox_id:
+                            acc_id = str(event.inbox_id)
                             conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
-                            await sync_conversation_labels(cw_url, acc_id, conv_id, cw_token, to_add=[neg_label])
+                            await sync_conversation_labels(
+                                zapvoice_url=cw_url,
+                                client_id=acc_id,
+                                conversation_id=conv_id,
+                                token=cw_token,
+                                to_add=[neg_label]
+                            )
                             
                         _add_step(db, event_id, "👎 Emoji Negativo (1ª ocorrência)", f"Enviando resposta empática e aplicando etiqueta de feedback negativo: {neg_label}")
                         return {
@@ -526,6 +546,77 @@ def process_webhook_automation(self, event_id: int):
                         final_agent_config = _build_agent_config(target_db_agent)
                         _add_step(db, event_id, f"🔀 Roteamento Efetuado", f"Mensagem roteada do principal para o Secundário: {final_db_agent.name}")
                 
+                # --- CHECK MODO ASSISTENTE DE PROJETO ---
+                is_project_assistant = False
+                proj_label = (config.project_assistant_label or "").strip()
+                if proj_label:
+                    current_labels_list = []
+                    if event.labels:
+                        try:
+                            import json as _json
+                            parsed_l = _json.loads(event.labels)
+                            if isinstance(parsed_l, list):
+                                current_labels_list = [str(x).lower().strip() for x in parsed_l]
+                        except Exception:
+                            current_labels_list = [x.strip().lower() for x in event.labels.split(",") if x.strip()]
+                    
+                    if proj_label.lower().strip() not in current_labels_list and event.conversa_id and event.conta_id:
+                        zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+                        zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
+                        acc_id = str(event.conta_id)
+                        conv_id = int(event.conversa_id) if str(event.conversa_id).isdigit() else 0
+                        from zapvoice_utils import get_conversation_labels_sync
+                        zv_labels = get_conversation_labels_sync(zv_url, acc_id, conv_id, zv_token)
+                        if zv_labels:
+                            current_labels_list = [str(x).lower().strip() for x in zv_labels]
+                    
+                    if proj_label.lower().strip() in current_labels_list:
+                        is_project_assistant = True
+
+                final_db_agent_tools = final_db_agent.tools
+                if is_project_assistant:
+                    _add_step(db, event_id, "⚙️ Modo Assistente de Projeto Ativo", "Injetando métricas reais e prompt customizado do projeto.")
+                    
+                    metrics = await get_project_assistant_context(async_db, config)
+                    
+                    support_str = ""
+                    if metrics["support_requests"]:
+                        for s in metrics["support_requests"]:
+                            support_str += f"- {s['nome']} ({s['telefone']} / {s['email']}) - Status: {s['status']} em {s['data']}\n"
+                    else:
+                        support_str = "Nenhum contato acionou o suporte humano esta semana.\n"
+                        
+                    leads_conversion_str = ""
+                    if metrics["leads_for_conversion"]:
+                        for l in metrics["leads_for_conversion"]:
+                            leads_conversion_str += f"- Lead: {l['nome']} ({l['telefone']}) | Classificação: {l['classificacao']} | Justificativa: {l['justificativa']}\n"
+                    else:
+                        leads_conversion_str = "Sem leads recentes qualificados no banco para analisar.\n"
+
+                    system_prompt = f"""Você é o Assistente de Projeto inteligente. Sua função é responder ao administrador/gestor sobre dados reais e métricas do projeto.
+
+Suas capacidades e como você pode ajudar:
+- Informar sobre leads gerados no mês.
+- Informar sobre vendas registradas no mês e faturamento.
+- Listar contatos que acionaram o suporte humano ao longo da semana.
+- Propor melhorias na conversão com base nos leads qualificados recentes e suas justificativas/objeções.
+
+Sempre que o usuário perguntar o que você pode fazer, como você pode ajudar, quem é você, ou termos similares, explique claramente essas quatro capacidades de forma amigável e profissional.
+
+Dados Reais do Projeto (Métricas Atuais):
+- Leads Gerados no Mês Atual: {metrics['leads_count']} leads
+- Vendas no Mês Atual: {metrics['sales_count']} vendas (Total Faturado: R$ {metrics['sales_total']:.2f})
+- Chamados de Suporte Humano na Semana (Últimos 7 dias):
+{support_str}
+
+Leads Qualificados Recentes para Análise de Conversão:
+{leads_conversion_str}
+
+Use essas informações para responder com precisão e clareza. Caso o usuário peça sugestões de melhoria de conversão, analise as justificativas e classificações dos leads fornecidos acima para propor melhorias acionáveis (ex: melhorar scripts, ajustar qualificação, focar em dores específicas dos leads frios/mornos). Responda sempre em Português do Brasil de forma executiva e direta.
+"""
+                    final_agent_config.system_prompt = system_prompt
+                    final_db_agent_tools = []
+
                 extracted = pre_router_result.get("perguntas_extraidas")
                 extracted_date = pre_router_result.get("data_extraida")
                 
@@ -539,7 +630,7 @@ def process_webhook_automation(self, event_id: int):
                     message=mensagem,
                     history=history,
                     config=final_agent_config,
-                    tools=final_db_agent.tools,
+                    tools=final_db_agent_tools,
                     context_variables={
                         "account_id": int(event.conta_id) if event.conta_id and str(event.conta_id).isdigit() else 0,
                         "conversation_id": int(event.conversa_id) if event.conversa_id and str(event.conversa_id).isdigit() else 0,
@@ -686,115 +777,27 @@ def process_webhook_automation(self, event_id: int):
         event.agent_response = response_text
         db.commit()
 
-        try:
-            p_tokens = 0
-            c_tokens = 0
-            if ai_usage:
-                if isinstance(ai_usage, dict):
-                    p_tokens = ai_usage.get("prompt_tokens", 0) or (ai_usage.get("main_prompt", 0) + ai_usage.get("mini_prompt", 0))
-                    c_tokens = ai_usage.get("completion_tokens", 0) or (ai_usage.get("main_completion", 0) + ai_usage.get("mini_completion", 0))
-                else:
-                    p_tokens = getattr(ai_usage, "prompt_tokens", 0)
-                    c_tokens = getattr(ai_usage, "completion_tokens", 0)
-
-            new_log = InteractionLog(
-                agent_id=config.agent_id,
-                session_id=session_id,
-                user_message=event.mensagem,
-                agent_response=response_text,
-                model_used=ai_metadata.get("model", db_agent.model),
-                input_tokens=p_tokens,
-                output_tokens=c_tokens,
-                cost_usd=ai_metadata.get("cost_usd", (ai_metadata.get("cost", 0) / 6.0)),
-                cost_brl=ai_metadata.get("cost", 0),
-                timestamp=get_now_utc()
-            )
-            db.add(new_log)
-            db.commit()
-            _add_step(db, event_id, "💰 Registro Financeiro", f"Custo registrado: R$ {new_log.cost_brl:.4f} ({p_tokens + c_tokens} tokens)")
-        except Exception as log_err:
-            logger.error(f"Erro ao salvar InteractionLog no Webhook: {log_err}")
-            _add_step(db, event_id, "⚠️ Erro no Financeiro", "Não foi possível registrar o custo desta interação.")
+        save_interaction_log(db, event, config, response_text, ai_metadata, session_id, db_agent)
 
         if response_text and config.leads_table and event.telefone:
-            try:
-                table = config.leads_table
-                
-                # Sincronizar etiquetas do Chatwoot se as credenciais estiverem disponíveis
-                cw_url = (config.chatwoot_url or os.getenv("CHATWOOT_URL", "")).rstrip("/")
-                cw_token = config.chatwoot_api_token or os.getenv("CHATWOOT_API_TOKEN", "")
-                
-                cw_labels = None
-                if cw_url and cw_token and event.conversa_id and event.conta_id:
-                    from chatwoot_utils import get_conversation_labels_sync
-                    cw_labels = get_conversation_labels_sync(
-                        cw_url,
-                        int(event.conta_id) if str(event.conta_id).isdigit() else 0,
-                        int(event.conversa_id) if str(event.conversa_id).isdigit() else 0,
-                        cw_token
-                    )
-                
-                update_fields = [
-                    "contato_nome = :nome",
-                    "telefone = :tel",
-                    "conversa_id = :cid",
-                    "conta_id = :conta_id",
-                    "inbox_id = :inbox_id",
-                    "inbox_nome = :inbox_nome",
-                    "ultima_resposta_agente = :resp",
-                    "ultima_resposta_agente_em = :now",
-                    "updated_at = :now"
-                ]
-                
-                params = {
-                    "nome": event.contato_nome,
-                    "resp": response_text,
-                    "tel": event.telefone,
-                    "wid": config.id,
-                    "cid": event.conversa_id,
-                    "conta_id": event.conta_id,
-                    "inbox_id": event.inbox_id,
-                    "inbox_nome": event.inbox_nome,
-                    "now": get_now_utc()
-                }
-
-                if event.created_at:
-                    update_fields.append("ultima_mensagem_em = :last_msg_at")
-                    params["last_msg_at"] = event.created_at
-                
-                if cw_labels is not None:
-                    update_fields.append("labels = :labels")
-                    params["labels"] = json.dumps(cw_labels, ensure_ascii=False)
-                
-                from webhooks.utils import normalize_phone, get_phone_suffix
-                phone_clean = normalize_phone(event.telefone)
-                tel_suffix = get_phone_suffix(phone_clean)
-                params["tel_suffix"] = tel_suffix
-
-                if lead_internal_id:
-                    params["lid"] = lead_internal_id
-                    where_clause = "id = :lid"
-                else:
-                    where_clause = "webhook_config_id = :wid AND (telefone = :tel OR telefone LIKE '%' || :tel_suffix || '%')"
-
-                db.execute(text(f"""
-                    UPDATE {table} SET
-                        {", ".join(update_fields)}
-                    WHERE {where_clause}
-                """), params)
-                db.commit()
-                
-                labels_log = f"labels ({json.dumps(cw_labels, ensure_ascii=False)})" if cw_labels is not None else "labels preservadas"
-                _add_step(db, event_id, "💾 Tabela de Leads Atualizada", f"Nome, telefone, {labels_log} e resposta do agente salvos de forma proativa.")
-            except Exception as le:
-                logger.error(f"Erro ao atualizar leads table proativamente: {le}")
-                _add_step(db, event_id, "⚠️ Aviso: Falha ao salvar no Contato", str(le))
+            zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
+            zv_token = config.zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
+            zv_labels = None
+            if zv_url and zv_token and event.conversa_id and event.conta_id:
+                from zapvoice_utils import get_conversation_labels_sync
+                zv_labels = get_conversation_labels_sync(
+                    zv_url,
+                    str(event.conta_id),
+                    int(event.conversa_id) if str(event.conversa_id).isdigit() else 0,
+                    zv_token
+                )
+            proactive_update_lead_table(db, event, config, response_text, lead_internal_id, zv_labels)
         
         response_delay = getattr(config, 'response_delay_seconds', 0) or 0
         
         send_success = True
         if response_text and event.conversa_id and event.conta_id:
-            send_success = _send_chatwoot_message(
+            send_success = _send_zapvoice_message(
                 db, event_id, event.conversa_id, event.conta_id, response_text, config,
                 split_paragraphs=True, delay=response_delay
             )
@@ -807,10 +810,59 @@ def process_webhook_automation(self, event_id: int):
                 )
             _add_step(db, event_id, "⚠️ Resposta Vazia - Enviando Fallback",
                       f"O agente não gerou conteúdo. Mensagem padrão enviada ao cliente: {fallback_msg[:100]}")
-            send_success = _send_chatwoot_message(db, event_id, event.conversa_id, event.conta_id, fallback_msg, config)
+            send_success = _send_zapvoice_message(db, event_id, event.conversa_id, event.conta_id, fallback_msg, config)
         else:
             _add_step(db, event_id, "⚠️ Resposta Vazia", "O agente gerou uma resposta vazia e não há dados de conversa válidos.")
             send_success = False
+
+        # Registrar etapa de variáveis extraídas no pipeline
+        try:
+            from sqlalchemy import select
+            from models import GlobalContextVariableModel, UserMemoryModel
+            # Buscar variáveis configuradas para extração por IA
+            ai_vars_stmt = select(GlobalContextVariableModel).where(GlobalContextVariableModel.extraction_method == "ai")
+            ai_vars_res = db.execute(ai_vars_stmt)
+            ai_vars = ai_vars_res.scalars().all()
+            
+            if ai_vars:
+                # Buscar valores salvos na memória do usuário para essa conversa
+                mem_stmt = select(UserMemoryModel).where(
+                    UserMemoryModel.session_id == str(event.conversa_id)
+                )
+                mem_res = db.execute(mem_stmt)
+                mems = mem_res.scalars().all()
+                mem_dict = {m.key: m.value for m in mems}
+                
+                saved_vars = {}
+                pending_vars = []
+                for v in ai_vars:
+                    if v.key in mem_dict and mem_dict[v.key] is not None and str(mem_dict[v.key]).strip() != "":
+                        saved_vars[v.key] = mem_dict[v.key]
+                    else:
+                        pending_vars.append(v.key)
+                
+                # Montar o detalhe textual legível por humanos
+                detail_text = ""
+                if saved_vars:
+                    detail_text += "✅ **Variáveis Extraídas e Salvas:**\n"
+                    for k, val in saved_vars.items():
+                        detail_text += f"- {k}: {val}\n"
+                else:
+                    detail_text += "ℹ️ Nenhuma variável de IA foi extraída nesta sessão até o momento.\n"
+                
+                if pending_vars:
+                    if saved_vars: detail_text += "\n"
+                    detail_text += "⏳ **Variáveis Pendentes de Extração:**\n"
+                    for k in pending_vars:
+                        detail_text += f"- {k} (Aguardando menção no diálogo)\n"
+                
+                _add_step(
+                    db, event_id, "📊 Variáveis Extraídas", 
+                    detail_text, 
+                    metadata={"saved": saved_vars, "pending": pending_vars}
+                )
+        except Exception as e_log_vars:
+            logger.error(f"Erro ao adicionar etapa de variáveis extraídas no pipeline: {e_log_vars}")
 
         event.status = "completed" if send_success else "error"
         db.commit()
@@ -818,6 +870,7 @@ def process_webhook_automation(self, event_id: int):
             _add_step(db, event_id, "🏁 Pipeline Finalizado", "Processamento concluído com sucesso.")
         else:
             _add_step(db, event_id, "❌ Pipeline Finalizado com Falha no Envio", "O processamento foi concluído, mas o envio da mensagem falhou.")
+
 
         try:
             import redis as redis_lib

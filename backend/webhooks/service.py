@@ -48,30 +48,42 @@ CREATE TABLE IF NOT EXISTS {table} (
 async def ensure_leads_table(table_name: str):
     """Garante a existência da tabela de leads e suas colunas (migração automática)."""
     async with engine.begin() as conn:
-        await conn.execute(text(LEADS_TABLE_DDL.format(table=table_name)))
+        ddl = LEADS_TABLE_DDL
+        if conn.dialect.name == "sqlite":
+            ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+        await conn.execute(text(ddl.format(table=table_name)))
+        is_sqlite = conn.dialect.name == "sqlite"
+        
         migrations = [
-            "pode_enviar_mensagem BOOLEAN DEFAULT TRUE",
-            "ultima_mensagem_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-            "window_close_processed BOOLEAN DEFAULT FALSE",
-            "followup_step INTEGER DEFAULT 0",
-            "ultima_resposta_agente TEXT",
-            "ultima_resposta_agente_em TIMESTAMP",
-            "link TEXT",
-            "message_type VARCHAR(50) DEFAULT 'text'",
-            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-            "conta_id VARCHAR",
-            "inbox_id VARCHAR",
-            "conversa_id VARCHAR",
-            "contato_id VARCHAR",
-            "inbox_nome VARCHAR",
-            "respostas_qualificacao TEXT",
-            "lead_score INTEGER",
-            "lead_classification VARCHAR(50)",
-            "lead_justification TEXT",
-            "qualified_by_agent_id INTEGER"
+            ("pode_enviar_mensagem", "BOOLEAN DEFAULT TRUE"),
+            ("ultima_mensagem_em", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ("window_close_processed", "BOOLEAN DEFAULT FALSE"),
+            ("followup_step", "INTEGER DEFAULT 0"),
+            ("ultima_resposta_agente", "TEXT"),
+            ("ultima_resposta_agente_em", "TIMESTAMP"),
+            ("link", "TEXT"),
+            ("message_type", "VARCHAR(50) DEFAULT 'text'"),
+            ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ("conta_id", "VARCHAR"),
+            ("inbox_id", "VARCHAR"),
+            ("conversa_id", "VARCHAR"),
+            ("contato_id", "VARCHAR"),
+            ("inbox_nome", "VARCHAR"),
+            ("respostas_qualificacao", "TEXT"),
+            ("lead_score", "INTEGER"),
+            ("lead_classification", "VARCHAR(50)"),
+            ("lead_justification", "TEXT"),
+            ("qualified_by_agent_id", "INTEGER")
         ]
-        for mig in migrations:
-            await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {mig}"))
+        
+        for col_name, col_type in migrations:
+            if is_sqlite:
+                info = await conn.execute(text(f"PRAGMA table_info({table_name})"))
+                columns = [row[1] for row in info.fetchall()]
+                if col_name not in columns:
+                    await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+            else:
+                await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
 
 async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
     """Insere ou atualiza lead considerando o telefone e sufixos."""

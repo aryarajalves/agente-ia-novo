@@ -30,6 +30,7 @@ class InteractionLog(Base):
     model_used = Column(String)
     input_tokens = Column(Integer)
     output_tokens = Column(Integer)
+    cached_tokens = Column(Integer, default=0, nullable=True)
     cost_usd = Column(Float)
     cost_brl = Column(Float)
     handoff_to = Column(String, nullable=True) # Ex: "suporte", "vendas", "humano"
@@ -106,7 +107,10 @@ class AgentConfigModel(Base):
     safety_settings = Column(String, default="standard")
     is_active = Column(Boolean, default=True)  # Status do agente
     date_awareness = Column(Boolean, default=False)  # Consciência temporal (datas reais)
+    date_awareness_past_days = Column(Integer, default=7, nullable=True)  # Dias passados no contexto temporal
+    date_awareness_future_days = Column(Integer, default=7, nullable=True)  # Dias futuros no contexto temporal
     system_prompt = Column(Text, default="Você é um assistente útil e inteligente.")
+    dynamic_prompt = Column(Text, default="", nullable=True)
     context_window = Column(Integer, default=5)
     knowledge_base = Column(Text, default="[]") # Legacy JSON list of FAQs
     simulated_time = Column(String, nullable=True) # HH:MM for time override
@@ -142,6 +146,11 @@ class AgentConfigModel(Base):
     initial_question_message = Column(Text, nullable=True)
     initial_ignore_message = Column(Text, nullable=True) # Mensagem de anúncio para ignorar como pergunta
     inbox_capture_enabled = Column(Boolean, default=True)
+    
+    # Greeting and dynamic flow modes: "panel" (default) or "prompt"
+    greeting_mode = Column(String, default="panel")
+    question_mode = Column(String, default="panel")
+    ad_mode = Column(String, default="panel")
 
     
     # Cost Router
@@ -271,7 +280,10 @@ class GlobalContextVariableModel(Base):
     type = Column(String, default="string") # Novo campo: string, number, boolean
     description = Column(Text, nullable=True)
     is_default = Column(Boolean, default=False)
+    extraction_method = Column(String, default="integration")
+    extraction_prompt = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class UserModel(Base):
@@ -308,6 +320,7 @@ class UnansweredQuestionModel(Base):
     question = Column(Text, nullable=False)
     context = Column(Text, nullable=True)
     status = Column(String, default="PENDENTE") # PENDENTE, RESPONDIDA, DESCARTADA
+    source = Column(String, nullable=True) # 'chat' ou 'chatwoot' ou 'playground' ou 'api'
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -343,9 +356,9 @@ class WebhookConfigModel(Base):
     agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="SET NULL"), nullable=True)
     blocked_messages = Column(Text, nullable=True)  # JSON array of strings
     allowed_contacts = Column(Text, nullable=True)  # JSON array of phone numbers; empty = all allowed
-    chatwoot_url = Column(String, nullable=True)        # Ex: https://app.chatwoot.com
-    chatwoot_api_token = Column(String, nullable=True)  # User access token
-    chatwoot_inbox_id = Column(String, nullable=True)   # ID do inbox específico para filtrar
+    zapvoice_url = Column(String, nullable=True)        # Ex: http://localhost:8000
+    zapvoice_api_token = Column(String, nullable=True)  # User access token / API key
+    zapvoice_client_id = Column(String, nullable=True)   # ID do cliente no ZapVoice
     labels_on_message = Column(Text, nullable=True)     # JSON array: etiquetas adicionadas em toda msg
     delete_keywords = Column(Text, nullable=True)       # JSON array: palavras que disparam deleção
     delete_message = Column(Text, nullable=True)        # Mensagem enviada antes de deletar o contato
@@ -383,6 +396,13 @@ class WebhookConfigModel(Base):
     memory_name_path = Column(String, nullable=True)
     memory_mappings = Column(Text, nullable=True) # JSON array: [{"path": "json.field", "key": "memory_key"}]
     
+    # Assistente de Projeto
+    project_assistant_label = Column(String, nullable=True)
+    project_assistant_keyword = Column(String, nullable=True)
+    project_assistant_deactivate_keyword = Column(String, nullable=True)
+    project_assistant_entry_message = Column(Text, nullable=True)
+    project_assistant_exit_message = Column(Text, nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -495,3 +515,80 @@ class MessageStatus(Base):
     message_id = Column(String, nullable=True) # ID da mensagem na plataforma externa
     
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class UserQuestionEmbedding(Base):
+    __tablename__ = "user_question_embeddings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    interaction_log_id = Column(Integer, ForeignKey("interaction_logs.id", ondelete="CASCADE"), nullable=True)
+    agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="CASCADE"), nullable=False)
+    question_text = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ObjectionCluster(Base):
+    __tablename__ = "objection_clusters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="CASCADE"), nullable=False)
+    cluster_label = Column(String, nullable=False) # Título resumido do grupo pela LLM
+    representative_question = Column(Text, nullable=True) # Pergunta central do cluster
+    suggested_script = Column(Text, nullable=True) # Roteiro sugerido pela LLM
+    count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    messages = relationship("ObjectionClusterMessage", back_populates="cluster", cascade="all, delete-orphan")
+
+
+class ObjectionClusterMessage(Base):
+    __tablename__ = "objection_cluster_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cluster_id = Column(Integer, ForeignKey("objection_clusters.id", ondelete="CASCADE"), nullable=False)
+    question_text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    cluster = relationship("ObjectionCluster", back_populates="messages")
+
+
+class BackupConfigModel(Base):
+    __tablename__ = "backup_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    enabled = Column(Boolean, default=False)
+    frequency_type = Column(String, default="hours")  # "hours" ou "days"
+    interval_value = Column(Integer, default=6)
+    retention_count = Column(Integer, default=30)
+    backup_folder = Column(String, default="Backup_AgenteFlow")
+    last_run = Column(DateTime(timezone=True), nullable=True)
+    next_run = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class BackupHistoryModel(Base):
+    __tablename__ = "backup_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    s3_key = Column(String, nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    status = Column(String, default="success")  # "success", "failure", "running"
+    error_message = Column(Text, nullable=True)
+    is_pinned = Column(Boolean, default=False)  # Se True, não é deletado pela política de retenção
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SaleModel(Base):
+    __tablename__ = "sales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True, nullable=True)
+    telefone = Column(String, index=True, nullable=True)
+    valor = Column(Float, default=0.0)
+    plataforma = Column(String, nullable=True) # Hotmart, Kiwify, etc.
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+

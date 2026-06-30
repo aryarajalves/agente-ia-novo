@@ -11,12 +11,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from api.limiter import limiter
-from api.routers import auth, agents, knowledge, analytics, media, sessions, tools, variables, feedback, chat, tester, integrations, support, inbox, leads
+from api.routers import auth, agents, knowledge, analytics, media, sessions, tools, variables, feedback, chat, tester, integrations, support, inbox, leads, objections, backups, sales
 from fastapi import WebSocket, WebSocketDisconnect
 from core.websocket import manager
 
@@ -72,7 +72,249 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Erro interno no servidor", "error": str(exc)},
     )
 
-# --- HEALTH CHECK ---
+# --- HEALTH CHECK & STATUS PAGE ---
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def root():
+    html_content = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend do Projeto: AgenteFlow - Status</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0a0f;
+            --card-bg: rgba(20, 18, 30, 0.45);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #8b5cf6;
+            --primary-glow: rgba(139, 92, 246, 0.15);
+            --accent: #00f2fe;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: relative;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(0, 242, 254, 0.06) 0%, transparent 40%);
+        }
+
+        .glow-orb {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            pointer-events: none;
+            filter: blur(40px);
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 520px;
+            padding: 24px;
+        }
+
+        .status-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: 28px;
+            padding: 40px 32px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .status-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 24px 60px rgba(139, 92, 246, 0.15);
+        }
+
+        .logo-area {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+
+        .logo-circle {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+            animation: pulse-glow 3s infinite ease-in-out;
+        }
+
+        .logo-circle svg {
+            width: 40px;
+            height: 40px;
+            fill: #ffffff;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(120deg, #ffffff, #d8b4fe, #a5f3fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            padding: 8px 18px;
+            border-radius: 100px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 32px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.05);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 var(--success-glow);
+            animation: pulse-dot 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 28px;
+            text-align: left;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 16px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.25);
+            letter-spacing: 0.3px;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+            }
+            50% {
+                transform: scale(1.03);
+                box-shadow: 0 12px 32px rgba(139, 92, 246, 0.6), 0 0 15px rgba(0, 242, 254, 0.2);
+            }
+        }
+
+        @keyframes pulse-dot {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="glow-orb"></div>
+    <div class="container">
+        <div class="status-card">
+            <div class="logo-area">
+                <div class="logo-circle">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2c1.1 0 2 .9 2 2v1.07c2.44.42 4.41 2.22 4.93 4.6l.07.33H20c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2h-1c0 1.04-.44 1.97-1.15 2.63l.71.72c.39-.39 1.02-.39 1.41 0s.39 1.02 0 1.41l-1.41 1.41c-.39.39-1.02.39-1.41 0l-.72-.71c-.66.71-1.59 1.15-2.63 1.15v1c0 1.1-.9 2-2 2h-2c-1.1 0-2-.9-2-2v-1c-1.04 0-1.97-.44-2.63-1.15l-.72.71c-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41l.71-.72C4.44 16.97 4 16.04 4 15H3c-1.1 0-2-.9-2-2v-2c0-1.1.9-2 2-2h1c0-1.04.44-1.97 1.15-2.63l-.71-.72c-.39.39-1.02.39-1.41 0s-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0l.72.71C7.03 4.44 7.96 4 9 4V3c0-1.1.9-2 2-2h1zM9 11c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6 0c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
+                    </svg>
+                </div>
+            </div>
+            <h1>Backend do Projeto: AgenteFlow</h1>
+            <div class="subtitle" style="color: var(--success);">Sistema Ativo</div>
+            
+            <div class="badge-status" style="margin-bottom: 0;">
+                <div class="pulse-dot"></div>
+                SISTEMA OPERACIONAL
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html_content, status_code=200)
+
+
 @app.get("/ping", tags=["Health"])
 async def ping():
     return {"status": "ok", "message": "Backend is reachable"}
@@ -105,6 +347,11 @@ app.include_router(integrations.router)
 app.include_router(support.router)
 app.include_router(inbox.router)
 app.include_router(leads.router)
+app.include_router(objections.router)
+app.include_router(backups.router)
+app.include_router(sales.router)
+
+
 
 # --- WEBSOCKET ---
 @app.websocket("/ws/events")

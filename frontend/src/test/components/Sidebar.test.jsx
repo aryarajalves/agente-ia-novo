@@ -74,6 +74,7 @@ describe('Sidebar Component', () => {
             expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
             expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Lead Scoring')).toBeInTheDocument();
+            expect(screen.getByText('Ranking de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Financeiro')).toBeInTheDocument();
             expect(screen.getByText('Integrações')).toBeInTheDocument();
             expect(screen.getByText('Gestão de Usuários')).toBeInTheDocument();
@@ -89,6 +90,7 @@ describe('Sidebar Component', () => {
             expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
             expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Lead Scoring')).toBeInTheDocument();
+            expect(screen.getByText('Ranking de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Financeiro')).toBeInTheDocument();
             expect(screen.getByText('Integrações')).toBeInTheDocument();
             expect(screen.queryByText('Gestão de Usuários')).not.toBeInTheDocument();
@@ -96,10 +98,14 @@ describe('Sidebar Component', () => {
     });
 
     describe('Controle de Permissões - Usuário', () => {
-        it('Usuário deve ver apenas "Meus Agentes"', () => {
+        it('Usuário deve ver "Meus Agentes" e "Ranking de Dúvidas", mas NÃO links de Admin', () => {
             renderSidebar('Usuário');
 
+            // Deve ver
             expect(screen.getByText('Meus Agentes')).toBeInTheDocument();
+            expect(screen.getByText('Ranking de Dúvidas')).toBeInTheDocument();
+
+            // Não deve ver (restrito a Admin/SuperAdmin)
             expect(screen.queryByText('Bases de Conhecimento')).not.toBeInTheDocument();
             expect(screen.queryByText('Suporte Humano')).not.toBeInTheDocument();
             expect(screen.queryByText('Inbox de Dúvidas')).not.toBeInTheDocument();

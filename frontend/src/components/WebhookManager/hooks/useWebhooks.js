@@ -39,9 +39,6 @@ export const useWebhooks = (showToast) => {
             const res = await api.get('/webhooks/chatwoot-config');
             const data = await res.json();
             setChatwootGlobal(data);
-            if (data.configured) {
-                fetchChatwootLabels();
-            }
         } catch (e) {
             console.error('Erro ao buscar config do chatwoot:', e);
         }
@@ -118,7 +115,9 @@ export const useWebhooks = (showToast) => {
         fetchWebhooks();
         fetchAgents();
         fetchChatwootConfig();
-    }, [fetchWebhooks, fetchAgents, fetchChatwootConfig]);
+        // Buscar labels sempre (ZapVoice independe do chatwoot-config)
+        fetchChatwootLabels();
+    }, [fetchWebhooks, fetchAgents, fetchChatwootConfig, fetchChatwootLabels]);
 
     return {
         webhooks,
@@ -131,7 +130,8 @@ export const useWebhooks = (showToast) => {
         fetchWebhooks,
         handleToggleActive,
         deleteWebhook,
-        handleGenerateDescription
+        handleGenerateDescription,
+        fetchChatwootLabels
     };
 
 };

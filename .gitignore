@@ -55,3 +55,16 @@ backend/tmp_*.py
 backend/tmp_*.txt
 backend/celerybeat-schedule
 backend/database.db
+*.db
+*.sqlite
+*.sqlite3
+*.webm
+tmp_uploads/
+backend/tmp_uploads/
+test_out.log
+test_pydantic.log
+resultado_testes.txt
+backend_logs.txt
+frontend/test-results/
+frontend/playwright-report/
+

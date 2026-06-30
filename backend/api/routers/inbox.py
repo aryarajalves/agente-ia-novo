@@ -98,16 +98,31 @@ async def list_unanswered_questions(
                         if db_phone:
                             phone = db_phone
 
+
+            # Extrair SESSION_ID_ORIGINAL do contexto, se existir (salvo pelo handler de dúvidas)
+            chat_session_id = None
+            if q.context:
+                for line in q.context.splitlines():
+                    if line.startswith("SESSION_ID_ORIGINAL:"):
+                        raw_val = line.replace("SESSION_ID_ORIGINAL:", "").strip()
+                        if raw_val:
+                            chat_session_id = raw_val
+                        break
+
             enriched_items.append({
                 "id": q.id,
                 "agent_id": q.agent_id,
                 "session_id": phone or q.session_id,
+                "session_id_raw": q.session_id,
+                "chat_session_id": chat_session_id,
                 "question": q.question,
                 "context": q.context,
                 "status": q.status,
+                "source": q.source,
                 "created_at": q.created_at.isoformat() if q.created_at else None,
                 "updated_at": q.updated_at.isoformat() if q.updated_at else None
             })
+
 
         return {"success": True, "items": enriched_items, "total": total}
     except Exception as e:

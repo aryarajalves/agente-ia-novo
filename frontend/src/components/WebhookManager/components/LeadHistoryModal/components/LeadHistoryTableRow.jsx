@@ -13,6 +13,8 @@ const LeadHistoryTableRow = ({
     const isAgent = event.dono === 'agente' || event.dono === 'bot';
     const isGrouped = event.status === 'grouped';
     const message = event.mensagem || event.conteudo || event.agent_response || '—';
+    const isStuck = event.status === 'processing' && (new Date() - new Date(event.updated_at || event.created_at) > 120000);
+    const isProcessingAndNotStuck = event.status === 'processing' && !isStuck;
 
     return (
         <tr 
@@ -147,16 +149,16 @@ const LeadHistoryTableRow = ({
                         <>
                             <button
                                 onClick={() => handleRetryEvent(event.id)}
-                                title={isRetrying || event.status === 'processing' ? "Reprocessando..." : "Reiniciar Automação"}
-                                disabled={isRetrying || event.status === 'processing'}
-                                className={isRetrying || event.status === 'processing' ? "loading-spin" : ""}
+                                title={isRetrying || isProcessingAndNotStuck ? "Reprocessando..." : "Reiniciar Automação"}
+                                disabled={isRetrying || isProcessingAndNotStuck}
+                                className={isRetrying || isProcessingAndNotStuck ? "loading-spin" : ""}
                                 style={{ 
                                     background: 'rgba(129, 140, 248, 0.1)', 
                                     border: 'none', 
                                     color: '#a5b4fc', 
                                     borderRadius: '6px', 
                                     padding: '6px', 
-                                    cursor: (isRetrying || event.status === 'processing') ? 'not-allowed' : 'pointer',
+                                    cursor: (isRetrying || isProcessingAndNotStuck) ? 'not-allowed' : 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',

@@ -172,8 +172,8 @@ async def test_greeting_in_history_warm_clarification():
         {"role": "assistant", "content": "Nossos preços começam em R$ 99."}
     ]
     
-    # Test "ta" with history - should trigger a warm friendly response instead of robotic technical choices
-    result = await run_pre_router_ai("ta", history, config)
+    # Test "humm" with history - should trigger a warm friendly response instead of robotic technical choices
+    result = await run_pre_router_ai("humm", history, config)
     assert result["eh_saudacao"] is False
     assert result["precisa_esclarecimento"] is True
     assert result["resposta_esclarecimento"] is not None
@@ -497,6 +497,36 @@ async def test_no_redundant_initial_question_message():
     finally:
         core_module.get_openai_client = original_get_openai
         core_module.run_pre_router_ai = original_run_pre_router
+
+
+@pytest.mark.asyncio
+async def test_oiee_greeting_shortcut():
+    config = MockConfig()
+    # Testar se "oiee" com dois "e" ativa a saudação pelo atalho rápido
+    result = await run_pre_router_ai("oiee", [], config)
+    assert result["eh_saudacao"] is True
+    assert result["resposta_direta"] == config.initial_message
+
+
+@pytest.mark.asyncio
+async def test_initial_message_none_string_sanitization():
+    # Caso 1: initial_message é a string "None"
+    config_none_str = MockConfig(initial_message="None")
+    result_none_str = await run_pre_router_ai("Oi", [], config_none_str)
+    assert result_none_str["eh_saudacao"] is True
+    assert result_none_str["resposta_direta"] == "Olá! Como posso ajudar?"
+
+    # Caso 2: initial_message é None (objeto Python)
+    config_none_obj = MockConfig(initial_message=None)
+    result_none_obj = await run_pre_router_ai("Oi", [], config_none_obj)
+    assert result_none_obj["eh_saudacao"] is True
+    assert result_none_obj["resposta_direta"] == "Olá! Como posso ajudar?"
+
+    # Caso 3: initial_message é a string "null"
+    config_null_str = MockConfig(initial_message="null")
+    result_null_str = await run_pre_router_ai("Oi", [], config_null_str)
+    assert result_null_str["eh_saudacao"] is True
+    assert result_null_str["resposta_direta"] == "Olá! Como posso ajudar?"
 
 
 

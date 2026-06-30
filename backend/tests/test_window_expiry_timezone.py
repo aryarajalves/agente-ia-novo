@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import WebhookConfigModel
 from tasks import check_window_expiry
 from database import SessionLocal
+from webhooks.service import LEADS_TABLE_DDL
 
 @pytest.mark.asyncio
 async def test_check_window_expiry_timezone_naive(db_session: AsyncSession):
@@ -16,6 +17,13 @@ async def test_check_window_expiry_timezone_naive(db_session: AsyncSession):
     """
     token = "test_token_window_expiry_111"
     leads_table = "leads"
+    
+    ddl = LEADS_TABLE_DDL
+    if db_session.bind.dialect.name == "sqlite":
+        ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+    await db_session.execute(text(f"DROP TABLE IF EXISTS {leads_table}"))
+    await db_session.execute(text(ddl.format(table=leads_table)))
+    await db_session.commit()
     
     config = WebhookConfigModel(
         name="Test Window Expiry Webhook",
@@ -38,14 +46,15 @@ async def test_check_window_expiry_timezone_naive(db_session: AsyncSession):
     await db_session.execute(text(f"""
         INSERT INTO {leads_table} (
             webhook_config_id, conta_id, inbox_id, conversa_id, contato_id, 
-            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed
+            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed, labels
         ) VALUES (
             :config_id, '1', '10', '9999', '123', 
-            '5585999991111', 'Cliente Expirado', 'Olá agente', :ult_msg, FALSE
+            '5585999991111', 'Cliente Expirado', 'Olá agente', :ult_msg, FALSE, :labels
         )
     """), {
         "config_id": config.id,
-        "ult_msg": past_25h
+        "ult_msg": past_25h,
+        "labels": json.dumps(["cliente", "24-horas", "urgente"])
     })
     await db_session.commit()
 
@@ -75,8 +84,11 @@ async def test_check_window_expiry_timezone_naive(db_session: AsyncSession):
             headers={"api_access_token": "test_api_token_cw_123"}
         )
 
-    res_lead = await db_session.execute(text(f"SELECT window_close_processed FROM {leads_table} WHERE telefone = '5585999991111'"))
-    assert res_lead.scalar() is True
+    await db_session.rollback()
+    res_lead = await db_session.execute(text(f"SELECT window_close_processed, labels FROM {leads_table} WHERE telefone = '5585999991111'"))
+    row = res_lead.fetchone()
+    assert bool(row[0]) is True
+    assert json.loads(row[1]) == ["cliente", "urgente"]
 
     await db_session.execute(text(f"DELETE FROM {leads_table} WHERE telefone = :tel"), {"tel": "5585999991111"})
     await db_session.execute(text("DELETE FROM webhook_configs WHERE id = :id"), {"id": config.id})
@@ -88,6 +100,13 @@ async def test_check_window_expiry_resilient_get_500(db_session: AsyncSession):
     """Se a busca de etiquetas falhar (500), o lead NÃO deve ser marcado como processado."""
     token = "test_token_resilience_get_500"
     leads_table = "leads"
+    
+    ddl = LEADS_TABLE_DDL
+    if db_session.bind.dialect.name == "sqlite":
+        ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+    await db_session.execute(text(f"DROP TABLE IF EXISTS {leads_table}"))
+    await db_session.execute(text(ddl.format(table=leads_table)))
+    await db_session.commit()
     
     config = WebhookConfigModel(
         name="Test Resilient Get 500",
@@ -110,12 +129,12 @@ async def test_check_window_expiry_resilient_get_500(db_session: AsyncSession):
     await db_session.execute(text(f"""
         INSERT INTO {leads_table} (
             webhook_config_id, conta_id, inbox_id, conversa_id, contato_id, 
-            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed
+            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed, labels
         ) VALUES (
             :config_id, '1', '10', '9992', '123', 
-            '5585999992222', 'Cliente Expirado 500', 'Olá', :ult_msg, FALSE
+            '5585999992222', 'Cliente Expirado 500', 'Olá', :ult_msg, FALSE, :labels
         )
-    """), {"config_id": config.id, "ult_msg": past_25h})
+    """), {"config_id": config.id, "ult_msg": past_25h, "labels": json.dumps(["24-horas"])})
     await db_session.commit()
 
     mock_client = MagicMock()
@@ -128,8 +147,11 @@ async def test_check_window_expiry_resilient_get_500(db_session: AsyncSession):
     with patch("tasks.httpx.Client", return_value=mock_client):
         check_window_expiry()
 
-    res_lead = await db_session.execute(text(f"SELECT window_close_processed FROM {leads_table} WHERE telefone = '5585999992222'"))
-    assert res_lead.scalar() is False, "O lead não deveria ser marcado como processado após erro 500 no GET"
+    await db_session.rollback()
+    res_lead = await db_session.execute(text(f"SELECT window_close_processed, labels FROM {leads_table} WHERE telefone = '5585999992222'"))
+    row = res_lead.fetchone()
+    assert bool(row[0]) is False, "O lead não deveria ser marcado como processado após erro 500 no GET"
+    assert json.loads(row[1]) == ["24-horas"], "A label local não deveria ter mudado"
 
     await db_session.execute(text(f"DELETE FROM {leads_table} WHERE telefone = :tel"), {"tel": "5585999992222"})
     await db_session.execute(text("DELETE FROM webhook_configs WHERE id = :id"), {"id": config.id})
@@ -141,6 +163,13 @@ async def test_check_window_expiry_resilient_post_500(db_session: AsyncSession):
     """Se a remoção de etiquetas falhar (500), o lead NÃO deve ser marcado como processado."""
     token = "test_token_resilience_post_500"
     leads_table = "leads"
+    
+    ddl = LEADS_TABLE_DDL
+    if db_session.bind.dialect.name == "sqlite":
+        ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+    await db_session.execute(text(f"DROP TABLE IF EXISTS {leads_table}"))
+    await db_session.execute(text(ddl.format(table=leads_table)))
+    await db_session.commit()
     
     config = WebhookConfigModel(
         name="Test Resilient Post 500",
@@ -163,12 +192,12 @@ async def test_check_window_expiry_resilient_post_500(db_session: AsyncSession):
     await db_session.execute(text(f"""
         INSERT INTO {leads_table} (
             webhook_config_id, conta_id, inbox_id, conversa_id, contato_id, 
-            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed
+            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed, labels
         ) VALUES (
             :config_id, '1', '10', '9993', '123', 
-            '5585999993333', 'Cliente Expirado Post 500', 'Olá', :ult_msg, FALSE
+            '5585999993333', 'Cliente Expirado Post 500', 'Olá', :ult_msg, FALSE, :labels
         )
-    """), {"config_id": config.id, "ult_msg": past_25h})
+    """), {"config_id": config.id, "ult_msg": past_25h, "labels": json.dumps(["24-horas"])})
     await db_session.commit()
 
     mock_client = MagicMock()
@@ -186,8 +215,11 @@ async def test_check_window_expiry_resilient_post_500(db_session: AsyncSession):
     with patch("tasks.httpx.Client", return_value=mock_client):
         check_window_expiry()
 
-    res_lead = await db_session.execute(text(f"SELECT window_close_processed FROM {leads_table} WHERE telefone = '5585999993333'"))
-    assert res_lead.scalar() is False, "O lead não deveria ser marcado como processado após erro 500 no POST"
+    await db_session.rollback()
+    res_lead = await db_session.execute(text(f"SELECT window_close_processed, labels FROM {leads_table} WHERE telefone = '5585999993333'"))
+    row = res_lead.fetchone()
+    assert bool(row[0]) is False, "O lead não deveria ser marcado como processado após erro 500 no POST"
+    assert json.loads(row[1]) == ["24-horas"], "A label local não deveria ter mudado"
 
     await db_session.execute(text(f"DELETE FROM {leads_table} WHERE telefone = :tel"), {"tel": "5585999993333"})
     await db_session.execute(text("DELETE FROM webhook_configs WHERE id = :id"), {"id": config.id})
@@ -199,6 +231,13 @@ async def test_check_window_expiry_resilient_404(db_session: AsyncSession):
     """Se a conversa retornar 404 (não encontrada), o lead deve ser marcado como processado."""
     token = "test_token_resilience_404"
     leads_table = "leads"
+    
+    ddl = LEADS_TABLE_DDL
+    if db_session.bind.dialect.name == "sqlite":
+        ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+    await db_session.execute(text(f"DROP TABLE IF EXISTS {leads_table}"))
+    await db_session.execute(text(ddl.format(table=leads_table)))
+    await db_session.commit()
     
     config = WebhookConfigModel(
         name="Test Resilient 404",
@@ -221,12 +260,12 @@ async def test_check_window_expiry_resilient_404(db_session: AsyncSession):
     await db_session.execute(text(f"""
         INSERT INTO {leads_table} (
             webhook_config_id, conta_id, inbox_id, conversa_id, contato_id, 
-            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed
+            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed, labels
         ) VALUES (
             :config_id, '1', '10', '9994', '123', 
-            '5585999994444', 'Cliente Expirado 404', 'Olá', :ult_msg, FALSE
+            '5585999994444', 'Cliente Expirado 404', 'Olá', :ult_msg, FALSE, :labels
         )
-    """), {"config_id": config.id, "ult_msg": past_25h})
+    """), {"config_id": config.id, "ult_msg": past_25h, "labels": json.dumps(["24-horas", "humano"])})
     await db_session.commit()
 
     mock_client = MagicMock()
@@ -239,8 +278,11 @@ async def test_check_window_expiry_resilient_404(db_session: AsyncSession):
     with patch("tasks.httpx.Client", return_value=mock_client):
         check_window_expiry()
 
-    res_lead = await db_session.execute(text(f"SELECT window_close_processed FROM {leads_table} WHERE telefone = '5585999994444'"))
-    assert res_lead.scalar() is True, "O lead deveria ser marcado como processado se retornar 404 no Chatwoot"
+    await db_session.rollback()
+    res_lead = await db_session.execute(text(f"SELECT window_close_processed, labels FROM {leads_table} WHERE telefone = '5585999994444'"))
+    row = res_lead.fetchone()
+    assert bool(row[0]) is True, "O lead deveria ser marcado como processado se retornar 404 no Chatwoot"
+    assert json.loads(row[1]) == ["humano"], "A etiqueta de 24h deve ser removida localmente mesmo no 404"
 
     await db_session.execute(text(f"DELETE FROM {leads_table} WHERE telefone = :tel"), {"tel": "5585999994444"})
     await db_session.execute(text("DELETE FROM webhook_configs WHERE id = :id"), {"id": config.id})
@@ -252,6 +294,13 @@ async def test_check_window_expiry_resilient_no_label_needed(db_session: AsyncSe
     """Se a conversa já não tiver a etiqueta configurada para remoção, deve ser marcado como processado sem POST."""
     token = "test_token_resilience_no_label"
     leads_table = "leads"
+    
+    ddl = LEADS_TABLE_DDL
+    if db_session.bind.dialect.name == "sqlite":
+        ddl = ddl.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+    await db_session.execute(text(f"DROP TABLE IF EXISTS {leads_table}"))
+    await db_session.execute(text(ddl.format(table=leads_table)))
+    await db_session.commit()
     
     config = WebhookConfigModel(
         name="Test Resilient No Label Needed",
@@ -274,12 +323,12 @@ async def test_check_window_expiry_resilient_no_label_needed(db_session: AsyncSe
     await db_session.execute(text(f"""
         INSERT INTO {leads_table} (
             webhook_config_id, conta_id, inbox_id, conversa_id, contato_id, 
-            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed
+            telefone, contato_nome, mensagem, ultima_mensagem_em, window_close_processed, labels
         ) VALUES (
             :config_id, '1', '10', '9995', '123', 
-            '5585999995555', 'Cliente Expirado Sem Label', 'Olá', :ult_msg, FALSE
+            '5585999995555', 'Cliente Expirado Sem Label', 'Olá', :ult_msg, FALSE, :labels
         )
-    """), {"config_id": config.id, "ult_msg": past_25h})
+    """), {"config_id": config.id, "ult_msg": past_25h, "labels": json.dumps(["24-horas", "humano", "outra-label"])})
     await db_session.commit()
 
     mock_client = MagicMock()
@@ -296,8 +345,11 @@ async def test_check_window_expiry_resilient_no_label_needed(db_session: AsyncSe
         # O post NÃO deve ser chamado
         mock_client.post.assert_not_called()
 
-    res_lead = await db_session.execute(text(f"SELECT window_close_processed FROM {leads_table} WHERE telefone = '5585999995555'"))
-    assert res_lead.scalar() is True, "O lead deveria ser marcado como processado, pois a etiqueta já não existia"
+    await db_session.rollback()
+    res_lead = await db_session.execute(text(f"SELECT window_close_processed, labels FROM {leads_table} WHERE telefone = '5585999995555'"))
+    row = res_lead.fetchone()
+    assert bool(row[0]) is True, "O lead deveria ser marcado como processado, pois a etiqueta já não existia"
+    assert json.loads(row[1]) == ["outra-label", "humano"], "A coluna labels deve ser atualizada para refletir o Chatwoot sem a tag 24h"
 
     await db_session.execute(text(f"DELETE FROM {leads_table} WHERE telefone = :tel"), {"tel": "5585999995555"})
     await db_session.execute(text("DELETE FROM webhook_configs WHERE id = :id"), {"id": config.id})
