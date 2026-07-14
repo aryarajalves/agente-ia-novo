@@ -24,7 +24,7 @@ const ExpandableField = ({ label, value, onChange, type = 'text', placeholder, s
             width: '100vw',
             height: '100vh',
             backgroundColor: 'rgba(2, 6, 23, 0.95)',
-            zIndex: 99999,
+            zIndex: 10000001,
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
@@ -116,6 +116,12 @@ const ExpandableField = ({ label, value, onChange, type = 'text', placeholder, s
                         className="maximize-btn"
                         title="Expandir para tela cheia"
                         type="button"
+                        style={{
+                            position: 'absolute',
+                            right: '10px',
+                            top: type === 'textarea' || type === 'json' ? '10px' : '50%',
+                            transform: type === 'textarea' || type === 'json' ? 'none' : 'translateY(-50%)'
+                        }}
                     >
                         ⤢
                     </button>

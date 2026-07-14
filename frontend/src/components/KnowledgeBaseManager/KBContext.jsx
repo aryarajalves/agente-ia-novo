@@ -20,6 +20,8 @@ export const KBProvider = ({ children, initialKB, kbId, kbType, onAdd, onDelete,
     const [itemToDelete, setItemToDelete] = useState(null);
     const [showImporter, setShowImporter] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [isEditOpen, setIsEditOpen] = useState(false);
+    const [itemToEdit, setItemToEdit] = useState(null);
     
     // Feature States (Simulador, Transcrição, etc.)
     const [simQuery, setSimQuery] = useState('');
@@ -67,6 +69,8 @@ export const KBProvider = ({ children, initialKB, kbId, kbType, onAdd, onDelete,
         itemToDelete, setItemToDelete,
         showImporter, setShowImporter,
         showSuccessModal, setShowSuccessModal,
+        isEditOpen, setIsEditOpen,
+        itemToEdit, setItemToEdit,
         simQuery, setSimQuery,
         simResults, setSimResults,
         simLoading, setSimLoading,

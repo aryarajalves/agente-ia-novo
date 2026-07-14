@@ -15,7 +15,7 @@ async def search_knowledge_base(
     kb_ids: list[int] = None,
     agent_id: int = None,
     limit: int = 5,
-    similarity_threshold: float = 0.5,
+    similarity_threshold: float = 0.0,
     model: str = "gpt-4o-mini",
     fallback_model: str = None,
     # Forçar configurações
@@ -227,7 +227,16 @@ async def search_knowledge_base(
                 best_dist = best.get('distance')
                 if best_dist is not None and best_dist < 0.65:
                     final_filtered_items = [best]
-        
+
+        # 9. Filtro de Relevância Mínima
+        # Descarta itens cuja relevance_score fique abaixo do limiar configurado,
+        # garantindo que só o que realmente atinge o % mínimo seja enviado ao RAG.
+        if similarity_threshold and similarity_threshold > 0:
+            final_filtered_items = [
+                item for item in final_filtered_items
+                if item.get("relevance_score") is None or item.get("relevance_score") >= similarity_threshold
+            ]
+
         class RAGUsage:
             def __init__(self, p, c, model):
                 self.prompt_tokens = p

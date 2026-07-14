@@ -467,6 +467,7 @@ const LeadsModal = ({
                 {pipelineEvent && (
                     <AutomationPipelineModal
                         event={pipelineEvent}
+                        webhookId={leadsModal?.webhook?.id}
                         onClose={() => setPipelineEvent(null)}
                     />
                 )}

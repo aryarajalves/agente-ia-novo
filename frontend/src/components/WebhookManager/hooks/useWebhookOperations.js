@@ -77,6 +77,11 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook, fetchCha
 
     const handleEdit = async (e) => {
         if (e) e.preventDefault();
+        if (!editingWebhook || !editingWebhook.id) {
+            showToast('Erro: integração não identificada. Feche e abra o modal novamente.', 'error');
+            setEditSaving(false);
+            return;
+        }
         setEditSaving(true);
         setEditError('');
         try {
@@ -156,6 +161,7 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook, fetchCha
             followup_enabled: webhook.followup_enabled || false,
             followup_steps: webhook.followup_steps || [],
             followup_business_hours: webhook.followup_business_hours || { enabled: false, start: '08:00', end: '18:00', weekdays: true, saturday: false, sunday: false },
+            split_response_enabled: webhook.split_response_enabled !== undefined ? webhook.split_response_enabled : true,
         });
         setEditTab('geral');
         setEditError('');

@@ -27,9 +27,9 @@ const WhatsAppCard = ({ onConfigClick }) => {
                         💬
                     </div>
                     <div>
-                        <h4 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>WhatsApp (Chatwoot)</h4>
+                        <h4 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>WhatsApp (ZapJords)</h4>
                         <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
-                            Conecte o Chatwoot e gerencie webhooks para automação de mensagens.
+                            Conecte o ZapJords e gerencie webhooks para automação de mensagens.
                         </p>
                     </div>
                 </div>
@@ -61,7 +61,7 @@ const WhatsAppCard = ({ onConfigClick }) => {
 
             <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(34, 197, 94, 0.05)', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.1)' }}>
                 <p style={{ margin: 0, color: '#86efac', fontSize: '0.85rem', lineHeight: '1.6' }}>
-                    💡 <strong>Dica:</strong> Use esta integração para capturar leads do WhatsApp via Chatwoot.
+                    💡 <strong>Dica:</strong> Use esta integração para capturar leads do WhatsApp via ZapJords.
                 </p>
             </div>
         </div>

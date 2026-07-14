@@ -18,8 +18,11 @@ async def test_handle_chatwoot_handoff_phone_and_email_mapping():
         "session_id": "50"
     }
     
-    # Mocking external calls (e.g. sync_conversation_labels and delete_all_user_memory)
-    with patch("chatwoot_utils.sync_conversation_labels", new_callable=AsyncMock) as mock_sync, \
+    # Mocking external calls (e.g. sync_conversation_labels ZapVoice e delete_all_user_memory)
+    # Nota: o handler usa zapvoice_utils.sync_conversation_labels (importado no topo de
+    # agent_core/tools/handlers/chatwoot.py), não mais "chatwoot_utils" (módulo que nunca existiu
+    # neste projeto — resquício de uma versão anterior baseada em Chatwoot).
+    with patch("agent_core.tools.handlers.chatwoot.sync_conversation_labels", new_callable=AsyncMock) as mock_sync, \
          patch("agent_core.memory.delete_all_user_memory", new_callable=AsyncMock) as mock_delete:
         
         await handle_chatwoot_handoff(

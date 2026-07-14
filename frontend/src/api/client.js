@@ -42,7 +42,10 @@ export const api = {
     },
 
     get(path, options = {}) {
-        return this.request(path, { ...options, method: 'GET' });
+        // cache: 'no-store' evita que o navegador (ou um proxy/CDN na frente da API, ex.: túnel
+        // Cloudflare) sirva uma resposta antiga em cache para este GET — relevante para telas de
+        // configuração (ex.: Editar Integração) onde o valor precisa refletir a última gravação.
+        return this.request(path, { ...options, method: 'GET', cache: options.cache || 'no-store' });
     },
 
     post(path, body, options = {}) {

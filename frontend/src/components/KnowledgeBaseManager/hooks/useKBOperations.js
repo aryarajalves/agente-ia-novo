@@ -72,13 +72,51 @@ export const useKBOperations = () => {
         }
     };
 
-    const handleAddItem = (newPair) => {
-        if (!newPair.question.trim() || !newPair.answer.trim()) return;
-        if (onAdd) {
-            onAdd(newPair.question, newPair.answer, newPair.category, newPair.metadata_val);
-        } else if (onChange) {
-            const updated = [...knowledgeBase, newPair];
-            onChange(updated);
+    const handleAddItem = async (newPair) => {
+        if (!newPair.question.trim() || !newPair.answer.trim()) return false;
+
+        try {
+            if (onAdd) {
+                const result = await onAdd(newPair.question, newPair.answer, newPair.category, newPair.metadata_val);
+                return result !== false;
+            } else if (onChange) {
+                const updated = [...knowledgeBase, newPair];
+                onChange(updated);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.error("Add failed", e);
+            alert("Erro ao adicionar item");
+            return false;
+        }
+    };
+
+    const handleUpdateItem = async (itemId, updatedFields) => {
+        if (!updatedFields.question?.trim() || !updatedFields.answer?.trim()) return false;
+
+        try {
+            if (onUpdate) {
+                const result = await onUpdate(
+                    itemId,
+                    updatedFields.question,
+                    updatedFields.answer,
+                    updatedFields.category,
+                    updatedFields.metadata_val
+                );
+                return result !== false;
+            } else if (onChange) {
+                const updated = knowledgeBase.map(item =>
+                    item.id === itemId ? { ...item, ...updatedFields } : item
+                );
+                onChange(updated);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.error("Update failed", e);
+            alert("Erro ao atualizar item");
+            return false;
         }
     };
 
@@ -148,6 +186,7 @@ export const useKBOperations = () => {
         confirmDeletion,
         confirmBulkDelete,
         handleAddItem,
+        handleUpdateItem,
         handleBulkUpdate,
         handleBulkSummarize
     };

@@ -625,6 +625,78 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
                 elif extracted and str(extracted).strip():
                     mensagem = str(extracted)
                     _add_step(db, event_id, "🧹 Mensagem Limpa/Extraída", mensagem[:1000])
+
+                pre_executed_tool_calls = []
+                pre_executed_rag_context = None
+                
+                # Executar RAG antecipado se solicitado pelo Pre-Router
+                if pre_router_result.get("precisa_rag"):
+                    kb_ids = getattr(final_db_agent, 'knowledge_base_ids', []) or ([final_db_agent.knowledge_base_id] if getattr(final_db_agent, 'knowledge_base_id', None) else [])
+                    if kb_ids:
+                        from rag_service import search_knowledge_base
+                        _add_step(db, event_id, "🔍 Buscando RAG (Pre-Router)", f"Consultando bases semânticas para: {mensagem[:200]}")
+                        relevant_items, rag_usage = await search_knowledge_base(db=async_db, query=mensagem, kb_ids=kb_ids, limit=getattr(final_db_agent, 'rag_retrieval_count', 5), similarity_threshold=getattr(final_db_agent, 'rag_relevance_threshold', 0.0) or 0.0)
+                        if relevant_items:
+                            pre_executed_rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in relevant_items])
+                
+                # Executar ferramenta antecipada se solicitada pelo Pre-Router
+                if pre_router_result.get("chamada_ferramenta"):
+                    tc = pre_router_result["chamada_ferramenta"]
+                    tool_name = tc.get("nome")
+                    tool_args = tc.get("argumentos") or {}
+                    
+                    _add_step(db, event_id, "🛠️ Acionando ferramenta (Pre-Router)", f"Ferramenta: {tool_name} | Argumentos: {tool_args}")
+                    
+                    tool_result = "Erro: Ferramenta não encontrada."
+                    context_vars = {
+                        "account_id": int(event.conta_id) if event.conta_id and str(event.conta_id).isdigit() else 0,
+                        "conversation_id": int(event.conversa_id) if event.conversa_id and str(event.conversa_id).isdigit() else 0,
+                        "webhook_config_id": event.webhook_config_id,
+                        "contact_phone": event.telefone,
+                        "contact_name": event.contato_nome,
+                        "thread_id": event.conversa_id,
+                        "session_id": session_id,
+                        "leads_table": config.leads_table if config else None,
+                        "agent_id": final_db_agent.id
+                    }
+                    
+                    # Roteamento de Handlers de Ferramentas locais
+                    if tool_name == "internal_date_calculator":
+                        from agent_core.tools.handlers.internal import handle_date_calculator
+                        import json as _json
+                        tool_result = await handle_date_calculator(_json.dumps(tool_args))
+                    elif tool_name == "registrar_duvida_sem_resposta":
+                        from agent_core.tools.handlers.internal import handle_unanswered_question
+                        import json as _json
+                        tool_result = await handle_unanswered_question(async_db, context_vars, _json.dumps(tool_args), history, final_db_agent.id)
+                    elif tool_name == "google_calendar_manager":
+                        from agent_core.tools.handlers.google import handle_google_calendar
+                        tool_result = await handle_google_calendar(async_db, context_vars, tool_args)
+                    elif tool_name == "lead_qualificado":
+                        from agent_core.tools.handlers.internal import handle_lead_qualified
+                        import json as _json
+                        tool_result = await handle_lead_qualified(async_db, context_vars, _json.dumps(tool_args), final_db_agent.id)
+                    elif tool_name in ["transferir_atendimento", "transferir_suporte_humano"]:
+                        from agent_core.tools.handlers.chatwoot import handle_chatwoot_handoff
+                        tool_result = await handle_chatwoot_handoff(async_db, context_vars, None, True, tool_args, history, final_db_agent.id)
+                    else:
+                        target_tool = next((t for t in final_db_agent_tools if t.name == tool_name), None)
+                        if target_tool:
+                            try:
+                                import httpx
+                                async with httpx.AsyncClient(timeout=30.0) as http_client:
+                                    res = await http_client.post(target_tool.webhook_url, json={**tool_args, **context_vars})
+                                    tool_result = res.text
+                            except Exception as e:
+                                logger.error(f"Erro na execução da ferramenta externa {tool_name} no pre-router: {str(e)}")
+                                tool_result = "ERRO: A ferramenta encontrou uma instabilidade temporária."
+                                
+                    _add_step(db, event_id, f"✅ Ferramenta {tool_name} finalizada (Pre-Router)", f"Retorno: {tool_result[:500]}...")
+                    pre_executed_tool_calls.append({
+                        "name": tool_name,
+                        "args": tool_args,
+                        "output": tool_result
+                    })
                     
                 result = await process_message(
                     message=mensagem,
@@ -645,7 +717,9 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
 
                     db=async_db,
                     image_url=image_url,
-                    on_step=lambda step, detail: _add_step(db, event_id, step, detail)
+                    on_step=lambda step, detail: _add_step(db, event_id, step, detail),
+                    pre_executed_tool_calls=pre_executed_tool_calls,
+                    pre_executed_rag_context=pre_executed_rag_context
                 )
                 
                 if isinstance(result, dict) and "usage" in result and pre_router_result and "_usage" in pre_router_result:
@@ -797,9 +871,12 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
         
         send_success = True
         if response_text and event.conversa_id and event.conta_id:
+            split_enabled = getattr(config, 'split_response_enabled', True)
+            if split_enabled is None:
+                split_enabled = True
             send_success = _send_zapvoice_message(
                 db, event_id, event.conversa_id, event.conta_id, response_text, config,
-                split_paragraphs=True, delay=response_delay
+                split_paragraphs=split_enabled, delay=response_delay
             )
         elif event.conversa_id and event.conta_id:
             fallback_msg = getattr(config, 'fallback_empty_response', None)

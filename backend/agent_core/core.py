@@ -25,7 +25,9 @@ async def process_message(
     message: str, history: list, config, tools: list = None, 
     context_variables: dict = None, db: AsyncSession = None,
     performed_tool_calls: list = None, image_url: str = None,
-    on_step: callable = None
+    on_step: callable = None,
+    pre_executed_tool_calls: list = None,
+    pre_executed_rag_context: str = None
 ):
     active_role = "main"
     context_variables = context_variables or {}
@@ -89,8 +91,8 @@ async def process_message(
 
     # 0. Pre-Router (Saudação, Triagem e Datas)
     # Se não houver histórico, ou se for uma mensagem curta, rodamos o Pre-Router
-    # Exceto se for imagem (que já vai pro Vision)
-    if not image_url and not performed_tool_calls:
+    # Exceto se for imagem, ou se as ferramentas/RAG já foram pré-executados
+    if not image_url and not performed_tool_calls and not pre_executed_tool_calls and pre_executed_rag_context is None:
         try:
             # Precisamos dos agentes secundários para o roteamento (opcional no playground)
             # Por enquanto, focamos em Saudações e Datas
@@ -264,34 +266,9 @@ async def process_message(
     # 4. Memory & RAG & Dates (Simplified for brevity in core)
     session_id = context_variables.get("session_id")
     if db and session_id:
-        # Tenta usar o resumo do pre-router (resumo_usuario e resumo_agente)
-        mem = None
-        if 'pre_router_result' in locals() and pre_router_result and pre_router_result.get("resumo_memorias"):
-            mem = pre_router_result.get("resumo_memorias")
-            mem = f"\n# RESUMO DAS MEMÓRIAS DO USUÁRIO E AGENTE:\n{mem}\n"
+        # Obter fatos e variáveis estruturadas da memória de longo prazo
+        mem = await fetch_user_memory(db, session_id)
         
-        # Fallback 1: Tenta obter o último resumo salvo no banco de dados (SessionSummary)
-        if not mem:
-            try:
-                from sqlalchemy import select
-                from models import SessionSummary
-                # db pode ser síncrono ou assíncrono
-                stmt = select(SessionSummary).where(SessionSummary.session_id == session_id)
-                if isinstance(db, AsyncSession):
-                    res = await db.execute(stmt)
-                else:
-                    res = db.execute(stmt)
-                summary_record = res.scalars().first()
-                if summary_record and summary_record.summary_text:
-                    mem = summary_record.summary_text
-                    mem = f"\n# RESUMO DAS MEMÓRIAS DO USUÁRIO E AGENTE (BANCO DE DADOS):\n{mem}\n"
-            except Exception as e_db_mem:
-                logger.error(f"Erro ao buscar SessionSummary no fallback: {e_db_mem}")
-        
-        # Fallback 2: Memória tradicional baseada em fatos estruturados
-        if not mem:
-            mem = await fetch_user_memory(db, session_id)
-            
         if mem:
             messages.insert(1, {"role": "system", "content": f"INFORMAÇÃO CRUCIAL:\n{mem}"})
 
@@ -308,16 +285,20 @@ async def process_message(
     main_prompt_tokens = 0
     main_completion_tokens = 0
     
-    kb_ids = getattr(config, 'knowledge_base_ids', []) or ([config.knowledge_base_id] if getattr(config, 'knowledge_base_id', None) else [])
-    if db and kb_ids:
-        from rag_service import search_knowledge_base
-        relevant_items, rag_usage = await search_knowledge_base(db=db, query=message, kb_ids=kb_ids, limit=getattr(config, 'rag_retrieval_count', 5))
-        if rag_usage:
-            mini_prompt_tokens += rag_usage.prompt_tokens
-            mini_completion_tokens += rag_usage.completion_tokens
-        if relevant_items:
-            rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in relevant_items])
-            messages[0]["content"] += rag_context
+    if pre_executed_rag_context:
+        rag_context = pre_executed_rag_context
+        messages[0]["content"] += rag_context
+    else:
+        kb_ids = getattr(config, 'knowledge_base_ids', []) or ([config.knowledge_base_id] if getattr(config, 'knowledge_base_id', None) else [])
+        if db and kb_ids:
+            from rag_service import search_knowledge_base
+            relevant_items, rag_usage = await search_knowledge_base(db=db, query=message, kb_ids=kb_ids, limit=getattr(config, 'rag_retrieval_count', 5), similarity_threshold=getattr(config, 'rag_relevance_threshold', 0.0) or 0.0)
+            if rag_usage:
+                mini_prompt_tokens += rag_usage.prompt_tokens
+                mini_completion_tokens += rag_usage.completion_tokens
+            if relevant_items:
+                rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in relevant_items])
+                messages[0]["content"] += rag_context
 
     messages.extend(history)
     messages.append({"role": "user", "content": message})
@@ -412,8 +393,55 @@ async def process_message(
     iteration = 0
     tool_calls_log = []
     is_handoff_terminal = False
+
+    # Injetar chamadas de ferramentas pré-executadas de forma simulada no histórico de mensagens
+    if pre_executed_tool_calls:
+        simulated_calls = []
+        for i, tc in enumerate(pre_executed_tool_calls):
+            t_id = f"call_pre_{i}_{now_br.microsecond}"
+            simulated_calls.append({
+                "id": t_id,
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": json.dumps(tc["args"], ensure_ascii=False)
+                }
+            })
+        
+        # Mensagem do assistente propondo as chamadas
+        messages.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": simulated_calls
+        })
+        
+        # Respostas das ferramentas correspondentes
+        for i, tc in enumerate(pre_executed_tool_calls):
+            messages.append({
+                "role": "tool",
+                "name": tc["name"],
+                "tool_call_id": simulated_calls[i]["id"],
+                "content": tc["output"]
+            })
+            
+            tool_calls_log.append({
+                "name": tc["name"],
+                "args": json.dumps(tc["args"], ensure_ascii=False),
+                "output": tc["output"]
+            })
+            
+            # Tratamento de suporte humano se a ferramenta pré-executada for de transbordo
+            if tc["name"] in ["transferir_atendimento", "transferir_suporte_humano"]:
+                motivo = tc["args"].get("motivo", "Solicitado pelo usuário")
+                handoff_data = {"handoff": True, "destino": "humano", "motivo": motivo}
+                is_handoff_terminal = True
+                last_response = "Entendi perfeitamente. Estou transferindo seu atendimento para nossa equipe especializada para que você receba o suporte adequado. Um momento, por favor! ✨"
+                if on_step:
+                    on_step("🚑 Suporte Humano solicitado (Pré-executado)", f"Motivo: {motivo}")
     
     while iteration < 5:
+        if is_handoff_terminal:
+            break
         iteration += 1
         try:
             # Tentar modelos (Principal -> Fallback)

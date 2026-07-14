@@ -13,9 +13,10 @@ export const useConfigData = () => {
         setSafetySettings, setReasoningEffort, setDateAwareness,
         setDateAwarenessPastDays, setDateAwarenessFutureDays,
         setSimulatedTime,
-        setSystemPrompt, setDynamicPrompt, setContextWindow, setKnowledgeBaseIds, setSelectedTools,
+        setSystemPrompt, setDynamicPrompt, setPreRouterPrompt, setContextWindow, setKnowledgeBaseIds, setSelectedTools,
         setRagRetrievalCount, setRagTranslationEnabled, setRagMultiQueryEnabled,
         setRagRerankEnabled, setRagAgenticEvalEnabled, setRagParentExpansionEnabled,
+        setRagRelevanceThreshold,
         setInboxCaptureEnabled, setInitialMessage, setInitialQuestionMessage,
         setInitialIgnoreMessage, setQualificationQuestions, setQualificationLabels, setQualificationCriteria, setSecurityBlacklist, setSecurityForbidden,
         setSecurityDiscount, setSecurityComplexity, setSecurityPii,
@@ -105,6 +106,7 @@ export const useConfigData = () => {
                         setDateAwarenessFutureDays(configData.date_awareness_future_days ?? 7);
                         setSystemPrompt(configData.system_prompt || '');
                         setDynamicPrompt(configData.dynamic_prompt || '');
+                        setPreRouterPrompt(configData.pre_router_prompt || '');
                         setContextWindow(configData.context_window || 5);
                         setKnowledgeBaseIds(configData.knowledge_base_ids || (configData.knowledge_base_id ? [configData.knowledge_base_id] : []));
                         setRagRetrievalCount(configData.rag_retrieval_count ?? 5);
@@ -113,6 +115,7 @@ export const useConfigData = () => {
                         setRagRerankEnabled(configData.rag_rerank_enabled ?? true);
                         setRagAgenticEvalEnabled(configData.rag_agentic_eval_enabled ?? true);
                         setRagParentExpansionEnabled(configData.rag_parent_expansion_enabled ?? true);
+                        setRagRelevanceThreshold(Math.round(((configData.rag_relevance_threshold ?? 0) * 100)));
                         setInboxCaptureEnabled(configData.inbox_capture_enabled ?? true);
                         setSelectedTools(configData.tool_ids || []);
                         setSimulatedTime(configData.simulated_time || '');

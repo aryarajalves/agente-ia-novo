@@ -53,6 +53,7 @@ export const ConfigProvider = ({ children }) => {
     const [simulatedTime, setSimulatedTime] = useState('');
     const [systemPrompt, setSystemPrompt] = useState('Você é um assistente útil e inteligente.');
     const [dynamicPrompt, setDynamicPrompt] = useState('');
+    const [preRouterPrompt, setPreRouterPrompt] = useState('');
     const [contextWindow, setContextWindow] = useState(5);
     
     // Knowledge & Tools
@@ -64,6 +65,7 @@ export const ConfigProvider = ({ children }) => {
     const [ragRerankEnabled, setRagRerankEnabled] = useState(true);
     const [ragAgenticEvalEnabled, setRagAgenticEvalEnabled] = useState(true);
     const [ragParentExpansionEnabled, setRagParentExpansionEnabled] = useState(true);
+    const [ragRelevanceThreshold, setRagRelevanceThreshold] = useState(0); // Percentual (0-100) exibido na UI
     const [inboxCaptureEnabled, setInboxCaptureEnabled] = useState(true);
 
     // Messages
@@ -148,6 +150,7 @@ export const ConfigProvider = ({ children }) => {
         simulatedTime, setSimulatedTime,
         systemPrompt, setSystemPrompt,
         dynamicPrompt, setDynamicPrompt,
+        preRouterPrompt, setPreRouterPrompt,
         contextWindow, setContextWindow,
         knowledgeBaseIds, setKnowledgeBaseIds,
         selectedTools, setSelectedTools,
@@ -157,6 +160,7 @@ export const ConfigProvider = ({ children }) => {
         ragRerankEnabled, setRagRerankEnabled,
         ragAgenticEvalEnabled, setRagAgenticEvalEnabled,
         ragParentExpansionEnabled, setRagParentExpansionEnabled,
+        ragRelevanceThreshold, setRagRelevanceThreshold,
         inboxCaptureEnabled, setInboxCaptureEnabled,
         initialMessage, setInitialMessage,
         initialQuestionMessage, setInitialQuestionMessage,

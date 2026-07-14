@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from models import KnowledgeBaseModel, KnowledgeItemModel, TranscriptionTaskModel, TranscriptionFolder
 from database import async_session
 from api.schemas import (
-    KnowledgeBase, KnowledgeItem, BatchDeleteRequest, 
+    KnowledgeBase, KnowledgeItem, KnowledgeItemDetail, BatchDeleteRequest,
     BatchUpdateRequest, BulkSummarizeRequest, MergeItemsRequest, 
     RAGSimulationRequest, CoverageCheckRequest, TranscriptionProcessRequest,
     BulkDeleteTranscriptionRequest, TranscriptionRenameRequest, 
@@ -28,8 +28,8 @@ from api.schemas import (
 )
 from api.deps import get_db, verify_api_key
 from rag_service import (
-    get_embedding, get_batch_embeddings, calculate_coverage, 
-    call_rag_llm, search_knowledge_base
+    get_embedding, get_batch_embeddings, calculate_coverage,
+    call_rag_llm, search_knowledge_base, EmbeddingGenerationError
 )
 from smart_importer import chunk_text, generate_global_qa
 from s3_service import s3_service
@@ -197,7 +197,8 @@ async def simulate_rag(kb_id: int, request: RAGSimulationRequest, db: AsyncSessi
         force_multi_query=request.multi_query_enabled,
         force_rerank=request.rerank_enabled,
         force_agentic_eval=request.agentic_eval_enabled,
-        force_parent_expansion=request.parent_expansion_enabled
+        force_parent_expansion=request.parent_expansion_enabled,
+        similarity_threshold=request.relevance_threshold or 0.0
     )
     return {"items": items, "usage": {"prompt_tokens": usage.prompt_tokens if usage else 0, "completion_tokens": usage.completion_tokens if usage else 0}}
 
@@ -225,12 +226,25 @@ async def upload_kb_file(kb_id: int, file: UploadFile = File(...), db: AsyncSess
 
 @router.post("/knowledge-bases/{kb_id}/items", response_model=KnowledgeItem)
 async def add_knowledge_item(kb_id: int, item: KnowledgeItem, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
-    emb, _ = await get_embedding(item.question)
+    try:
+        emb, _ = await get_embedding(item.question)
+    except EmbeddingGenerationError as e:
+        logger.error(f"Falha ao gerar embedding ao criar item na base {kb_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"Não foi possível gerar o vetor (embedding) do item: {e}")
+
     db_item = KnowledgeItemModel(knowledge_base_id=kb_id, question=item.question, answer=item.answer, metadata_val=item.metadata_val, category=item.category, embedding=emb)
     db.add(db_item)
     await db.commit()
     await db.refresh(db_item)
     return db_item
+
+@router.get("/knowledge-items/{item_id}", response_model=KnowledgeItemDetail)
+async def get_knowledge_item(item_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
+    result = await db.execute(select(KnowledgeItemModel).where(KnowledgeItemModel.id == item_id))
+    item = result.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
 
 @router.delete("/knowledge-items/{item_id}")
 async def delete_knowledge_item(item_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
@@ -241,15 +255,23 @@ async def delete_knowledge_item(item_id: int, db: AsyncSession = Depends(get_db)
         await db.commit()
     return {"message": "Item deleted"}
 
-@router.put("/knowledge-items/{item_id}", response_model=KnowledgeItem)
+@router.put("/knowledge-items/{item_id}", response_model=KnowledgeItemDetail)
 async def update_knowledge_item(item_id: int, item: KnowledgeItem, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
     result = await db.execute(select(KnowledgeItemModel).where(KnowledgeItemModel.id == item_id))
     db_item = result.scalars().first()
     if not db_item: raise HTTPException(status_code=404, detail="Item not found")
-    
-    if db_item.question != item.question:
+
+    # Recalcula o vetor (embedding) sempre que a edição é salva, independente de qual
+    # campo mudou — pedido explícito do usuário. Hoje o vetor é gerado só a partir da
+    # Pergunta (arquitetura atual de busca RAG), então o recálculo usa item.question.
+    # Se a geração falhar (chave da OpenAI ausente/inválida, erro de rede, etc.), a
+    # edição é bloqueada em vez de salvar o item com um vetor desatualizado/ausente.
+    try:
         emb, _ = await get_embedding(item.question)
         db_item.embedding = emb
+    except EmbeddingGenerationError as e:
+        logger.error(f"Falha ao recalcular embedding do item {item_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"Não foi possível recalcular o vetor (embedding) do item: {e}")
 
     db_item.question = item.question
     db_item.answer = item.answer

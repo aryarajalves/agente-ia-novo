@@ -26,11 +26,15 @@ async def test_transferir_suporte_humano_automation(mock_config):
     mock_db = AsyncMock()
     
     # Mocking WebhookConfigModel
+    # Nota: o projeto usa ZapVoice (zapvoice_url/zapvoice_api_token), não Chatwoot — o handler
+    # chegou a ter um resquício de integração Chatwoot (módulo "chatwoot_utils" que nunca existiu
+    # de fato aqui) que fazia a sincronização de etiquetas falhar em silêncio. Corrigido em
+    # agent_core/tools/handlers/chatwoot.py para usar zapvoice_utils.sync_conversation_labels.
     mock_webhook_config = MagicMock()
     mock_webhook_config.id = 10
     mock_webhook_config.leads_table = "leads_test"
-    mock_webhook_config.chatwoot_url = "https://chatwoot.test"
-    mock_webhook_config.chatwoot_api_token = "test_token"
+    mock_webhook_config.zapvoice_url = "https://zapvoice.test"
+    mock_webhook_config.zapvoice_api_token = "test_token"
     mock_webhook_config.handoff_labels_to_add = json.dumps(["atendimento_humano"])
     mock_webhook_config.handoff_labels_to_remove = json.dumps(["bot_ativo"])
     mock_webhook_config.handoff_message = None
@@ -82,14 +86,15 @@ async def test_transferir_suporte_humano_automation(mock_config):
         
         mock_client.chat.completions.create = AsyncMock(side_effect=[mock_response_1, mock_response_2])
         
-        # Mocking HTTP responses
-        # 1. GET current labels (existing labels)
+        # Mocking HTTP responses (formato real do ZapVoice: GET lista conversas com labels,
+        # POST atualiza labels de uma conversa específica)
+        # 1. GET conversas (para localizar a conversa 100 e suas labels atuais)
         mock_get.return_value = MagicMock(
-            status_code=200, 
-            json=lambda: {"payload": ["label_antiga", "bot_ativo"]}
+            status_code=200,
+            json=lambda: [{"id": "100", "labels": ["label_antiga", "bot_ativo"]}]
         )
-        
-        # 2. POST final labels
+
+        # 2. POST labels finais
         mock_post.return_value = MagicMock(status_code=200)
         
         result = await process_message(
@@ -98,33 +103,33 @@ async def test_transferir_suporte_humano_automation(mock_config):
         )
         
         # VERIFICATIONS
-        
-        # 2. Verify Label Update in Chatwoot (GET then POST)
-        
+
+        # 2. Verify Label Update no ZapVoice (GET then POST)
+
         # Verify GET was called to fetch current labels
         get_labels_call = False
         for call in mock_get.call_args_list:
             args, kwargs = call
             url = args[0] if args else kwargs.get("url")
-            if "api/v1/accounts/1/conversations/100/labels" in url:
+            if url and "api/chat/conversations" in url:
                 get_labels_call = True
-        assert get_labels_call, "Chatwoot GET labels call not found"
+        assert get_labels_call, "ZapVoice GET conversations call not found"
 
         # Verify POST was called with merged labels
-        # Final list should be: ["label_antiga", "atendimento_humano"] 
+        # Final list should be: ["label_antiga", "atendimento_humano"]
         # Because "bot_ativo" was in current_labels but also in labels_to_remove
         # and "atendimento_humano" was in labels_to_add
         add_labels_call = False
         for call in mock_post.call_args_list:
             args, kwargs = call
             url = args[0] if args else kwargs.get("url")
-            if "api/v1/accounts/1/conversations/100/labels" in url:
+            if url and "api/chat/conversations/100/labels" in url:
                 sent_labels = kwargs["json"]["labels"]
                 assert "atendimento_humano" in sent_labels
                 assert "label_antiga" in sent_labels
                 assert "bot_ativo" not in sent_labels
                 add_labels_call = True
-        assert add_labels_call, "Chatwoot POST labels call with merged list not found"
+        assert add_labels_call, "ZapVoice POST labels call with merged list not found"
 
         logs = result["debug"]["tool_calls"]
         names = [l["name"] for l in logs]

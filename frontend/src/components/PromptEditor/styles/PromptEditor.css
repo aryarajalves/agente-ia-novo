@@ -35,26 +35,64 @@
 }
 
 .editor-toolbar {
-    padding: 0.75rem 1.5rem;
+    padding: 0.9rem 1.5rem;
     background: rgba(255, 255, 255, 0.02);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .toolbar-actions {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     align-items: center;
+    justify-content: flex-end;
 }
 
 .toolbar-left {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+/* Toggle Estático / Dinâmico */
+.prompt-tab-selector {
+    display: flex;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    padding: 3px !important;
+    gap: 2px;
+}
+
+.prompt-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    padding: 7px 14px;
+    border-radius: 9px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.prompt-tab-btn:hover {
+    color: #cbd5e1;
+}
+
+.prompt-tab-btn.active {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(99, 102, 241, 0.15));
+    color: #c7d2fe;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25), inset 0 0 0 1px rgba(165, 180, 252, 0.25);
 }
 
 .file-icon {
@@ -107,7 +145,7 @@
     height: 100%;
     background: transparent;
     border: none;
-    padding: 2rem 2rem 2rem 5.5rem; /* Matches .editor-line padding-left + extra space */
+    padding: 2rem 2rem 2rem 55px; /* Precisa bater exatamente com .editor-line padding-left (55px) para o cursor real (nesta textarea invisível) ficar alinhado com o texto visível do backdrop */
     color: transparent !important; /* Texto transparente para evitar sobreposição */
     caret-color: #cbd5e1 !important; /* Cursor piscando visível para digitação */
     font-family: 'Fira Code', 'Cascadia Code', monospace;
@@ -176,15 +214,17 @@
 }
 
 .action-btn {
-    padding: 0.6rem 1.2rem;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    height: 40px;
+    padding: 0 1.1rem;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
     color: #cbd5e1;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 700;
+    letter-spacing: 0.01em;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -193,9 +233,43 @@
 }
 
 .action-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
     color: white;
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.action-btn:active {
+    transform: translateY(0);
+}
+
+/* Inserir Condicional - acento rosa/magenta */
+.action-btn.insert-cond-btn {
+    background: rgba(236, 72, 153, 0.1);
+    border-color: rgba(236, 72, 153, 0.3);
+    color: #f9a8d4;
+}
+
+.action-btn.insert-cond-btn:hover {
+    background: rgba(236, 72, 153, 0.18);
+    border-color: rgba(236, 72, 153, 0.5);
+    color: #fbcfe8;
+    box-shadow: 0 6px 18px rgba(236, 72, 153, 0.25);
+}
+
+/* Salvar Rascunho e Copiar Prompt - acento indigo neutro */
+.action-btn.secondary {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.2);
+    color: #a5b4fc;
+}
+
+.action-btn.secondary:hover {
+    background: rgba(99, 102, 241, 0.16);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #c7d2fe;
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.2);
 }
 
 .action-btn.primary {
@@ -203,11 +277,13 @@
     border-color: rgba(255, 255, 255, 0.2);
     color: white;
     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    padding: 0 1.3rem;
 }
 
 .action-btn.primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+    filter: brightness(1.08);
 }
 /* Global Fullscreen Overrides */
 :global(body.prompt-fullscreen-active) .sidebar,
@@ -619,6 +695,26 @@ body.modal-open-blur .prompt-advisor-wrapper {
     color: white !important;
     box-shadow: 0 0 10px rgba(236, 72, 153, 0.6);
     transform: scale(1.05);
+}
+
+/* Aviso exibido na aba Pre-Router, explicando riscos de editar o template */
+.prerouter-warning-banner {
+    margin: 0 1.5rem 0.75rem;
+    padding: 0.65rem 1rem;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 10px;
+    color: #fbbf24;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.prerouter-warning-banner code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #fde68a;
+    font-family: 'Fira Code', monospace;
 }
 
 

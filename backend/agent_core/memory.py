@@ -16,31 +16,7 @@ async def fetch_user_memory(db, session_id: str) -> str:
         memories = result.scalars().all()
         if not memories: return ""
         
-        # Cria a lista de fatos estruturados
-        facts_list = [f"{m.key}: {m.value}" for m in memories]
-        facts_str = "\n".join(facts_list)
-        
-        # Gera o resumo usando OpenAI/GPT
-        client = get_openai_client()
-        if client:
-            summary_prompt = (
-                "Você é um assistente de síntese. Abaixo estão fatos extraídos de conversas anteriores com o usuário. "
-                "Gere um resumo compacto e fluido (máximo de 3 frases) em Português consolidando esses pontos principais, "
-                "para que o agente entenda o contexto geral do perfil/histórico do usuário.\n\n"
-                f"Fatos na Memória:\n{facts_str}"
-            )
-            res_summary = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Gere resumos compactos, claros e objetivos em português."},
-                    {"role": "user", "content": summary_prompt}
-                ],
-                temperature=0.3
-            )
-            summary_text = res_summary.choices[0].message.content.strip()
-            return f"\n# RESUMO DAS MEMÓRIAS DO USUÁRIO:\n{summary_text}\n"
-        
-        facts_text = "\n# MEMÓRIA ESTRUTURADA:\n"
+        facts_text = "\n# MEMÓRIA ESTRUTURADA E FATOS:\n"
         for i, m in enumerate(memories):
             prefix = "⭐ [PRIORITÁRIO]" if i == 0 else "-"
             facts_text += f"{prefix} {m.key}: {m.value}\n"

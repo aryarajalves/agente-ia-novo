@@ -4,13 +4,20 @@ import PipelineCountdown from './Common/PipelineCountdown';
 import RaioXViewerModal from './RaioXViewerModal';
 import PreRouterViewerModal from './PreRouterViewerModal';
 
-const AutomationPipelineModal = ({ 
-    event: initialEvent, 
-    onClose 
+const AutomationPipelineModal = ({
+    event: initialEvent,
+    webhookId,
+    onClose
 }) => {
     const [event, setEvent] = useState(initialEvent);
     const [maximizedStep, setMaximizedStep] = useState(null);
     const [loading, setLoading] = useState(false);
+
+    // Fallback defensivo: alguns fluxos (telas de leads/histórico) montam este modal com um
+    // "event" que não traz webhook_config_id (depende do endpoint de origem). Sem isso, o
+    // polling automático e o botão de atualizar manual falham (early-return no guard), dando a
+    // impressão de botão "quebrado" mesmo clicando nele.
+    const webhookConfigId = event?.webhook_config_id ?? webhookId;
 
     // Helper para garantir que a data seja tratada como UTC se não tiver timezone
     const parseDate = (dateStr) => {
@@ -32,20 +39,23 @@ const AutomationPipelineModal = ({
 
     // Polling e WebSocket para atualizações em tempo real (Padrão Premium)
     const pollEvent = React.useCallback(async () => {
-        if (!event || ['completed', 'error', 'canceled', 'grouped', 'ignored'].includes(event.status)) return;
-        
+        if (!event || !webhookConfigId || ['completed', 'error', 'canceled', 'grouped', 'ignored'].includes(event.status)) return;
+
         try {
             const baseUrl = API_URL.replace(/\/$/, '');
-            const res = await fetch(`${baseUrl}/webhooks/${event.webhook_config_id}/events/${event.id}`);
+            const res = await fetch(`${baseUrl}/webhooks/${webhookConfigId}/events/${event.id}`);
             if (!res.ok) return;
             const data = await res.json();
             setEvent(prev => ({ ...prev, ...data }));
         } catch (e) {
             console.error('Erro no polling do pipeline:', e);
         }
-    }, [event.id, event.status, event.webhook_config_id]);
+    }, [event.id, event.status, webhookConfigId]);
 
     useEffect(() => {
+        // Busca imediata ao abrir o modal, sem esperar o primeiro intervalo
+        pollEvent();
+
         // WebSocket para atualizações instantâneas
         const wsUrl = API_URL.replace('http', 'ws') + '/ws/events';
         let ws;
@@ -155,7 +165,60 @@ const AutomationPipelineModal = ({
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="modal-close-btn" style={{ width: '40px', height: '40px', background: 'rgba(255,255,255,0.05)' }}>✕</button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                            onClick={async () => {
+                                if (loading) return;
+                                if (!webhookConfigId) {
+                                    console.error('Não foi possível atualizar o pipeline: webhook_config_id/webhookId ausente.', { event, webhookId });
+                                    return;
+                                }
+                                setLoading(true);
+                                try {
+                                    const baseUrl = API_URL.replace(/\/$/, '');
+                                    const res = await fetch(`${baseUrl}/webhooks/${webhookConfigId}/events/${event.id}`);
+                                    if (res.ok) {
+                                        const data = await res.json();
+                                        setEvent(prev => ({ ...prev, ...data }));
+                                    } else {
+                                        console.error('Erro no refresh manual do pipeline: resposta não OK', res.status);
+                                    }
+                                } catch (e) {
+                                    console.error('Erro no refresh manual do pipeline:', e);
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }}
+                            disabled={loading}
+                            className="modal-close-btn"
+                            style={{
+                                width: '40px',
+                                height: '40px',
+                                background: 'rgba(255,255,255,0.05)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '1.1rem',
+                                color: '#94a3b8',
+                                transition: 'all 0.2s',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                opacity: loading ? 0.7 : 1
+                            }}
+                            title="Atualizar pipeline"
+                        >
+                            <svg
+                                width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                                style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}
+                            >
+                                <path d="M3 12a9 9 0 0 1 15.3-6.3L21 8" />
+                                <path d="M21 3v5h-5" />
+                                <path d="M21 12a9 9 0 0 1-15.3 6.3L3 16" />
+                                <path d="M3 21v-5h5" />
+                            </svg>
+                        </button>
+                        <button onClick={onClose} className="modal-close-btn" style={{ width: '40px', height: '40px', background: 'rgba(255,255,255,0.05)' }}>✕</button>
+                    </div>
                 </div>
 
                 {/* Timeline Scrollable Area */}

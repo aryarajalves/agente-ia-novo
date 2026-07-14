@@ -35,10 +35,15 @@ async def sync_conversation_labels(zapvoice_url: str, client_id: str, conversati
             current_labels = []
             if cur_resp.status_code == 200:
                 convs = cur_resp.json()
-                for c in convs:
-                    if str(c.get("id")) == str(conversation_id):
-                        current_labels = c.get("labels", [])
-                        break
+                # ZapVoice pode retornar a lista encapsulada em chave (ex: {"conversations": [...]})
+                if isinstance(convs, dict):
+                    # Tenta descobrir o array de conversas
+                    convs = convs.get("conversations") or convs.get("data") or convs.get("results") or list(convs.values())[0] if convs.values() else []
+                if isinstance(convs, list):
+                    for c in convs:
+                        if isinstance(c, dict) and str(c.get("id")) == str(conversation_id):
+                            current_labels = c.get("labels", [])
+                            break
             else:
                 logger.error(f"❌ Erro ao listar conversas para buscar etiquetas no ZapVoice: {cur_resp.status_code} - {cur_resp.text}")
                 return False, []
@@ -141,9 +146,12 @@ def get_conversation_labels_sync(zapvoice_url: str, client_id: str, conversation
             resp = client.get(url, headers=headers)
             if resp.status_code == 200:
                 convs = resp.json()
-                for c in convs:
-                    if str(c.get("id")) == str(conversation_id):
-                        return c.get("labels", [])
+                if isinstance(convs, dict):
+                    convs = convs.get("conversations") or convs.get("data") or convs.get("results") or list(convs.values())[0] if convs.values() else []
+                if isinstance(convs, list):
+                    for c in convs:
+                        if isinstance(c, dict) and str(c.get("id")) == str(conversation_id):
+                            return c.get("labels", [])
                 return []
             else:
                 logger.error(f"Erro ao obter etiquetas do ZapVoice síncronamente (Status {resp.status_code}): {resp.text}")

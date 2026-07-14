@@ -53,6 +53,7 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         date_awareness_future_days=config.date_awareness_future_days,
         system_prompt=config.system_prompt,
         dynamic_prompt=config.dynamic_prompt,
+        pre_router_prompt=config.pre_router_prompt,
         context_window=config.context_window,
         knowledge_base=json.dumps(config.knowledge_base),
         rag_retrieval_count=config.rag_retrieval_count,
@@ -61,6 +62,7 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         rag_rerank_enabled=config.rag_rerank_enabled,
         rag_agentic_eval_enabled=config.rag_agentic_eval_enabled,
         rag_parent_expansion_enabled=config.rag_parent_expansion_enabled,
+        rag_relevance_threshold=config.rag_relevance_threshold,
         security_competitor_blacklist=config.security_competitor_blacklist,
         security_forbidden_topics=config.security_forbidden_topics,
         security_discount_policy=config.security_discount_policy,
@@ -106,6 +108,14 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
     await db.refresh(db_config)
     return await get_agent(db_config.id, db)
 
+@router.get("/agents/pre-router-default-prompt")
+async def get_pre_router_default_prompt(_: None = Depends(verify_api_key)):
+    """Retorna o template padrão do Pre-Router (parte customizável, sem o rodapé
+    fixo de schema JSON), usado para popular a aba 'Pre-Router' quando o agente
+    não tem um prompt customizado, e para o botão 'Restaurar Padrão' no editor."""
+    from agent_core.logic.pre_router import DEFAULT_PRE_ROUTER_PROMPT_TEMPLATE
+    return {"prompt": DEFAULT_PRE_ROUTER_PROMPT_TEMPLATE}
+
 @router.get("/agents/{agent_id}", response_model=AgentConfig)
 async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
     result = await db.execute(
@@ -144,6 +154,7 @@ async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None =
         rag_rerank_enabled=a.rag_rerank_enabled,
         rag_agentic_eval_enabled=a.rag_agentic_eval_enabled,
         rag_parent_expansion_enabled=a.rag_parent_expansion_enabled,
+        rag_relevance_threshold=a.rag_relevance_threshold or 0.0,
         tool_ids=[t.id for t in a.tools],
         simulated_time=a.simulated_time,
         security_competitor_blacklist=a.security_competitor_blacklist,
@@ -206,6 +217,7 @@ async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = De
     db_config.date_awareness_future_days = config.date_awareness_future_days
     db_config.system_prompt = config.system_prompt
     db_config.dynamic_prompt = config.dynamic_prompt
+    db_config.pre_router_prompt = config.pre_router_prompt
     db_config.context_window = config.context_window
     db_config.knowledge_base = json.dumps(config.knowledge_base)
     db_config.rag_retrieval_count = config.rag_retrieval_count
@@ -214,6 +226,7 @@ async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = De
     db_config.rag_rerank_enabled = config.rag_rerank_enabled
     db_config.rag_agentic_eval_enabled = config.rag_agentic_eval_enabled
     db_config.rag_parent_expansion_enabled = config.rag_parent_expansion_enabled
+    db_config.rag_relevance_threshold = config.rag_relevance_threshold
     db_config.security_competitor_blacklist = config.security_competitor_blacklist
     db_config.security_forbidden_topics = config.security_forbidden_topics
     db_config.security_discount_policy = config.security_discount_policy

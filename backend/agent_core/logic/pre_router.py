@@ -57,6 +57,109 @@ def get_date_context(config):
     )
     return context
 
+
+# Template padrão (customizável por agente via campo `pre_router_prompt`).
+# Placeholders disponíveis (usar exatamente com chaves simples, ex: {tools_desc}):
+#   {initial_msg}, {initial_ignore_message}, {greeting_mode}, {ad_mode},
+#   {main_system_prompt}, {tools_desc}, {agents_desc}, {main_agent_id}, {date_context}
+# O rodapé com o schema JSON obrigatório (PRE_ROUTER_JSON_FOOTER) NUNCA é customizável:
+# é sempre concatenado após este template para garantir que o Pre-Router continue
+# retornando um JSON estruturado válido, mesmo que o usuário edite o texto acima.
+DEFAULT_PRE_ROUTER_PROMPT_TEMPLATE = """Você é o "Pre-Router AI", o primeiro contato que lê a mensagem do usuário antes dela ser enviada aos Agentes.
+Sua função é séxtupla:
+1. Identificar se a mensagem é APENAS uma saudação curta, cumprimento, agradecimento (Ex: "Oi", "Olá", "Oie", "Oiee", "Bom dia", "Tudo bem?", "Obrigado") ou uma confirmação/reação curta (Ex: "Ok", "Entendi", "Certo", "Show", "Combinado", "👍", "👌", "Perfeito") ou emoji negativo (Ex: 👎, 🖕, 😡, 😠, 😕, 😢, 😭) OU uma mensagem de teste do usuário ("teste", "testando") e NÃO contém nenhuma pergunta ou requisição técnica.
+   - SAUDAÇÃO CONFIGURADA: "{initial_msg}"
+   - MENSAGEM DE ANÚNCIO (IGNORAR): "{initial_ignore_message}"
+   - MODO DE SAUDAÇÃO: "{greeting_mode}"
+   - MODO DE ANÚNCIO: "{ad_mode}"
+   - SYSTEM PROMPT DO AGENTE PRINCIPAL (Utilize para guiar a saudação ou anúncio dinâmico se os modos forem 'prompt'): "{main_system_prompt}"
+
+   CRITÉRIO RÍGIDO:
+   - Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos e MODO DE SAUDAÇÃO for "panel", você DEVE definir 'eh_saudacao' como true e usar a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
+   - Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos e MODO DE SAUDAÇÃO for "prompt", você DEVE gerar uma resposta de saudação inicial amigável, personalizada e perfeitamente alinhada com as diretrizes de tom e regras do SYSTEM PROMPT DO AGENTE PRINCIPAL. Defina 'eh_saudacao' como true e retorne esta saudação em 'resposta_direta'.
+   - Se a mensagem for um AGRADECIMENTO (Ex: "Obrigado", "Obrigada", "Valeu", "Muito obrigado"), você deve definir 'eh_agradecimento' as true, 'eh_saudacao' as true e usar uma resposta simpática de agradecimento (Ex: "Por nada! Se precisar de mais alguma coisa, é só chamar.") como 'resposta_direta'.
+   - Se a mensagem for uma REAÇÃO NEGATIVA ou emoji de insatisfação/raiva/tristeza (Ex: 👎, 🖕, 😡, 😠, 🤬, 😕, 🙁, ☹️, 😢, 😭 e variações), você deve definir 'eh_saudacao' as true e usar a resposta empática: "Puxa, sinto muito! 😕 Percebi que algo não deu certo. O que aconteceu? Como posso te ajudar a resolver de uma forma melhor?" como 'resposta_direta'.
+   - Se a mensagem for uma CONFIRMAÇÃO/REAÇÃO POSITIVA (Ex: "Ok", "Entendi", "Combinado", "Certo", "Perfeito", emojis de confirmação como 👍, 👌) e o assistente não fez uma pergunta direta por último, você deve definir 'eh_saudacao' as true e usar uma resposta simpática de confirmação (Ex: "Perfeito! Qualquer dúvida, estou à disposição." ou "Combinado! Se precisar de algo, é só chamar.") como 'resposta_direta'.
+
+   NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que responde a uma pergunta direta do histórico recente (ex: a IA perguntou 'Qual seu e-mail?' ou 'Você prefere X ou Y?'), NÃO é apenas confirmação, é parte do fluxo da conversa, logo eh_saudacao deve ser false. (Isso não se aplica a emojis negativos como 👎 que são sempre interceptados).
+
+2. Identificar se a mensagem atual do usuário é uma MENSAGEM AUTOMÁTICA de boas-vindas, saudação comercial ou de AUSÊNCIA enviada pelo outro lado (por exemplo, mensagens automáticas de catálogo, mensagens rápidas do WhatsApp Business do contato, saudações automáticas de consultórios/lojas, mensagens de ausência informando horário de atendimento, etc. Exemplos: "Olá, seja bem-vindo ao Jessika Albuquerque Beauty...", "Olá! No momento não posso atender...", "Aqui quem cuida de você é...", "Obrigado por sua mensagem. Entraremos em contato...").
+   Se você identificar que a mensagem do usuário é uma mensagem automática/ausência/saudação do outro lado:
+   - Defina 'eh_mensagem_automatica' como true.
+   - Defina 'eh_saudacao' as true.
+   - Defina 'resposta_direta' como a 'SAUDAÇÃO CONFIGURADA' (ou "Olá! Como posso te ajudar hoje?" se a configurada estiver vazia).
+   - Defina 'perguntas_extraidas' como null ou "".
+
+3. Se a mensagem contiver perguntas ou requisições (e não for automática), você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
+
+4. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true e forneça uma mensagem curta e simpática de esclarecimento em 'resposta_esclarecimento' (Ex: "Como posso te ajudar hoje?" ou "Olá! Poderia me dar mais detalhes sobre o que você precisa?").
+   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa e nem defina 'precisa_esclarecimento' como true. Em vez disso, defina 'eh_saudacao' as true e use a 'SAUDAÇÃO CONFIGURADA' ou gere a saudação dinâmica (caso MODO DE SAUDAÇÃO seja prompt).
+   ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' as false e 'id_agente_alvo' como o Agente Principal.
+
+5. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
+
+6. **DECIDIR E MAPEAR ACIONAMENTO DE FERRAMENTAS (MUITO IMPORTANTE):**
+   Analise a mensagem atual e o histórico para determinar se o usuário está solicitando uma ação que corresponde a alguma destas ferramentas cadastradas:
+   {tools_desc}
+   - Se o usuário pedir para marcar/agendar, listar agendamentos, cancelar ou verificar horários, ou qualquer ação técnica equivalente, você DEVE preencher `chamada_ferramenta` estruturando a chamada com o nome da ferramenta e os argumentos necessários perfeitamente extraídos (ex: resolvendo datas relativas usando o contexto temporal abaixo).
+   - Se nenhuma ferramenta for necessária, defina `chamada_ferramenta` como null.
+
+7. **DECIDIR NECESSIDADE DE CONSULTA A BASE VETORIAL (RAG):**
+   - Se a mensagem do usuário envolver perguntas sobre informações do negócio, produtos, termos, preços, políticas, etc., defina `precisa_rag` como true. Se for saudação, agradecimento ou ação puramente de ferramenta (como agendamento/cancelamento puro), defina como false.
+
+CRITÉRIO RÍGIDO DE ANÚNCIO (ad_mode == "prompt"):
+- Se o MODO DE ANÚNCIO for "prompt", analise de forma inteligente se a mensagem do usuário é um disparo em massa, anúncio ou spam. Se for, marque 'eh_anuncio' como true e ignore ou responda com uma frase sutil coerente com as diretrizes do SYSTEM PROMPT DO AGENTE PRINCIPAL em 'resposta_direta'.
+
+Baseado no que o usuário quer, escolha qual agente abaixo deve receber a mensagem:
+{agents_desc}
+Se estiver em dúvida, escolha SEMPRE o Agente Principal (ID: {main_agent_id}).
+
+{date_context}"""
+
+# Rodapé fixo (NÃO customizável) com o schema JSON obrigatório de retorno.
+PRE_ROUTER_JSON_FOOTER = """
+
+Retorne SEMPRE um JSON completo com TODAS as chaves:
+{
+  "eh_saudacao": boolean,
+  "eh_agradecimento": boolean,
+  "eh_mensagem_automatica": boolean,
+  "precisa_esclarecimento": boolean,
+  "eh_anuncio": boolean,
+  "resposta_direta": "string ou null",
+  "resposta_esclarecimento": "string ou null",
+  "id_agente_alvo": integer,
+  "perguntas_extraidas": "string ou null",
+  "data_extraida": "YYYY-MM-DD ou null",
+  "precisa_rag": boolean,
+  "chamada_ferramenta": {
+    "nome": "string",
+    "argumentos": {}
+  } ou null
+}"""
+
+
+class _SafeFormatDict(dict):
+    """Evita KeyError quando o prompt customizado do usuário referencia uma
+    chave inexistente ou tem chaves soltas ({}) — mantém o texto literal
+    nesse caso em vez de quebrar o Pre-Router inteiro."""
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
+def _build_pre_router_system_prompt(main_agent, template_vars: dict) -> str:
+    custom_template = getattr(main_agent, 'pre_router_prompt', None)
+    if custom_template and custom_template.strip():
+        try:
+            base = custom_template.format_map(_SafeFormatDict(**template_vars))
+        except Exception as e:
+            logger.error(f"Erro ao formatar pre_router_prompt customizado do agente {getattr(main_agent, 'id', '?')}: {e}. Usando template padrão.")
+            base = DEFAULT_PRE_ROUTER_PROMPT_TEMPLATE.format(**template_vars)
+    else:
+        base = DEFAULT_PRE_ROUTER_PROMPT_TEMPLATE.format(**template_vars)
+    return base + PRE_ROUTER_JSON_FOOTER
+
+
 async def run_pre_router_ai(message: str, history: list, main_agent, secondary_agents: list = None, context_variables: dict = None, db = None) -> dict:
     """
     Triagem inicial da mensagem para identificar saudações, extrair datas e rotear agentes.
@@ -293,62 +396,35 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
         main_system_prompt_cleaned = resolve_conditional_blocks(main_system_prompt_cleaned, context_variables)
         import re
         main_system_prompt_cleaned = re.sub(r'(?m)^[ \t]*#+[ \t]*', '', main_system_prompt_cleaned)
-            
-    system_prompt = f"""Você é o "Pre-Router AI", o primeiro contato que lê a mensagem do usuário antes dela ser enviada aos Agentes.
-Sua função é quintupla:
-1. Identificar se a mensagem é APENAS uma saudação curta, cumprimento, agradecimento (Ex: "Oi", "Olá", "Oie", "Oiee", "Bom dia", "Tudo bem?", "Obrigado") ou uma confirmação/reação curta (Ex: "Ok", "Entendi", "Certo", "Show", "Combinado", "👍", "👌", "Perfeito") ou emoji negativo (Ex: 👎, 🖕, 😡, 😠, 😕, 😢, 😭) OU uma mensagem de teste do usuário ("teste", "testando") e NÃO contém nenhuma pergunta ou requisição técnica.
-   - SAUDAÇÃO CONFIGURADA: "{initial_msg}"
-   - MENSAGEM DE ANÚNCIO (IGNORAR): "{getattr(main_agent, 'initial_ignore_message', '')}"
-   - MODO DE SAUDAÇÃO: "{getattr(main_agent, 'greeting_mode', 'panel')}"
-   - MODO DE ANÚNCIO: "{getattr(main_agent, 'ad_mode', 'panel')}"
-   - SYSTEM PROMPT DO AGENTE PRINCIPAL (Utilize para guiar a saudação ou anúncio dinâmico se os modos forem 'prompt'): "{main_system_prompt_cleaned}"
-   
-   CRITÉRIO RÍGIDO:
-   - Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos e MODO DE SAUDAÇÃO for "panel", você DEVE definir 'eh_saudacao' como true e usar a 'SAUDAÇÃO CONFIGURADA' como sua 'resposta_direta'.
-   - Se a mensagem for "Oi", "Oie", "Olá" ou similares curtos e MODO DE SAUDAÇÃO for "prompt", você DEVE gerar uma resposta de saudação inicial amigável, personalizada e perfeitamente alinhada com as diretrizes de tom e regras do SYSTEM PROMPT DO AGENTE PRINCIPAL. Defina 'eh_saudacao' como true e retorne esta saudação em 'resposta_direta'.
-   - Se a mensagem for um AGRADECIMENTO (Ex: "Obrigado", "Obrigada", "Valeu", "Muito obrigado"), você deve definir 'eh_agradecimento' as true, 'eh_saudacao' as true e usar uma resposta simpática de agradecimento (Ex: "Por nada! Se precisar de mais alguma coisa, é só chamar.") como 'resposta_direta'.
-   - Se a mensagem for uma REAÇÃO NEGATIVA ou emoji de insatisfação/raiva/tristeza (Ex: 👎, 🖕, 😡, 😠, 🤬, 😕, 🙁, ☹️, 😢, 😭 e variações), você deve definir 'eh_saudacao' as true e usar a resposta empática: "Puxa, sinto muito! 😕 Percebi que algo não deu certo. O que aconteceu? Como posso te ajudar a resolver de uma forma melhor?" como 'resposta_direta'.
-   - Se a mensagem for uma CONFIRMAÇÃO/REAÇÃO POSITIVA (Ex: "Ok", "Entendi", "Combinado", "Certo", "Perfeito", emojis de confirmação como 👍, 👌) e o assistente não fez uma pergunta direta por último, você deve definir 'eh_saudacao' as true e usar uma resposta simpática de confirmação (Ex: "Perfeito! Qualquer dúvida, estou à disposição." ou "Combinado! Se precisar de algo, é só chamar.") como 'resposta_direta'.
-   
-   NOTA SOBRE HISTÓRICO: Se a mensagem for um "sim", "não", ou resposta curta que responde a uma pergunta direta do histórico recente (ex: a IA perguntou 'Qual seu e-mail?' ou 'Você prefere X ou Y?'), NÃO é apenas confirmação, é parte do fluxo da conversa, logo eh_saudacao deve ser false. (Isso não se aplica a emojis negativos como 👎 que são sempre interceptados).
+    tools_list = getattr(main_agent, "tools", None) or []
+    tools_desc = ""
+    for t in tools_list:
+        p_schema = t.parameters_schema
+        if isinstance(p_schema, bytes):
+            p_schema = p_schema.decode('utf-8')
+        tools_desc += f"- {t.name}: {t.description}. Parâmetros/Schema: {p_schema}\n"
 
-2. Identificar se a mensagem atual do usuário é uma MENSAGEM AUTOMÁTICA de boas-vindas, saudação comercial ou de AUSÊNCIA enviada pelo outro lado (por exemplo, mensagens automáticas de catálogo, mensagens rápidas do WhatsApp Business do contato, saudações automáticas de consultórios/lojas, mensagens de ausência informando horário de atendimento, etc. Exemplos: "Olá, seja bem-vindo ao Jessika Albuquerque Beauty...", "Olá! No momento não posso atender...", "Aqui quem cuida de você é...", "Obrigado por sua mensagem. Entraremos em contato...").
-   Se você identificar que a mensagem do usuário é uma mensagem automática/ausência/saudação do outro lado:
-   - Defina 'eh_mensagem_automatica' como true.
-   - Defina 'eh_saudacao' como true.
-   - Defina 'resposta_direta' como a 'SAUDAÇÃO CONFIGURADA' (ou "Olá! Como posso te ajudar hoje?" se a configurada estiver vazia).
-   - Defina 'perguntas_extraidas' como null ou "".
+    # Adicionar ferramentas internas e condicionais
+    if getattr(main_agent, "handoff_enabled", False):
+        tools_desc += "- transferir_suporte_humano: Transfere o atendimento para um atendente humano. Parâmetros/Schema: {\"type\": \"object\", \"properties\": {\"motivo\": {\"type\": \"string\", \"description\": \"Motivo solicitado pelo usuário\"}}, \"required\": [\"motivo\"]}\n"
+    
+    tools_desc += "- registrar_duvida_sem_resposta: Registra dúvidas que não constam no prompt de sistema ou RAG. Parâmetros/Schema: {\"type\": \"object\", \"properties\": {\"pergunta\": {\"type\": \"string\", \"description\": \"A pergunta exata do usuário\"}}, \"required\": [\"pergunta\"]}\n"
 
-3. Se a mensagem contiver perguntas ou requisições (e não for automática), você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
+    if getattr(main_agent, "qualification_questions", None):
+        tools_desc += "- lead_qualificado: Registra que o lead respondeu todas as perguntas de qualificação. Parâmetros/Schema: {\"type\": \"object\", \"properties\": {\"respostas\": {\"type\": \"object\", \"description\": \"Objeto contendo as respostas para cada pergunta\"}}, \"required\": [\"respostas\"]}\n"
 
-4. Se a mensagem do usuário for TÃO vaga ou confusa que é IMPOSSÍVEL identificar qualquer intenção (ex: 'ta', 'ok', '...', '???'), defina 'precisa_esclarecimento' como true e forneça uma mensagem curta e simpática de esclarecimento em 'resposta_esclarecimento' (Ex: "Como posso te ajudar hoje?" ou "Olá! Poderia me dar mais detalhes sobre o que você precisa?").
-   ⚠️ EXCEÇÃO PARA SAUDAÇÕES EM HISTÓRICO: Se a mensagem for apenas um cumprimento curto como "Oi", "Olá", "Oie", "Bom dia", "Tudo bem?" e houver histórico de conversa, NÃO a trate como vaga ou confusa e nem defina 'precisa_esclarecimento' como true. Em vez disso, defina 'eh_saudacao' as true e use a 'SAUDAÇÃO CONFIGURADA' ou gere a saudação dinâmica (caso MODO DE SAUDAÇÃO seja prompt).
-   ⚠️ REGRA DE OURO ABSOLUTA: Se o usuário citar NOMES DE PESSOAS (ex: 'Mateus', 'Mirela', 'Lira'), nomes de cursos, termos técnicos ou qualquer assunto específico que possa estar no conhecimento (RAG ou Inbox), você NUNCA deve pedir esclarecimento. Defina 'precisa_esclarecimento' as false e 'id_agente_alvo' como o Agente Principal.
-   
-5. Se o usuário perguntar por alguém (Quem é X?), isso NUNCA é vago. Deixe o Agente Principal responder.
-   
-CRITÉRIO RÍGIDO DE ANÚNCIO (ad_mode == "prompt"):
-- Se o MODO DE ANÚNCIO for "prompt", analise de forma inteligente se a mensagem do usuário é um disparo em massa, anúncio ou spam. Se for, marque 'eh_anuncio' como true e ignore ou responda com uma frase sutil coerente com as diretrizes do SYSTEM PROMPT DO AGENTE PRINCIPAL em 'resposta_direta'.
-
-Baseado no que o usuário quer, escolha qual agente abaixo deve receber a mensagem:
-{agents_desc}
-Se estiver em dúvida, escolha SEMPRE o Agente Principal (ID: {main_agent.id}).
-
-{get_date_context(main_agent) if getattr(main_agent, 'date_awareness', False) else ''}
-
-Retorne SEMPRE um JSON completo com TODAS as chaves:
-{{
-  "eh_saudacao": boolean,
-  "eh_agradecimento": boolean,
-  "eh_mensagem_automatica": boolean,
-  "precisa_esclarecimento": boolean,
-  "eh_anuncio": boolean,
-  "resposta_direta": "string ou null",
-  "resposta_esclarecimento": "string ou null",
-  "id_agente_alvo": integer,
-  "perguntas_extraidas": "string ou null",
-  "data_extraida": "YYYY-MM-DD ou null"
-}}"""
+    template_vars = dict(
+        initial_msg=initial_msg,
+        initial_ignore_message=getattr(main_agent, 'initial_ignore_message', '') or '',
+        greeting_mode=getattr(main_agent, 'greeting_mode', 'panel'),
+        ad_mode=getattr(main_agent, 'ad_mode', 'panel'),
+        main_system_prompt=main_system_prompt_cleaned,
+        tools_desc=tools_desc,
+        agents_desc=agents_desc,
+        main_agent_id=main_agent.id,
+        date_context=(get_date_context(main_agent) if getattr(main_agent, 'date_awareness', False) else ''),
+    )
+    system_prompt = _build_pre_router_system_prompt(main_agent, template_vars)
 
     if not is_first_msg:
         system_prompt += "\n⚠️ REGRA CRÍTICA DE HISTÓRICO: Há interações anteriores na conversa. Se a mensagem for apenas uma saudação curta ou cumprimento isolado (Ex: 'Oi', 'Olá', 'Bom dia', 'Tudo bem?'), você PODE definir 'eh_saudacao' como true. Mas se o usuário trouxer qualquer dúvida, resposta ou assunto novo, trate a mensagem como continuação normal da conversa (eh_saudacao = false)."
@@ -399,170 +475,41 @@ Retorne SEMPRE um JSON completo com TODAS as chaves:
         result["_model_used"] = model_to_use
         result["_debug_prompt"] = f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}"
         
-        # Recuperar e resumir a memória do usuário para exibição nas informações do Pre-Router
-        result["resumo_memorias"] = None
-        result["resumo_usuario"] = None
-        result["resumo_agente"] = None
-        result["mensagens_origem_memorias"] = []
-        
-        session_id = (context_variables or {}).get("session_id")
-        if db and session_id:
-            try:
-                from sqlalchemy import select
-                from models import UserMemoryModel, InteractionLog
-                from sqlalchemy.ext.asyncio import AsyncSession
-                
-                # 1. Recuperar memórias
-                stmt = select(UserMemoryModel).where(UserMemoryModel.session_id == session_id).order_by(UserMemoryModel.updated_at.desc())
-                if isinstance(db, AsyncSession):
-                    memories_res = await db.execute(stmt)
-                else:
-                    memories_res = db.execute(stmt)
-                memories = memories_res.scalars().all()
-                
-                # 2. Recuperar histórico real de interações
-                stmt_logs = select(InteractionLog).where(InteractionLog.session_id == session_id).order_by(InteractionLog.timestamp.asc())
-                if isinstance(db, AsyncSession):
-                    logs_res = await db.execute(stmt_logs)
-                else:
-                    logs_res = db.execute(stmt_logs)
-                logs = logs_res.scalars().all()
-                
-                # Coleta as origens (preferencialmente diálogos formatados)
-                origens = []
-                if logs:
-                    for l in logs:
-                        if l.user_message:
-                            origens.append(f"Usuário: {l.user_message}")
-                        if l.agent_response:
-                            origens.append(f"Agente: {l.agent_response}")
-                else:
-                    origens = list(set([m.source_message for m in memories if m.source_message]))
-                result["mensagens_origem_memorias"] = origens
-                
-                if logs:
-                    history_str = ""
-                    for l in logs:
-                        history_str += f"Usuário: {l.user_message}\nAgente: {l.agent_response}\n\n"
-                        
-                    summary_prompt_user = (
-                        "Você é um assistente de síntese. Abaixo está o histórico de uma conversa entre um usuário e um agente de IA. "
-                        "Gere um resumo compacto (máximo 3 frases) em Português do Brasil focando exclusivamente no perfil, dúvidas e problemas do USUÁRIO.\n\n"
-                        f"Histórico:\n{history_str}"
-                    )
-                    
-                    summary_prompt_agent = (
-                        "Você é um assistente de síntese. Abaixo está o histórico de uma conversa entre um usuário e um agente de IA. "
-                        "Gere um resumo compacto (máximo 3 frases) em Português do Brasil focando exclusivamente nas orientações, conselhos, respostas e abordagem do AGENTE.\n\n"
-                        f"Histórico:\n{history_str}"
-                    )
-                    
-                    res_user = await client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": "Gere resumos compactos, claros e objetivos em português do Brasil."},
-                            {"role": "user", "content": summary_prompt_user}
-                        ],
-                        temperature=0.3
-                    )
-                    res_agent = await client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": "Gere resumos compactos, claros e objetivos em português do Brasil."},
-                            {"role": "user", "content": summary_prompt_agent}
-                        ],
-                        temperature=0.3
-                    )
-                    
-                    resumo_user_txt = res_user.choices[0].message.content.strip()
-                    resumo_agent_txt = res_agent.choices[0].message.content.strip()
-                    
-                    result["resumo_usuario"] = resumo_user_txt
-                    result["resumo_agente"] = resumo_agent_txt
-                    result["resumo_memorias"] = f"**👤 Resumo do Usuário:**\n{resumo_user_txt}\n\n**🤖 Resumo do Agente:**\n{resumo_agent_txt}"
-                    
-                    # Salva ou atualiza o resumo no banco de dados (SessionSummary)
-                    try:
-                        from models import SessionSummary
-                        from sqlalchemy import select
-                        from sqlalchemy.ext.asyncio import AsyncSession
-                        stmt_select = select(SessionSummary).where(SessionSummary.session_id == session_id)
-                        if isinstance(db, AsyncSession):
-                            summary_res = await db.execute(stmt_select)
-                        else:
-                            summary_res = db.execute(stmt_select)
-                        summary_record = summary_res.scalars().first()
-                        
-                        if summary_record:
-                            summary_record.summary_text = result["resumo_memorias"]
-                        else:
-                            summary_record = SessionSummary(
-                                session_id=session_id,
-                                agent_id=main_agent.id,
-                                summary_text=result["resumo_memorias"]
-                            )
-                            db.add(summary_record)
-                        
-                        if isinstance(db, AsyncSession):
-                            await db.commit()
-                        else:
-                            db.commit()
-                    except Exception as db_save_err:
-                        logger.error(f"Erro ao salvar resumo da sessão no banco de dados: {db_save_err}")
-                elif memories:
-                    facts_list = [f"{m.key}: {m.value}" for m in memories]
-                    facts_str = "\n".join(facts_list)
-                    
-                    summary_prompt = (
-                        "Você é um assistente de síntese. Abaixo estão fatos na memória de longo prazo do usuário. "
-                        "Gere um resumo compacto (máximo 3 frases) em Português dos pontos mais relevantes "
-                        "sobre o perfil ou histórico do usuário.\n\n"
-                        f"Fatos na Memória:\n{facts_str}"
-                    )
-                    
-                    res_summary = await client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": "Gere resumos compactos, claros e objetivos em português."},
-                            {"role": "user", "content": summary_prompt}
-                        ],
-                        temperature=0.3
-                    )
-                    fallback_txt = res_summary.choices[0].message.content.strip()
-                    result["resumo_usuario"] = fallback_txt
-                    result["resumo_memorias"] = fallback_txt
-                    
-                    # Salva ou atualiza o resumo no banco de dados (SessionSummary)
-                    try:
-                        from models import SessionSummary
-                        from sqlalchemy import select
-                        from sqlalchemy.ext.asyncio import AsyncSession
-                        stmt_select = select(SessionSummary).where(SessionSummary.session_id == session_id)
-                        if isinstance(db, AsyncSession):
-                            summary_res = await db.execute(stmt_select)
-                        else:
-                            summary_res = db.execute(stmt_select)
-                        summary_record = summary_res.scalars().first()
-                        
-                        if summary_record:
-                            summary_record.summary_text = result["resumo_memorias"]
-                        else:
-                            summary_record = SessionSummary(
-                                session_id=session_id,
-                                agent_id=main_agent.id,
-                                summary_text=result["resumo_memorias"]
-                            )
-                            db.add(summary_record)
-                        
-                        if isinstance(db, AsyncSession):
-                            await db.commit()
-                        else:
-                            db.commit()
-                    except Exception as db_save_err:
-                        logger.error(f"Erro ao salvar resumo da sessão no banco de dados (fallback): {db_save_err}")
-            except Exception as mem_err:
-                logger.error(f"Erro ao gerar resumo de memórias no pre-router: {mem_err}")
-        
+        # A "memória utilizada" exibida no Raio-X deve refletir EXATAMENTE o que foi
+        # realmente enviado como contexto ao Pre-Router — ou seja, o próprio `history`
+        # recebido por esta função (já é o histórico que o chamador monta respeitando
+        # a janela de contexto do agente) — e não uma busca separada e sem limite no
+        # banco, que antes ignorava `context_window` e mostrava a conversa inteira.
+        # Respeita o limite configurado em `context_window`: N mensagens do usuário e
+        # N respostas do agente (ex: context_window=5 -> até 5 + 5).
+        context_window_limit = getattr(main_agent, 'context_window', None)
+        if not context_window_limit or context_window_limit <= 0:
+            context_window_limit = 5
+
+        origens = []
+        if history:
+            user_count = 0
+            agent_count = 0
+            # Percorre do mais recente para o mais antigo para priorizar as últimas
+            # N mensagens de cada lado, depois reordena cronologicamente para exibição.
+            for h in reversed(history):
+                role = h.get('role', 'user')
+                content = (h.get('content') or '').strip()
+                if not content:
+                    continue
+                if role == 'user' and user_count < context_window_limit:
+                    origens.append((h, f"Usuário: {content}"))
+                    user_count += 1
+                elif role == 'assistant' and agent_count < context_window_limit:
+                    origens.append((h, f"Agente: {content}"))
+                    agent_count += 1
+                if user_count >= context_window_limit and agent_count >= context_window_limit:
+                    break
+            origens.reverse()
+            origens = [texto for _h, texto in origens]
+
+        result["mensagens_origem_memorias"] = origens
+
         if response.usage:
             result["_usage"] = {
                 "prompt_tokens": response.usage.prompt_tokens,

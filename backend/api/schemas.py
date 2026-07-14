@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -56,6 +56,23 @@ class KnowledgeItem(BaseModel):
     source_metadata: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
+# Variante "detalhada" do KnowledgeItem: inclui o vetor de embedding.
+# Usada apenas em endpoints de item único (GET/PUT /knowledge-items/{id}) para não
+# inflar o payload da listagem geral de bases (que retorna dezenas de itens de uma vez).
+class KnowledgeItemDetail(KnowledgeItem):
+    embedding: Optional[List[float]] = None
+
+    # pgvector retorna numpy.ndarray (não list) quando numpy está instalado;
+    # convertemos aqui para garantir serialização JSON válida.
+    @field_validator('embedding', mode='before')
+    @classmethod
+    def _coerce_embedding(cls, v):
+        if v is None:
+            return None
+        if hasattr(v, 'tolist'):
+            return v.tolist()
+        return list(v)
+
 class KnowledgeBase(BaseModel):
     id: Optional[int] = None
     name: str = "Nova Base"
@@ -103,6 +120,7 @@ class AgentConfig(BaseModel):
     date_awareness_future_days: Optional[int] = 7
     system_prompt: str = "Você é um assistente útil e inteligente."
     dynamic_prompt: Optional[str] = ""
+    pre_router_prompt: Optional[str] = None
     context_window: int = 5
     knowledge_base: list = []
     knowledge_base_id: Optional[int] = None
@@ -113,6 +131,7 @@ class AgentConfig(BaseModel):
     rag_rerank_enabled: bool = True
     rag_agentic_eval_enabled: bool = True
     rag_parent_expansion_enabled: bool = True
+    rag_relevance_threshold: float = 0.0
     tool_ids: List[int] = []
     simulated_time: Optional[str] = None
     security_competitor_blacklist: Optional[str] = None
@@ -292,6 +311,7 @@ class RAGSimulationRequest(BaseModel):
     agentic_eval_enabled: bool = False
     parent_expansion_enabled: bool = False
     limit: int = 5
+    relevance_threshold: float = 0.0
 
 class CoverageCheckRequest(BaseModel):
     questions: List[str]

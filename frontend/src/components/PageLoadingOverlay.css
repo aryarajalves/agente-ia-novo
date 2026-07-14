@@ -1,0 +1,55 @@
+.page-loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999999;
+    animation: pageLoadingFadeIn 0.15s ease-out;
+    pointer-events: none;
+}
+
+.page-loading-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem 2.5rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.page-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(99, 102, 241, 0.2);
+    border-top-color: var(--primary-color, #6366f1);
+    border-radius: 50%;
+    animation: pageLoadingSpin 0.7s linear infinite;
+}
+
+.page-loading-text {
+    color: #e2e8f0;
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+@keyframes pageLoadingSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pageLoadingFadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}

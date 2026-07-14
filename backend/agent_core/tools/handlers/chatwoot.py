@@ -1,7 +1,7 @@
 import json
-import os
 from sqlalchemy import select
 from models import WebhookConfigModel, SupportRequestModel
+from zapvoice_utils import sync_conversation_labels
 
 async def handle_chatwoot_handoff(db, context_variables, target_tool, is_human, func_args_str, history, config_id):
     try:
@@ -9,7 +9,8 @@ async def handle_chatwoot_handoff(db, context_variables, target_tool, is_human, 
         wid = context_variables.get("webhook_config_id")
         webhook_overrides = False
         labels_add, labels_remove = [], []
-        
+        config_obj = None
+
         # 1. Tentar buscar configurações específicas do Webhook
         if wid:
             try:
@@ -39,16 +40,24 @@ async def handle_chatwoot_handoff(db, context_variables, target_tool, is_human, 
 
         account_id = context_variables.get("account_id")
         conversation_id = context_variables.get("conversation_id")
-        cw_url = os.getenv("CHATWOOT_URL")
-        cw_token = os.getenv("CHATWOOT_API_TOKEN")
-        
-        # Sincronizar Etiquetas no Chatwoot
-        if cw_url and cw_token and account_id and conversation_id:
-            from chatwoot_utils import sync_conversation_labels
+        # Este handler usava um módulo "chatwoot_utils" (e variáveis de ambiente CHATWOOT_URL/
+        # CHATWOOT_API_TOKEN) que nunca existiram neste projeto — resquício de uma versão anterior
+        # baseada em Chatwoot. Como o WebhookConfigModel só tem zapvoice_url/zapvoice_api_token,
+        # essa sincronização de etiquetas falhava em silêncio (ImportError capturado pelo except
+        # genérico) em toda transferência para suporte humano. Corrigido para usar o ZapVoice,
+        # igual ao restante do projeto (webhooks/router.py, etc.).
+        zv_url = config_obj.zapvoice_url if config_obj else None
+        zv_token = config_obj.zapvoice_api_token if config_obj else None
+
+        # Sincronizar etiquetas no ZapVoice
+        if zv_url and zv_token and account_id and conversation_id:
             try:
-                await sync_conversation_labels(cw_url, int(account_id), int(conversation_id), cw_token, labels_add, labels_remove)
+                await sync_conversation_labels(
+                    zv_url, str(account_id), int(conversation_id), zv_token,
+                    to_add=labels_add, to_remove=labels_remove
+                )
             except Exception as e_sync:
-                print(f"⚠️ Erro na sincronização de labels Chatwoot: {e_sync}")
+                print(f"⚠️ Erro na sincronização de etiquetas ZapVoice: {e_sync}")
 
         # Registro de Suporte no DB
         args_obj = {}

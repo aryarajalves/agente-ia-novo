@@ -6,8 +6,9 @@ import { showToast } from '../WebhookManager/utils/helpers';
 const PromptContext = createContext();
 
 export const PromptProvider = ({ children, initialProps }) => {
-    const { value, onChange, dynamicValue, onChangeDynamic, agentId } = initialProps;
-    const [activePromptTab, setActivePromptTab] = useState('static'); // 'static' | 'dynamic'
+    const { value, onChange, dynamicValue, onChangeDynamic, preRouterValue, onChangePreRouter, agentId } = initialProps;
+    const [activePromptTab, setActivePromptTab] = useState('static'); // 'static' | 'dynamic' | 'prerouter'
+    const [isLoadingPreRouterDefault, setIsLoadingPreRouterDefault] = useState(false);
 
     const [advisorMessages, setAdvisorMessages] = useState([
         { role: 'assistant', content: 'Olá! Sou seu **Consultor de Prompt**. \n\nPosso analisar a estrutura das suas instruções, sugerir melhorias estratégicas ou ajudar você a localizar e atualizar regras específicas. Como posso ajudar?' }
@@ -226,6 +227,51 @@ export const PromptProvider = ({ children, initialProps }) => {
         return false;
     };
 
+    // Busca o template padrão do Pre-Router no backend e preenche o campo customizado.
+    // Usado pelo botão "Restaurar Padrão" na aba Pre-Router, e também automaticamente
+    // (silent=true) quando o agente ainda não tem um pre_router_prompt salvo, para que
+    // a aba mostre o conteúdo que já está rodando de verdade em vez de aparecer vazia.
+    const loadPreRouterDefaultTemplate = async (silent = false) => {
+        if (!onChangePreRouter) return;
+        setIsLoadingPreRouterDefault(true);
+        try {
+            const res = await api.get('/agents/pre-router-default-prompt');
+            if (res.ok) {
+                const data = await res.json();
+                onChangePreRouter({ target: { value: data.prompt || '' } });
+                if (!silent) {
+                    showToast('Prompt padrão do Pre-Router carregado. Lembre-se de salvar para aplicar.');
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar template padrão do Pre-Router:', error);
+            if (!silent) {
+                showToast('❌ Erro ao carregar o template padrão do Pre-Router.');
+            }
+        } finally {
+            setIsLoadingPreRouterDefault(false);
+        }
+    };
+
+    // Referência para não repetir o auto-load silencioso mais de uma vez por sessão do editor
+    const hasAutoLoadedPreRouterDefault = React.useRef(false);
+
+    // Quando o usuário abre a aba Pre-Router e o agente ainda não tem um prompt
+    // customizado salvo (preRouterValue vazio), popula automaticamente com o template
+    // padrão que já está em uso de verdade — em vez de deixar a caixa vazia parecendo
+    // que "sumiu" o conteúdo que já existia.
+    React.useEffect(() => {
+        if (
+            activePromptTab === 'prerouter' &&
+            !preRouterValue &&
+            !hasAutoLoadedPreRouterDefault.current &&
+            onChangePreRouter
+        ) {
+            hasAutoLoadedPreRouterDefault.current = true;
+            loadPreRouterDefaultTemplate(true);
+        }
+    }, [activePromptTab, preRouterValue, onChangePreRouter]);
+
     const promptOutline = useMemo(() => {
         if (!value) return [];
         return value.split('\n')
@@ -364,12 +410,26 @@ export const PromptProvider = ({ children, initialProps }) => {
         }, 50);
     }, [value, onChange]);
 
+    const activePromptValue = activePromptTab === 'static'
+        ? promptValue
+        : activePromptTab === 'dynamic'
+            ? (dynamicValue || '')
+            : (preRouterValue || '');
+
+    const activeOnChangePrompt = activePromptTab === 'static'
+        ? onChangePrompt
+        : activePromptTab === 'dynamic'
+            ? onChangeDynamic
+            : onChangePreRouter;
+
     const valueContext = {
         textareaRef,
-        promptValue: activePromptTab === 'static' ? promptValue : (dynamicValue || ''),
-        onChangePrompt: activePromptTab === 'static' ? onChangePrompt : onChangeDynamic,
+        promptValue: activePromptValue,
+        onChangePrompt: activeOnChangePrompt,
         activePromptTab,
         setActivePromptTab,
+        loadPreRouterDefaultTemplate,
+        isLoadingPreRouterDefault,
         agentId,
         advisorMessages, setAdvisorMessages,
         advisorInput, setAdvisorInput,

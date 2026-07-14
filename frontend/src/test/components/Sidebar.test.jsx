@@ -71,7 +71,6 @@ describe('Sidebar Component', () => {
 
             expect(screen.getByText('Meus Agentes')).toBeInTheDocument();
             expect(screen.getByText('Bases de Conhecimento')).toBeInTheDocument();
-            expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
             expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Lead Scoring')).toBeInTheDocument();
             expect(screen.getByText('Ranking de Dúvidas')).toBeInTheDocument();
@@ -87,7 +86,6 @@ describe('Sidebar Component', () => {
 
             expect(screen.getByText('Meus Agentes')).toBeInTheDocument();
             expect(screen.getByText('Bases de Conhecimento')).toBeInTheDocument();
-            expect(screen.getByText('Suporte Humano')).toBeInTheDocument();
             expect(screen.getByText('Inbox de Dúvidas')).toBeInTheDocument();
             expect(screen.getByText('Lead Scoring')).toBeInTheDocument();
             expect(screen.getByText('Ranking de Dúvidas')).toBeInTheDocument();

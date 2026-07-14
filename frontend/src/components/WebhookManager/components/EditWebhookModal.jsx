@@ -139,6 +139,7 @@ const EditWebhookModal = ({
         description: '',
         delay_seconds: 30,
         response_delay_seconds: 0,
+        split_response_enabled: true,
         process_audio: false,
         process_image: false,
         followup_enabled: false,
@@ -330,6 +331,25 @@ const EditWebhookModal = ({
                                                 onChange={e => setEditForm({ ...safeEditForm, response_delay_seconds: e.target.value })}
                                                 className="premium-input"
                                             />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginTop: '1.25rem', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
+                                        <div className="control-item">
+                                            <div className="control-info">
+                                                <div className="control-title">✂️ Quebrar Resposta em Mensagens</div>
+                                                <div className="control-desc">
+                                                    {safeEditForm.split_response_enabled
+                                                        ? 'Ativado: a resposta é dividida por quebras de linha e enviada em várias mensagens.'
+                                                        : 'Desativado: a resposta é enviada completa em uma única mensagem.'}
+                                                </div>
+                                            </div>
+                                            <button type="button"
+                                                onClick={() => setEditForm({ ...safeEditForm, split_response_enabled: !safeEditForm.split_response_enabled })}
+                                                className={`premium-switch ${safeEditForm.split_response_enabled ? 'active' : ''}`}
+                                            >
+                                                <div className="switch-knob" />
+                                            </button>
                                         </div>
                                     </div>
 

@@ -16,6 +16,8 @@ function KnowledgeBaseList() {
     const [filterType, setFilterType] = useState('all'); // 'all', 'qa', 'product'
     const [selectedBases, setSelectedBases] = useState(new Set());
     const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const BASES_PER_PAGE = 6;
 
     // Sincroniza a aba ativa quando a URL muda (ex: via navigate de outro componente)
     useEffect(() => {
@@ -72,6 +74,23 @@ function KnowledgeBaseList() {
         if (filterType === 'product') return base.kb_type === 'product';
         return true;
     });
+
+    const totalPages = Math.max(1, Math.ceil(filteredBases.length / BASES_PER_PAGE));
+    const paginatedBases = filteredBases.slice(
+        (currentPage - 1) * BASES_PER_PAGE,
+        currentPage * BASES_PER_PAGE
+    );
+
+    // Reseta para a primeira página quando o filtro muda ou a página atual fica fora do range
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filterType]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [totalPages, currentPage]);
 
     const toggleSelectBase = (id) => {
         const newSelected = new Set(selectedBases);
@@ -294,6 +313,7 @@ function KnowledgeBaseList() {
                 loading ? (
                     <div className="loading">Carregando bases...</div>
                 ) : (
+                    <>
                     <div className="agents-grid">
                         {filteredBases.length === 0 ? (
                             <div className="empty-state" style={{
@@ -334,7 +354,7 @@ function KnowledgeBaseList() {
 
                             </div>
                         ) : (
-                            filteredBases.map(base => (
+                            paginatedBases.map(base => (
                                 <div key={base.id} className="agent-card" style={{ position: 'relative' }}>
                                     <div 
                                         onClick={() => toggleSelectBase(base.id)}
@@ -365,15 +385,15 @@ function KnowledgeBaseList() {
                                     </div>
 
                                     <div className="agent-card-header" style={{ paddingLeft: '2.5rem' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <span style={{ fontSize: '1.2rem' }}>{base.kb_type === 'product' ? '📦' : '💬'}</span>
-                                            <h3>{base.name}</h3>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                                            <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{base.kb_type === 'product' ? '📦' : '💬'}</span>
+                                            <h3 title={base.name}>{base.name}</h3>
                                         </div>
-                                        <span className="agent-model-badge">
+                                        <span className="agent-model-badge" style={{ flexShrink: 0 }}>
                                             KB #{base.id}
                                         </span>
                                     </div>
-                                    <p className="agent-description">
+                                    <p className="agent-description" style={{ minHeight: '2.9rem' }}>
                                         {base.description || "Sem descrição definida para esta base de conhecimento."}
                                     </p>
 
@@ -420,6 +440,79 @@ function KnowledgeBaseList() {
                             ))
                         )}
                     </div>
+
+                    {filteredBases.length > 0 && totalPages > 1 && (
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            marginTop: '2.5rem'
+                        }}>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                style={{
+                                    padding: '0.6rem 1rem',
+                                    borderRadius: '10px',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    background: 'rgba(255, 255, 255, 0.03)',
+                                    color: currentPage === 1 ? '#475569' : '#e2e8f0',
+                                    fontWeight: 700,
+                                    fontSize: '0.85rem',
+                                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                ← Anterior
+                            </button>
+
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    <button
+                                        key={page}
+                                        onClick={() => setCurrentPage(page)}
+                                        style={{
+                                            width: '38px',
+                                            height: '38px',
+                                            borderRadius: '10px',
+                                            border: page === currentPage ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
+                                            background: page === currentPage
+                                                ? 'linear-gradient(135deg, #6366f1, #a855f7)'
+                                                : 'rgba(255, 255, 255, 0.03)',
+                                            color: page === currentPage ? '#fff' : '#94a3b8',
+                                            fontWeight: 800,
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            boxShadow: page === currentPage ? '0 4px 12px rgba(99, 102, 241, 0.35)' : 'none',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                style={{
+                                    padding: '0.6rem 1rem',
+                                    borderRadius: '10px',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    background: 'rgba(255, 255, 255, 0.03)',
+                                    color: currentPage === totalPages ? '#475569' : '#e2e8f0',
+                                    fontWeight: 700,
+                                    fontSize: '0.85rem',
+                                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                Próxima →
+                            </button>
+                        </div>
+                    )}
+                    </>
                 )
             ) : activeTab === 'inbox' ? (
                 <UnansweredQuestions />

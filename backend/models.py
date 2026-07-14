@@ -111,6 +111,7 @@ class AgentConfigModel(Base):
     date_awareness_future_days = Column(Integer, default=7, nullable=True)  # Dias futuros no contexto temporal
     system_prompt = Column(Text, default="Você é um assistente útil e inteligente.")
     dynamic_prompt = Column(Text, default="", nullable=True)
+    pre_router_prompt = Column(Text, nullable=True)  # Prompt customizado do Pre-Router; se vazio/nulo, usa DEFAULT_PRE_ROUTER_PROMPT_TEMPLATE (agent_core/logic/pre_router.py)
     context_window = Column(Integer, default=5)
     knowledge_base = Column(Text, default="[]") # Legacy JSON list of FAQs
     simulated_time = Column(String, nullable=True) # HH:MM for time override
@@ -122,6 +123,7 @@ class AgentConfigModel(Base):
     rag_rerank_enabled = Column(Boolean, default=True)
     rag_agentic_eval_enabled = Column(Boolean, default=True)
     rag_parent_expansion_enabled = Column(Boolean, default=True)
+    rag_relevance_threshold = Column(Float, default=0.0)  # Relevância mínima (0-1) para um item ser enviado ao contexto do RAG. 0 = sem filtro.
 
     # Security Guardrails
     security_competitor_blacklist = Column(Text, nullable=True) # Ex: "Coca-Cola, Pepsi"
@@ -364,6 +366,7 @@ class WebhookConfigModel(Base):
     delete_message = Column(Text, nullable=True)        # Mensagem enviada antes de deletar o contato
     delete_labels = Column(Text, nullable=True)         # JSON array: etiquetas que substituirão as atuais no reset
     response_delay_seconds = Column(Integer, default=0) # Delay em segundos antes de enviar resposta ao usuário
+    split_response_enabled = Column(Boolean, default=True) # Se True, quebra a resposta da IA em várias mensagens (por \n\n); se False, envia em bloco único
     window_close_label = Column(String, nullable=True)   # Etiqueta a remover no Chatwoot quando janela 24h expirar
     followup_enabled = Column(Boolean, default=False)    # Ativar follow-up automático
     followup_steps = Column(Text, nullable=True)         # JSON: [{delay_hours}, ...]

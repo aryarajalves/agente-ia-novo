@@ -7,16 +7,21 @@ const AddItemForm = () => {
     const { kbLabels, kbType } = useKB();
     const { handleAddItem } = useKBOperations();
     const [newPair, setNewPair] = useState({ question: '', answer: '', metadata_val: '', category: 'Geral' });
+    const [isSaving, setIsSaving] = useState(false);
 
     if (kbType === 'product') return null;
 
-    const onAdd = () => {
-        handleAddItem(newPair);
-        setNewPair({ question: '', answer: '', metadata_val: '', category: 'Geral' });
+    const onAdd = async () => {
+        setIsSaving(true);
+        const success = await handleAddItem(newPair);
+        setIsSaving(false);
+        if (success) {
+            setNewPair({ question: '', answer: '', metadata_val: '', category: 'Geral' });
+        }
     };
 
     return (
-        <div className="kb-add-card" style={{ marginBottom: '3rem' }}>
+        <div className="kb-add-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
                 <div style={{ width: '8px', height: '24px', background: 'var(--accent-gradient)', borderRadius: '4px' }}></div>
                 <h4 style={{ color: 'white', fontSize: '1.1rem', fontWeight: 800 }}>Novo Conhecimento</h4>
@@ -60,8 +65,13 @@ const AddItemForm = () => {
                 />
             </div>
 
-            <button onClick={onAdd} className="create-agent-btn" style={{ width: '100%', border: 'none' }}>
-                ✓ Adicionar à Base
+            <button
+                onClick={onAdd}
+                disabled={isSaving}
+                className="create-agent-btn"
+                style={{ width: '100%', border: 'none', padding: '1.2rem', fontSize: '1.05rem' }}
+            >
+                {isSaving ? 'Salvando...' : '✓ Adicionar à Base'}
             </button>
         </div>
     );

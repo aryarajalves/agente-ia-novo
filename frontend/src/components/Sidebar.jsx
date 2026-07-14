@@ -157,14 +157,6 @@ const Sidebar = ({ onLogout }) => {
                                     <div className="nav-section">
                                         <span className="nav-section-title">ATENDIMENTO</span>
                                         <NavLink
-                                            to="/support"
-                                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                                        >
-                                            <span className="nav-icon">🎧</span>
-                                            <span className="nav-label">Suporte Humano</span>
-                                            <div className="active-indicator"></div>
-                                        </NavLink>
-                                        <NavLink
                                             to="/knowledge-bases?tab=inbox"
                                             className={({ isActive }) => {
                                                 const search = (typeof window !== 'undefined' && window.location && window.location.search) || '';

@@ -1,5 +1,5 @@
 from .core import search_knowledge_base, calculate_coverage
-from .providers import call_rag_llm, get_embedding, get_batch_embeddings
+from .providers import call_rag_llm, get_embedding, get_batch_embeddings, EmbeddingGenerationError
 from .language import (
     detect_language, 
     translate_to_portuguese, 
@@ -19,6 +19,7 @@ __all__ = [
     'call_rag_llm',
     'get_embedding',
     'get_batch_embeddings',
+    'EmbeddingGenerationError',
     'detect_language',
     'translate_to_portuguese',
     'detect_message_language',

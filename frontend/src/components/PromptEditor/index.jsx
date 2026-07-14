@@ -1,13 +1,12 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { PromptProvider, usePrompt } from './PromptContext';
 import PromptTextarea from './components/PromptTextarea';
-import OutlineSidebar from './components/OutlineSidebar';
 import PromptAdvisor from './components/PromptAdvisor';
 import ConditionalBuilderModal from './components/ConditionalBuilderModal';
 import useConditionalBuilder from './hooks/useConditionalBuilder.jsx';
 import { showToast } from '../WebhookManager/utils/helpers';
 import './styles/PromptEditor.css';
-import './styles/OutlineSidebar.css';
 import './styles/ConditionalBuilder.css';
 
 const EditorContent = () => {
@@ -18,6 +17,7 @@ const EditorContent = () => {
         openCondEdit, setOpenCondEdit,
         replaceTextRange,
         activePromptTab, setActivePromptTab,
+        loadPreRouterDefaultTemplate, isLoadingPreRouterDefault,
     } = usePrompt();
 
     const [showSaveModal, setShowSaveModal] = React.useState(false);
@@ -138,66 +138,59 @@ const EditorContent = () => {
 
     return (
         <div className={`prompt-editor-layout ${isExpanded ? 'expanded' : ''}`}>
-            <OutlineSidebar />
             <div className="editor-main-area">
                 <header className="editor-toolbar">
-                    <div className="toolbar-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="toolbar-left">
                         <span className="file-icon">📝</span>
                         <span className="file-name">Instruções do Sistema</span>
-                        <div className="prompt-tab-selector" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', padding: '2px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <div className="prompt-tab-selector">
                             <button
                                 type="button"
                                 onClick={() => setActivePromptTab('static')}
-                                style={{
-                                    background: activePromptTab === 'static' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                                    color: activePromptTab === 'static' ? '#a5b4fc' : '#94a3b8',
-                                    border: 'none',
-                                    padding: '4px 12px',
-                                    borderRadius: '4px',
-                                    fontSize: '0.8rem',
-                                    cursor: 'pointer',
-                                    fontWeight: activePromptTab === 'static' ? '600' : 'normal'
-                                }}
+                                className={`prompt-tab-btn ${activePromptTab === 'static' ? 'active' : ''}`}
                             >
                                 🔒 Estático (Prompt Cache)
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setActivePromptTab('dynamic')}
-                                style={{
-                                    background: activePromptTab === 'dynamic' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                                    color: activePromptTab === 'dynamic' ? '#a5b4fc' : '#94a3b8',
-                                    border: 'none',
-                                    padding: '4px 12px',
-                                    borderRadius: '4px',
-                                    fontSize: '0.8rem',
-                                    cursor: 'pointer',
-                                    fontWeight: activePromptTab === 'dynamic' ? '600' : 'normal'
-                                }}
+                                className={`prompt-tab-btn ${activePromptTab === 'dynamic' ? 'active' : ''}`}
                             >
                                 ⚡ Dinâmico
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActivePromptTab('prerouter')}
+                                className={`prompt-tab-btn ${activePromptTab === 'prerouter' ? 'active' : ''}`}
+                                title="Instruções do Pre-Router: a IA que faz a triagem inicial da mensagem antes de chamar o agente"
+                            >
+                                🧭 Pre-Router
                             </button>
                         </div>
                     </div>
                     <div className="toolbar-actions">
-                        <button
-                            id="insert-cond-btn"
-                            onClick={handleOpenInsertModal}
-                            className="action-btn insert-cond-btn"
-                            style={{
-                                marginRight: '4px',
-                                background: 'rgba(236, 72, 153, 0.1)',
-                                color: '#f472b6',
-                                border: '1px solid rgba(236, 72, 153, 0.3)',
-                            }}
-                        >
-                            🔀 Inserir Condicional
-                        </button>
+                        {activePromptTab === 'prerouter' ? (
+                            <button
+                                onClick={() => loadPreRouterDefaultTemplate(false)}
+                                className="action-btn secondary"
+                                disabled={isLoadingPreRouterDefault}
+                                title="Substitui o texto atual pelo template padrão do Pre-Router"
+                            >
+                                {isLoadingPreRouterDefault ? '⏳ Carregando...' : '↺ Restaurar Padrão'}
+                            </button>
+                        ) : (
+                            <button
+                                id="insert-cond-btn"
+                                onClick={handleOpenInsertModal}
+                                className="action-btn insert-cond-btn"
+                            >
+                                🔀 Inserir Condicional
+                            </button>
+                        )}
                         {agentId && agentId !== 'new' && (
                             <button
                                 onClick={() => setShowSaveModal(true)}
                                 className="action-btn secondary"
-                                style={{ marginRight: '8px', background: 'rgba(99, 102, 241, 0.1)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.2)' }}
                             >
                                 💾 Salvar Rascunho
                             </button>
@@ -205,7 +198,6 @@ const EditorContent = () => {
                         <button
                             onClick={handleCopyPrompt}
                             className={`action-btn ${isCopied ? 'copied' : 'secondary'}`}
-                            style={{ marginRight: '4px' }}
                         >
                             {isCopied ? '✅ Copiado!' : '📋 Copiar Prompt'}
                         </button>
@@ -216,7 +208,10 @@ const EditorContent = () => {
                 </header>
 
                 {/* Modal de Salvamento de Rascunho */}
-                {showSaveModal && (
+                {/* Renderizado via portal em document.body: assim o "position: fixed" fica
+                    relativo à janela inteira, não a algum ancestral com transform/filter
+                    que quebraria a cobertura de tela cheia e a centralização do popup. */}
+                {showSaveModal && createPortal(
                     <div className="draft-modal-overlay fade-in">
                         <div className="draft-modal-card">
                             <div className="modal-header">
@@ -259,7 +254,8 @@ const EditorContent = () => {
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
 
                 {/* Modal do Construtor de Condicionais (inserção ou edição) */}
@@ -272,6 +268,12 @@ const EditorContent = () => {
                     builder={builder}
                     globalVarsList={globalVarsList}
                 />
+
+                {activePromptTab === 'prerouter' && (
+                    <div className="prerouter-warning-banner">
+                        ⚠️ Este texto controla a IA que decide, antes do agente principal, se a mensagem é saudação, precisa de uma ferramenta (ex: agendamento) ou consulta à base de conhecimento. Se deixar em branco, o sistema usa o template padrão. Evite remover os marcadores <code>{'{tools_desc}'}</code> e <code>{'{agents_desc}'}</code> — sem eles a IA perde a lista de ferramentas/agentes disponíveis. O formato de resposta em JSON é sempre adicionado automaticamente e não precisa ser escrito aqui.
+                    </div>
+                )}
 
                 <div className="editor-content-split">
                     <PromptTextarea />

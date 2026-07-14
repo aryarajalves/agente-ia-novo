@@ -91,13 +91,22 @@ function KnowledgeBaseEditor() {
     };
 
     const handleAddItem = async (question, answer, category, metadata) => {
-        if (isNew) return;
+        if (isNew) return false;
 
-        const response = await api.post(`/knowledge-bases/${id}/items`, { question, answer, category, metadata });
-
-        if (response.ok) {
-            const newItem = await response.json();
-            setItems([...items, newItem]);
+        try {
+            const response = await api.post(`/knowledge-bases/${id}/items`, { question, answer, category, metadata });
+            if (response.ok) {
+                const newItem = await response.json();
+                setItems([...items, newItem]);
+                return true;
+            }
+            const err = await response.json().catch(() => ({}));
+            setStatus({ type: 'error', message: err.detail || 'Erro ao adicionar item à base.' });
+            return false;
+        } catch (err) {
+            console.error("Erro ao adicionar item:", err);
+            setStatus({ type: 'error', message: 'Erro de conexão ao adicionar item.' });
+            return false;
         }
     };
 
@@ -109,10 +118,20 @@ function KnowledgeBaseEditor() {
     };
 
     const handleUpdateItem = async (itemId, question, answer, category, metadata) => {
-        const response = await api.put(`/knowledge-items/${itemId}`, { question, answer, category, metadata });
-        if (response.ok) {
-            const updated = await response.json();
-            setItems(items.map(i => i.id === itemId ? updated : i));
+        try {
+            const response = await api.put(`/knowledge-items/${itemId}`, { question, answer, category, metadata });
+            if (response.ok) {
+                const updated = await response.json();
+                setItems(items.map(i => i.id === itemId ? updated : i));
+                return true;
+            }
+            const err = await response.json().catch(() => ({}));
+            setStatus({ type: 'error', message: err.detail || 'Erro ao atualizar item.' });
+            return false;
+        } catch (err) {
+            console.error("Erro ao atualizar item:", err);
+            setStatus({ type: 'error', message: 'Erro de conexão ao atualizar item.' });
+            return false;
         }
     };
 

@@ -50,28 +50,38 @@ async def call_rag_llm(messages: list, model: str = "gpt-4o-mini", fallback: str
     else:
         raise Exception("Todos os modelos RAG falharam ou chaves não configuradas")
 
+class EmbeddingGenerationError(Exception):
+    """Levantado quando não é possível gerar o vetor (embedding) de um texto."""
+    pass
+
 async def get_embedding(text: str):
-    """Generates embedding for the given text using OpenAI."""
+    """Generates embedding for the given text using OpenAI.
+
+    Levanta EmbeddingGenerationError em caso de falha (chave ausente/inválida,
+    erro de rede, quota excedida, etc.) em vez de falhar silenciosamente —
+    os endpoints que chamam esta função devem tratar o erro e recusar salvar
+    o item sem vetor.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise EmbeddingGenerationError("OPENAI_API_KEY não configurada no servidor.")
+
     try:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return None, None
-            
         client = openai.AsyncOpenAI(api_key=api_key)
-        
+
         # Replace newlines
         text = text.replace("\n", " ")
-        
+
         response = await client.embeddings.create(
             input=[text],
             model="text-embedding-3-small"
         )
-        
+
         return response.data[0].embedding, response.usage
-        
+
     except Exception as e:
         print(f"Error generating embedding: {e}")
-        return None, None
+        raise EmbeddingGenerationError(f"Falha ao gerar embedding: {e}") from e
 
 async def get_batch_embeddings(texts: list[str]):
     """Generates embeddings for a list of texts in a single batch call using OpenAI."""

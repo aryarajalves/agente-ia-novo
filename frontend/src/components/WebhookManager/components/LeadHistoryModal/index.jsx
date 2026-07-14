@@ -351,6 +351,7 @@ const LeadHistoryModal = ({
                 {selectedPipelineEvent && (
                     <AutomationPipelineModal
                         event={selectedPipelineEvent}
+                        webhookId={webhook?.id}
                         onClose={() => setSelectedPipelineEvent(null)}
                     />
                 )}

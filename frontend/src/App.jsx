@@ -15,8 +15,6 @@ import SharedHistory from './components/SharedHistory';
 import Login from './components/Login';
 import Register from './components/Register';
 import UserManagement from './components/UserManagement';
-import SupportDashboard from './components/SupportDashboard/index';
-import PublicSupportView from './components/PublicSupportView';
 import PublicQuestionsView from './components/PublicQuestionsView';
 import WebhookManager from './components/WebhookManager/index';
 import LeadScoring from './components/LeadScoring/index';
@@ -61,7 +59,6 @@ function App() {
       <Routes>
         <Route path="/chat/:agentId" element={<PublicChat />} />
         <Route path="/shared/:sessionId" element={<SharedHistory />} />
-        <Route path="/public/support/:token" element={<PublicSupportView />} />
         <Route path="/public/questions/:token" element={<PublicQuestionsView />} />
         <Route path="/login" element={
           isAuthenticated ? <Navigate to="/" /> : <Login onLogin={() => setIsAuthenticated(true)} />
@@ -77,7 +74,6 @@ function App() {
                     {/* Rotas Comuns */}
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/playground" element={<ChatPlayground />} />
-                    <Route path="/support" element={<SupportDashboard />} />
                     <Route path="/ranking-duvidas" element={<ObjectionsDashboard />} />
 
                     {/* Rotas restritas para Admin e Super Admin */}

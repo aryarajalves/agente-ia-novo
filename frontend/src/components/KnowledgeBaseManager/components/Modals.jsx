@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useKB } from '../KBContext';
 import ConfirmModal from '../../ConfirmModal';
 import { useKBOperations } from '../hooks/useKBOperations';
+import EditItemModal from './EditItemModal';
 
 const Modals = () => {
     const { 
@@ -25,6 +26,8 @@ const Modals = () => {
 
     return (
         <>
+            <EditItemModal />
+
             <ConfirmModal
                 isOpen={isConfirmOpen}
                 title="Excluir Conteúdo"

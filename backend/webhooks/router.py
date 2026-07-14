@@ -62,6 +62,7 @@ class WebhookConfigCreate(BaseModel):
     delete_message: Optional[str] = None
     delete_labels: List[str] = []
     response_delay_seconds: int = 0
+    split_response_enabled: bool = True
     window_close_label: List[str] = []
     followup_enabled: bool = False
     followup_steps: List[dict] = []
@@ -109,6 +110,7 @@ class WebhookConfigResponse(BaseModel):
     delete_message: Optional[str] = None
     delete_labels: Union[List[str], Any, None] = []
     response_delay_seconds: Optional[int] = None
+    split_response_enabled: Optional[bool] = True
     window_close_label: Union[List[str], Any, None] = []
     followup_enabled: Optional[bool] = None
     followup_steps: Union[List[dict], Any, None] = []
@@ -171,6 +173,7 @@ class WebhookConfigUpdate(BaseModel):
     delete_message: Optional[str] = None
     delete_labels: Optional[List[str]] = None
     response_delay_seconds: Optional[int] = None
+    split_response_enabled: Optional[bool] = None
     window_close_label: Optional[List[str]] = None
     followup_enabled: Optional[bool] = None
     followup_steps: Optional[List[dict]] = None
@@ -1046,29 +1049,35 @@ async def list_webhook_leads(
     if zv_url and zv_token and leads:
         from zapvoice_utils import sync_conversation_labels
         
-        async def sync_lead_labels(lead):
-            c_id = lead.get("inbox_id")
-            conv_id = lead.get("conversa_id")
-            if c_id and conv_id:
-                try:
-                    success, final_labels = await sync_conversation_labels(
-                        zapvoice_url=zv_url,
-                        client_id=str(c_id),
-                        conversation_id=int(conv_id),
-                        token=zv_token
-                    )
-                    if success:
-                        lead["labels"] = json.dumps(final_labels, ensure_ascii=False)
-                        update_q = text(f"UPDATE {config.leads_table} SET labels = :labels, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
-                        await db.execute(update_q, {
-                            "labels": json.dumps(final_labels, ensure_ascii=False),
-                            "id": lead["id"]
-                        })
-                except Exception as e_sync:
-                    logger.error(f"Erro ao auto-sincronizar etiquetas do lead {lead['id']}: {e_sync}")
+        async def sync_lead_labels_bg(lead_id, c_id, conv_id):
+            try:
+                # Criamos uma nova conexão temporária para evitar conflito de sessão assíncrona concorrente
+                from database.connection import SessionLocal
+                from sqlalchemy import text
+                db_session = SessionLocal()
+                success, final_labels = await sync_conversation_labels(
+                    zapvoice_url=zv_url,
+                    client_id=str(c_id),
+                    conversation_id=int(conv_id),
+                    token=zv_token
+                )
+                if success:
+                    update_q = text(f"UPDATE {config.leads_table} SET labels = :labels, updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+                    db_session.execute(update_q, {
+                        "labels": json.dumps(final_labels, ensure_ascii=False),
+                        "id": lead_id
+                    })
+                    db_session.commit()
+                db_session.close()
+            except Exception as e_sync:
+                logger.error(f"Erro em background ao sincronizar etiquetas do lead {lead_id}: {e_sync}")
         
-        await asyncio.gather(*(sync_lead_labels(l) for l in leads))
-        await db.commit()
+        # Dispara as sincronizações em background sem aguardar (non-blocking)
+        for l in leads:
+            c_id = l.get("inbox_id")
+            conv_id = l.get("conversa_id")
+            if c_id and conv_id:
+                asyncio.create_task(sync_lead_labels_bg(l["id"], c_id, conv_id))
     
     logger.info(f"✅ Encontrados {len(leads)} leads de um total de {total}.")
     return {"total": total, "leads": leads}

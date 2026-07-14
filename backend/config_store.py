@@ -44,7 +44,7 @@ WHATSAPP_TEMPLATE_COST_BRL = 0.30 # Valor fixo sugerido para cada disparo de tem
 # Descoberta Dinâmica de Modelos via APIs
 # =============================================================================
 _models_cache = {"data": None, "timestamp": 0}
-_MODELS_CACHE_TTL = 3600  # 1 hora
+_MODELS_CACHE_TTL = 86400  # 24 horas
 
 # Filtros para excluir modelos que não são de chat
 _OPENAI_EXCLUDE = ["audio", "realtime", "tts", "transcribe", "search", "image", "instruct", "embedding", "codex"]
@@ -55,7 +55,7 @@ _ANTHROPIC_EXCLUDE = []
 def discover_models() -> list:
     """
     Busca modelos reais das APIs OpenAI e Gemini, cruza com MODEL_INFO
-    para enriquecer com preços e capacidades. Cache de 1 hora.
+    para enriquecer com preços e capacidades. Cache de 24 horas via Redis (ou em memória local).
     
     Retorna lista de dicts com: id, real_id, supports_tools, supports_temperature,
     input, output, context_window, provider, available_versions
@@ -63,6 +63,24 @@ def discover_models() -> list:
     global _models_cache
 
     now = time.time()
+    
+    # 1. Tentar ler do Redis antes de bater nas APIs
+    import redis as redis_lib
+    r_client = None
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        r_client = redis_lib.from_url(redis_url, decode_responses=True)
+        cached_data = r_client.get("ai_models_discovered")
+        if cached_data:
+            parsed = json.loads(cached_data)
+            # Atualiza o cache local em memória por garantia e retorna
+            _models_cache["data"] = parsed
+            _models_cache["timestamp"] = now
+            return parsed
+    except Exception as e_redis:
+        print(f"⚠️ Redis temporariamente indisponível para cache de modelos: {e_redis}")
+
+    # Fallback para cache em memória local se o Redis falhar e ainda estiver no prazo do TTL
     if _models_cache["data"] and (now - _models_cache["timestamp"]) < _MODELS_CACHE_TTL:
         return _models_cache["data"]
 
@@ -203,6 +221,15 @@ def discover_models() -> list:
             "provider": provider,
             "available_versions": versions
         })
+
+    # Salva no Redis com TTL de 24 horas para evitar chamadas de API externas frequentes
+    try:
+        if r_client:
+            # TTL de 24h = 86400 segundos
+            r_client.setex("ai_models_discovered", 86400, json.dumps(result))
+            print("💾 Descoberta de modelos gravada no Redis com sucesso (Expira em 24h).")
+    except Exception as e_redis_save:
+        print(f"⚠️ Erro ao persistir cache de modelos no Redis: {e_redis_save}")
 
     _models_cache = {"data": result, "timestamp": now}
     return result

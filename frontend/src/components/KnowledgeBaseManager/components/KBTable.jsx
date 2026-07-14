@@ -4,13 +4,14 @@ import { useKBData } from '../hooks/useKBData';
 import { useKBOperations } from '../hooks/useKBOperations';
 
 const KBTable = () => {
-    const { 
-        kbFilterTerm, setKbFilterTerm, 
+    const {
+        kbFilterTerm, setKbFilterTerm,
         selectedItems,
         kbLabels, setItemToDelete, setIsConfirmOpen,
         itemsPerPage, setItemsPerPage,
         typeFilter, setTypeFilter,
-        currentPage, setCurrentPage
+        currentPage, setCurrentPage,
+        setItemToEdit, setIsEditOpen
     } = useKB();
     
     const { paginatedItems, totalPages, totalCount } = useKBData();
@@ -19,41 +20,42 @@ const KBTable = () => {
     return (
         <div className="kb-table-container fade-in">
             <div className="kb-table-header">
-                <input 
-                    type="text" 
-                    placeholder="Filtrar na base..." 
+                <input
+                    type="text"
+                    placeholder="Filtrar na base..."
                     value={kbFilterTerm}
                     onChange={e => setKbFilterTerm(e.target.value)}
                     className="kb-search-input"
                 />
-                <div className="kb-stats" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <select 
-                        value={typeFilter} 
+                <div className="kb-stats">
+                    <select
+                        value={typeFilter}
                         onChange={e => { setTypeFilter(e.target.value); setCurrentPage(1); }}
-                        style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '5px 10px', borderRadius: '8px' }}
+                        className="kb-select"
                     >
                         <option value="all">Todos os Tipos</option>
                         <option value="qa">Apenas P&R</option>
                         <option value="chunks">Apenas Chunks</option>
                     </select>
 
-                    <select 
-                        value={itemsPerPage} 
+                    <select
+                        value={itemsPerPage}
                         onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                        style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '5px 10px', borderRadius: '8px' }}
+                        className="kb-select"
                     >
                         <option value={20}>20 por página</option>
                         <option value={50}>50 por página</option>
                         <option value={100}>100 por página</option>
                     </select>
-                    <span>Total: {totalCount} itens</span>
-                    
+
+                    <span className="kb-total-badge">Total: <strong>{totalCount}</strong> itens</span>
+
                     {selectedItems.size > 0 && (
-                        <button 
+                        <button
                             onClick={() => {
                                 setIsConfirmOpen(true);
                             }}
-                            style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '5px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                            className="kb-bulk-delete-btn"
                         >
                             🗑️ Excluir Selecionados ({selectedItems.size})
                         </button>
@@ -89,10 +91,37 @@ const KBTable = () => {
                             <td>{item.question}</td>
                             <td>{item.answer}</td>
                             <td>
-                                <button onClick={() => {
-                                    setItemToDelete({ id: item.id, index: item.originalIndex });
-                                    setIsConfirmOpen(true);
-                                }}>🗑️</button>
+                                <div className="kb-row-actions">
+                                    <button
+                                        className="kb-row-action-btn"
+                                        title="Editar item"
+                                        onClick={() => {
+                                            setItemToEdit(item);
+                                            setIsEditOpen(true);
+                                        }}
+                                    >
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                        </svg>
+                                    </button>
+                                    <button
+                                        className="kb-row-action-btn danger"
+                                        title="Excluir item"
+                                        onClick={() => {
+                                            setItemToDelete({ id: item.id, index: item.originalIndex });
+                                            setIsConfirmOpen(true);
+                                        }}
+                                    >
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                                            <path d="M10 11v6"></path>
+                                            <path d="M14 11v6"></path>
+                                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                                        </svg>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     ))}

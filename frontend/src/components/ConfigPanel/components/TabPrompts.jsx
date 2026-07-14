@@ -10,6 +10,7 @@ const TabPrompts = () => {
     const {
         id, isNew, systemPrompt, setSystemPrompt,
         dynamicPrompt, setDynamicPrompt,
+        preRouterPrompt, setPreRouterPrompt,
         routerEnabled, routerComplexModel, selectedModel,
         initialMessage, setInitialMessage,
         initialQuestionMessage, setInitialQuestionMessage,
@@ -146,6 +147,8 @@ const TabPrompts = () => {
                     onChange={(e) => setSystemPrompt(e.target.value)}
                     dynamicValue={dynamicPrompt}
                     onChangeDynamic={(e) => setDynamicPrompt(e.target.value)}
+                    preRouterValue={preRouterPrompt}
+                    onChangePreRouter={(e) => setPreRouterPrompt(e.target.value)}
                     agentId={id}
                     mainModel={routerEnabled ? routerComplexModel : selectedModel}
                     initialMessage={initialMessage}

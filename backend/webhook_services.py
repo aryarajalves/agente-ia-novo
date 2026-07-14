@@ -300,24 +300,13 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                 except Exception:
                     pass
 
-            session_id = str(lead_internal_id) if lead_internal_id else f"tel_{clean_phone}"
-            
-            summary_record = db.query(SessionSummary).filter(SessionSummary.session_id == session_id).first()
-            if not summary_record and lead_internal_id:
-                # Tentar pelo telefone como fallback
-                summary_record = db.query(SessionSummary).filter(SessionSummary.session_id == f"tel_{clean_phone}").first()
-            
-            if summary_record and summary_record.summary_text:
-                summary_text = summary_record.summary_text.strip()
-                # Formatar o resumo em turnos simulados de contexto do agente e usuário
-                # O resumo do contexto atuará como a memória da conversa.
-                history = [
-                    {"role": "user", "content": "Por favor, lembre-se do resumo da nossa conversa anterior."},
-                    {"role": "assistant", "content": f"Entendido. Aqui está o resumo do nosso histórico: {summary_text}"}
-                ]
-                webhook_tasks._add_step(db, event_id, "🧠 Memória de Contexto (Via Resumo)", f"Injetado o resumo da sessão '{session_id}' no contexto do agente.")
-            else:
-                # Fallback para o histórico de mensagens caso não haja resumo gerado ainda
+            # Forçamos a busca do histórico real, respeitando o limite da janela de contexto
+            pass
+        except Exception as e_sum:
+            logger.error(f"Erro ao ignorar resumo da sessão: {e_sum}")
+        
+        try:
+            # Fallback para o histórico de mensagens caso não haja resumo gerado ainda
                 # Normalização robusta
                 search_phones = [raw_phone, clean_phone, f"+{clean_phone}"]
                 search_phones = list(dict.fromkeys([p for p in search_phones if p]))
@@ -336,7 +325,7 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                         WebhookEventModel.is_automatic.is_(None),
                         WebhookEventModel.is_automatic == False
                     )
-                ).order_by(WebhookEventModel.created_at.desc()).limit(db_agent.context_window).all()
+                ).order_by(WebhookEventModel.created_at.desc()).limit(db_agent.context_window * 2).all()
 
                 past_events.reverse()
                 seen_msgs = set()
@@ -364,12 +353,12 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                         deduped_history.append(msg)
                 history = deduped_history
 
-                if len(history) > db_agent.context_window:
-                    history = history[-db_agent.context_window:]
+                if len(history) > (db_agent.context_window * 2):
+                    history = history[-(db_agent.context_window * 2):]
 
                 if history:
                     num_pairs = len(past_events)
-                    webhook_tasks._add_step(db, event_id, "🧠 Memória de Contexto", f"Sem resumo de sessão ativo. Injetadas {num_pairs} interações brutas ({len(history)} mensagens) como contexto.")
+                    webhook_tasks._add_step(db, event_id, "🧠 Memória de Contexto", f"Injetadas {num_pairs} interações brutas ({len(history)} mensagens) como contexto.")
         except Exception as e:
             logger.error(f"Erro ao recuperar histórico para contexto: {e}")
             webhook_tasks._add_step(db, event_id, "⚠️ Erro na Memória", "Não foi possível carregar o histórico ou resumo anterior.")
@@ -531,6 +520,7 @@ def auto_migrate_webhook_columns(db):
         db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS zapvoice_api_token TEXT"))
         db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS zapvoice_client_id TEXT"))
         db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS response_delay_seconds INTEGER DEFAULT 0"))
+        db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS split_response_enabled BOOLEAN DEFAULT TRUE"))
         db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_audio BOOLEAN DEFAULT TRUE"))
         db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS process_image BOOLEAN DEFAULT TRUE"))
         db.execute(text("ALTER TABLE webhook_configs ADD COLUMN IF NOT EXISTS delete_labels TEXT"))

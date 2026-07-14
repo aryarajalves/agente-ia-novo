@@ -1,0 +1,57 @@
+"""
+core/logging_setup.py — Log persistente em arquivo (sobrevive a reinício/recriação de container).
+
+Problema que isso resolve: o Visualizador de Logs lê o console (stdout) do Docker,
+mas esse console fica preso ao ID do container — se o container for RECRIADO
+(deploy de nova versão, `docker stack deploy`, etc.), o histórico de log some,
+mesmo que o container só tenha sido "reiniciado" do ponto de vista do usuário.
+
+A solução é gravar os logs também em arquivo, dentro de um volume Docker montado
+em /app/logs, que persiste independente do ciclo de vida do container.
+
+Uso: chamar configure_logging("backend") (ou "worker"/"beat") o mais cedo possível
+no processo, antes de qualquer outro módulo chamar logging.basicConfig() — como
+configuramos os handlers do logger raiz diretamente, chamadas posteriores a
+basicConfig() nos outros módulos do projeto viram no-op (Python só aplica
+basicConfig se o logger raiz ainda não tiver handlers), então isso também
+uniformiza o formato de log do projeto inteiro.
+"""
+import os
+import logging
+from logging.handlers import RotatingFileHandler
+
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+_configured = False
+
+
+def configure_logging(component_name: str = "app"):
+    global _configured
+    if _configured:
+        return
+    _configured = True
+
+    log_dir = os.getenv("LOG_FILE_DIR", "/app/logs")
+    formatter = logging.Formatter(LOG_FORMAT)
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    root.addHandler(console_handler)
+
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"{component_name}.log")
+        # 20MB x 5 arquivos por componente — ajuste livre, não depende do LOG_RETENTION_DAYS
+        # (que controla a limpeza do console do Docker, não esses arquivos).
+        file_handler = RotatingFileHandler(log_path, maxBytes=20 * 1024 * 1024, backupCount=5, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
+        logging.getLogger(__name__).info(f"📁 Log persistente ativo em {log_path}")
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            f"⚠️ Não foi possível gravar log em arquivo ({log_dir}): {e}. "
+            "Verifique se o volume está montado em /app/logs."
+        )
