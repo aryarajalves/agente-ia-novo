@@ -102,46 +102,64 @@ Siga estas diretrizes:
 3. Parcialmente Útil: Se o conhecimento explica como chegar na resposta ou dá contexto relacionado, é ÚTIL.
 4. Lixo/Irrelevante: Apenas descarte se o assunto for totalmente diferente (ex: o usuário pergunta de 'Preços' e o item fala de 'Faltas de Funcionários').
 
-Responda APENAS com um objeto JSON contendo a lista de índices considerados úteis.
-Exemplo: {{"useful_indices": [0, 2]}}
-Se NADA for minimamente útil, responda: {{"useful_indices": []}}
+Responda APENAS com um objeto JSON contendo:
+- "useful_indices": lista de índices considerados úteis.
+- "discarded_reasons": um objeto onde a chave é o índice descartado e o valor é uma frase curta explicando o motivo do descarte.
+
+Exemplo de resposta:
+{{
+  "useful_indices": [0, 2],
+  "discarded_reasons": {{
+    "1": "O item trata sobre políticas de cancelamento e o usuário perguntou sobre agendamento de consultas."
+  }}
+}}
 """
         response = await call_rag_llm(
             model="gpt-4o-mini", 
             fallback=model,
-            max_tokens=200,
+            max_tokens=300,
             response_format={"type": "json_object"},
             messages=[{"role": "user", "content": prompt}]
         )
         
         content = response.choices[0].message.content.strip()
+        discarded_reasons = {}
         try:
             data = json.loads(content)
             useful_indices = data.get("useful_indices", [])
+            discarded_reasons = data.get("discarded_reasons", {})
         except:
-            # Fallback if JSON fails
             if "SIM" in content.upper() or "[" in content:
-                useful_indices = list(range(len(items))) # Keep all on error if it looks positive
+                useful_indices = list(range(len(items)))
             else:
                 useful_indices = []
 
-        # Merge trusted items with items chosen by LLM
         final_indices = set(useful_indices)
         for i, item in enumerate(items):
             if item.get("distance") is not None and item.get("distance") < TRUST_THRESHOLD:
                 final_indices.add(i)
+                if str(i) in discarded_reasons:
+                    discarded_reasons.pop(str(i), None)
         
         relevant_items = [items[idx] for idx in sorted(list(final_indices)) if idx < len(items)]
         
-        # If we had items but everything was filtered, let's at least keep the TOP 1 if its distance is decent
+        discarded_items = []
+        for i, item in enumerate(items):
+            if i not in final_indices:
+                reason = discarded_reasons.get(str(i)) or discarded_reasons.get(i) or "Baixa similaridade semântica/avaliação de relevância negativa."
+                item_copy = dict(item)
+                item_copy["discard_reason"] = reason
+                discarded_items.append(item_copy)
+
         if not relevant_items and items and items[0].get("distance", 1.0) < 0.6:
              relevant_items = [items[0]]
+             discarded_items = [x for x in discarded_items if x["id"] != items[0]["id"]]
 
-        return relevant_items, response.usage
+        return relevant_items, discarded_items, response.usage
             
     except Exception as e:
         print(f"[AGENTIC RAG ERROR] Evaluation failed: {e}")
-        return items, None
+        return items, [], None
 
 async def generate_multi_queries(query: str, count: int = 3, model: str = "gpt-4o-mini", fallback: str = None):
     """Generates multiple variations of the query to improve retrieval coverage."""

@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from celery_app import app
-from database import SessionLocal, async_session
+from database import SessionLocal, async_session_worker
 from models import WebhookEventModel, WebhookConfigModel, AgentConfigModel, KnowledgeItemModel, KnowledgeBaseModel, InteractionLog
 from config_store import AgentConfig
 from agent import process_message
@@ -196,7 +196,10 @@ def process_webhook_automation(self, event_id: int):
         if msg_type == "text":
             _add_step(db, event_id, "📝 Mensagem de texto", "Tipo de mensagem identificado como texto. Continuando pipeline...")
 
-        db_agent = db.query(AgentConfigModel).filter(AgentConfigModel.id == config.agent_id).first()
+        from sqlalchemy.orm import joinedload
+        db_agent = db.query(AgentConfigModel).options(
+            joinedload(AgentConfigModel.knowledge_bases)
+        ).filter(AgentConfigModel.id == config.agent_id).first()
         if not db_agent:
             _add_step(db, event_id, "❌ Agente não encontrado", f"ID: {config.agent_id}")
             event = db.query(WebhookEventModel).filter(WebhookEventModel.id == event_id).first()
@@ -335,7 +338,7 @@ def process_webhook_automation(self, event_id: int):
         async def _run():
             nonlocal mensagem
             image_url = event.link if event.message_type == "image" else None
-            async with async_session() as async_db:
+            async with async_session_worker() as async_db:
                 # --- BOT DEFENSE (ANTI-LOOP & MESSAGES LIMIT) ---
                 if getattr(db_agent, 'security_bot_protection', False):
                     from agent_core.bot_defense import verify_bot_defense
@@ -537,9 +540,12 @@ def process_webhook_automation(self, event_id: int):
                 final_db_agent = db_agent
                 
                 if target_agent_id and target_agent_id != db_agent.id:
-                    from sqlalchemy import select
-                    from models import AgentConfigModel
-                    target_res = await async_db.execute(select(AgentConfigModel).where(AgentConfigModel.id == target_agent_id))
+                    from sqlalchemy.orm import selectinload
+                    target_res = await async_db.execute(
+                        select(AgentConfigModel)
+                        .options(selectinload(AgentConfigModel.knowledge_bases))
+                        .where(AgentConfigModel.id == target_agent_id)
+                    )
                     target_db_agent = target_res.scalars().first()
                     if target_db_agent:
                         final_db_agent = target_db_agent
@@ -623,21 +629,77 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
                 if extracted_date:
                     mensagem = f"[DATA EXTRAÍDA PELO SISTEMA: {extracted_date}]\n{extracted or mensagem}"
                 elif extracted and str(extracted).strip():
+                    original_msg = str(mensagem)
                     mensagem = str(extracted)
-                    _add_step(db, event_id, "🧹 Mensagem Limpa/Extraída", mensagem[:1000])
+                    if original_msg != mensagem:
+                        _add_step(db, event_id, "🧹 Melhoria de Mensagem (Pre-Router)", f"A mensagem do usuário foi melhorada pelo Pre-Router com base no histórico.\nAntes: \"{original_msg}\"\nDepois: \"{mensagem}\"")
+                    else:
+                        _add_step(db, event_id, "🧹 Mensagem Limpa/Extraída", mensagem[:1000])
 
                 pre_executed_tool_calls = []
                 pre_executed_rag_context = None
                 
                 # Executar RAG antecipado se solicitado pelo Pre-Router
                 if pre_router_result.get("precisa_rag"):
-                    kb_ids = getattr(final_db_agent, 'knowledge_base_ids', []) or ([final_db_agent.knowledge_base_id] if getattr(final_db_agent, 'knowledge_base_id', None) else [])
-                    if kb_ids:
+                    kb_ids = [kb.id for kb in getattr(final_db_agent, 'knowledge_bases', [])] or ([final_db_agent.knowledge_base_id] if getattr(final_db_agent, 'knowledge_base_id', None) else [])
+                    if not kb_ids:
+                        _add_step(db, event_id, "⚠️ RAG Ignorado (Pre-Router)", "A IA sinalizou que precisa de RAG, mas não há nenhuma base de conhecimento vinculada a este agente (ID: {}).".format(final_db_agent.id))
+                    else:
                         from rag_service import search_knowledge_base
-                        _add_step(db, event_id, "🔍 Buscando RAG (Pre-Router)", f"Consultando bases semânticas para: {mensagem[:200]}")
-                        relevant_items, rag_usage = await search_knowledge_base(db=async_db, query=mensagem, kb_ids=kb_ids, limit=getattr(final_db_agent, 'rag_retrieval_count', 5), similarity_threshold=getattr(final_db_agent, 'rag_relevance_threshold', 0.0) or 0.0)
-                        if relevant_items:
-                            pre_executed_rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in relevant_items])
+                        
+                        # Identificar se há múltiplas perguntas individuais
+                        perguntas_list = pre_router_result.get("lista_perguntas_extraidas")
+                        if not perguntas_list or not isinstance(perguntas_list, list):
+                            perguntas_list = [mensagem]
+                            
+                        all_relevant_items = []
+                        
+                        # Loop de busca individual para cada pergunta
+                        for q_idx, query_item in enumerate(perguntas_list, 1):
+                            _add_step(db, event_id, f"🔍 RAG - Pergunta {q_idx}", f"Consultando bases semânticas para a pergunta {q_idx}: \"{query_item}\"")
+                            
+                            rag_res = await search_knowledge_base(db=async_db, query=query_item, kb_ids=kb_ids, limit=getattr(final_db_agent, 'rag_retrieval_count', 3), similarity_threshold=getattr(final_db_agent, 'rag_relevance_threshold', 0.0) or 0.0)
+                            
+                            relevant_items = []
+                            discarded_items = []
+                            if isinstance(rag_res, tuple) and len(rag_res) == 3:
+                                relevant_items, discarded_items, _ = rag_res
+                            elif isinstance(rag_res, tuple) and len(rag_res) == 2:
+                                relevant_items, _ = rag_res
+                            else:
+                                relevant_items = rag_res or []
+                                
+                            all_relevant_items.extend(relevant_items)
+                            
+                            # Log individual da pergunta
+                            if relevant_items:
+                                items_detail = ""
+                                for idx, item in enumerate(relevant_items, 1):
+                                    rel_score = item.get("relevance_score", 0.0)
+                                    pct_rel = f"{round(rel_score * 100, 1)}%" if rel_score else "N/A"
+                                    items_detail += f"\n--- Item {idx} (Relevância: {pct_rel}) ---\nPerg: {item['question']}\nResp: {item['answer']}\n"
+                                
+                                discarded_detail = ""
+                                if discarded_items:
+                                    discarded_detail = "\n\n❌ **Itens Descartados:**\n" + "\n".join([f"- **Perg:** \"{d['question']}\"\n  **Motivo:** {d.get('discard_reason', 'Relevância insuficiente.')}" for d in discarded_items])
+                                    
+                                _add_step(db, event_id, f"✅ RAG Resultados - Pergunta {q_idx}", f"Pergunta consultada: \"{query_item}\"\nRetornados {len(relevant_items)} itens relevantes:\n{items_detail}{discarded_detail}")
+                            else:
+                                discarded_detail = ""
+                                if discarded_items:
+                                    discarded_detail = "\n\n❌ **Itens Descartados:**\n" + "\n".join([f"- **Perg:** \"{d['question']}\"\n  **Motivo:** {d.get('discard_reason', 'Relevância insuficiente.')}" for d in discarded_items])
+                                _add_step(db, event_id, f"ℹ️ RAG Sem Resultados - Pergunta {q_idx}", f"A busca para a pergunta \"{query_item}\" retornou 0 itens relevantes.{discarded_detail}")
+                                
+                        if all_relevant_items:
+                            # Remover duplicados da lista unificada
+                            seen_ids = set()
+                            unique_relevant = []
+                            for item in all_relevant_items:
+                                if item["id"] not in seen_ids:
+                                    unique_relevant.append(item)
+                                    seen_ids.add(item["id"])
+                                    
+                            pre_executed_rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in unique_relevant])
                 
                 # Executar ferramenta antecipada se solicitada pelo Pre-Router
                 if pre_router_result.get("chamada_ferramenta"):
@@ -678,7 +740,8 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
                         tool_result = await handle_lead_qualified(async_db, context_vars, _json.dumps(tool_args), final_db_agent.id)
                     elif tool_name in ["transferir_atendimento", "transferir_suporte_humano"]:
                         from agent_core.tools.handlers.chatwoot import handle_chatwoot_handoff
-                        tool_result = await handle_chatwoot_handoff(async_db, context_vars, None, True, tool_args, history, final_db_agent.id)
+                        t_tool = next((t for t in final_db_agent_tools if t.name == tool_name), None)
+                        tool_result = await handle_chatwoot_handoff(async_db, context_vars, t_tool, True, tool_args, history, final_db_agent.id)
                     else:
                         target_tool = next((t for t in final_db_agent_tools if t.name == tool_name), None)
                         if target_tool:

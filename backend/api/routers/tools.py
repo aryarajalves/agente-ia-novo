@@ -82,37 +82,46 @@ async def delete_tool(tool_id: int, db: AsyncSession = Depends(get_db), _: None 
     return {"status": "deleted", "id": tool_id}
 
 @router.get("/chatwoot/labels")
-async def get_chatwoot_labels(db: AsyncSession = Depends(get_db)):
+async def get_chatwoot_labels(
+    zapvoice_url: Optional[str] = None,
+    zapvoice_api_token: Optional[str] = None,
+    zapvoice_client_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """Busca as etiquetas disponíveis no ZapVoice via API."""
-    zapvoice_url = os.getenv("ZAPVOICE_URL", "").rstrip("/")
-    zapvoice_token = os.getenv("ZAPVOICE_API_TOKEN", "")
+    url = zapvoice_url or os.getenv("ZAPVOICE_URL", "")
+    url = url.rstrip("/")
+    token = zapvoice_api_token or os.getenv("ZAPVOICE_API_TOKEN", "")
 
-    # Tentar fallback: pegar zapvoice_client_id de algum webhook configurado
-    client_id_header = None
-    if zapvoice_url and zapvoice_token:
+    client_id_header = zapvoice_client_id
+    if not client_id_header and url and token:
         result = await db.execute(
             select(WebhookConfigModel).where(WebhookConfigModel.zapvoice_client_id.isnot(None)).limit(1)
         )
         config = result.scalars().first()
         if config and config.zapvoice_client_id:
             client_id_header = str(config.zapvoice_client_id)
-        logger.info(f"[LABELS] client_id_header encontrado: {client_id_header}")
+        logger.info(f"[LABELS] client_id_header encontrado via fallback: {client_id_header}")
 
-    if not zapvoice_url or not zapvoice_token:
+    if not url or not token:
         logger.warning("ZAPVOICE_URL ou ZAPVOICE_API_TOKEN não configurados. Retornando lista vazia.")
         return []
 
     try:
         headers = {
-            "Authorization": f"Bearer {zapvoice_token}",
+            "Authorization": f"Bearer {token}",
         }
         if client_id_header:
             headers["X-Client-ID"] = client_id_header
 
-        logger.info(f"[LABELS] Chamando ZapVoice: {zapvoice_url}/api/chat/labels com client_id={client_id_header}")
-        async with httpx.AsyncClient() as client:
+        zap_api_url = url
+        if not zap_api_url.endswith("/api"):
+            zap_api_url = f"{zap_api_url}/api"
+            
+        logger.info(f"[LABELS] Chamando ZapVoice: {zap_api_url}/chat/labels com client_id={client_id_header}")
+        async with httpx.AsyncClient(verify=False) as client:
             resp = await client.get(
-                f"{zapvoice_url}/api/chat/labels",
+                f"{zap_api_url}/chat/labels",
                 headers=headers,
                 timeout=10.0
             )

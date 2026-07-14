@@ -217,25 +217,39 @@ async def search_knowledge_base(
 
         # 8. Agentic Selection
         final_filtered_items = expanded_items[:limit]
+        discarded_items = []
         if rag_agentic_eval_enabled:
             eval_input = expanded_items[:limit]
-            final_filtered_items, u_eval = await evaluate_rag_relevance(main_search_q, eval_input, model=model, fallback=fallback_model, q_label=q_label, a_label=a_label, m_label=m_label)
+            final_filtered_items, discarded_eval, u_eval = await evaluate_rag_relevance(main_search_q, eval_input, model=model, fallback=fallback_model, q_label=q_label, a_label=a_label, m_label=m_label)
             add_usage(u_eval)
+            discarded_items.extend(discarded_eval)
             
             if not final_filtered_items and eval_input:
                 best = eval_input[0]
                 best_dist = best.get('distance')
                 if best_dist is not None and best_dist < 0.65:
                     final_filtered_items = [best]
+                    discarded_items = [x for x in discarded_items if x["id"] != best["id"]]
+
+        # Coletar itens que não entraram na seleção (fora do limit) como descartados por ranking
+        for item in expanded_items[limit:]:
+            item_copy = dict(item)
+            item_copy["discard_reason"] = "Fora do limite máximo de resultados (limit: {}).".format(limit)
+            discarded_items.append(item_copy)
 
         # 9. Filtro de Relevância Mínima
         # Descarta itens cuja relevance_score fique abaixo do limiar configurado,
         # garantindo que só o que realmente atinge o % mínimo seja enviado ao RAG.
         if similarity_threshold and similarity_threshold > 0:
-            final_filtered_items = [
-                item for item in final_filtered_items
-                if item.get("relevance_score") is None or item.get("relevance_score") >= similarity_threshold
-            ]
+            threshold_filtered = []
+            for item in final_filtered_items:
+                if item.get("relevance_score") is None or item.get("relevance_score") >= similarity_threshold:
+                    threshold_filtered.append(item)
+                else:
+                    item_copy = dict(item)
+                    item_copy["discard_reason"] = f"Relevância inferior ao limiar mínimo configurado ({round(similarity_threshold*100, 1)}%). Relevância do item: {round(item.get('relevance_score', 0.0)*100, 1)}%."
+                    discarded_items.append(item_copy)
+            final_filtered_items = threshold_filtered
 
         class RAGUsage:
             def __init__(self, p, c, model):
@@ -243,11 +257,11 @@ async def search_knowledge_base(
                 self.completion_tokens = c
                 self.model = model
 
-        return final_filtered_items, RAGUsage(total_prompt_tokens, total_completion_tokens, model)
+        return final_filtered_items, discarded_items, RAGUsage(total_prompt_tokens, total_completion_tokens, model)
             
     except Exception as e:
         print(f"Hybrid search failed: {e}")
-        return [], None
+        return [], [], None
 
 async def calculate_coverage(
     db: AsyncSession, questions: list[str], kb_id: int,
@@ -255,7 +269,13 @@ async def calculate_coverage(
 ):
     results = []
     for question in questions:
-        matches, _ = await search_knowledge_base(db, query=question, kb_id=kb_id, limit=1)
+        res = await search_knowledge_base(db, query=question, kb_ids=[kb_id], limit=1)
+        if isinstance(res, tuple) and len(res) == 3:
+            matches, _, _ = res
+        elif isinstance(res, tuple) and len(res) == 2:
+            matches, _ = res
+        else:
+            matches = res or []
         status = "red"
         best_match = None
         score = 0.0

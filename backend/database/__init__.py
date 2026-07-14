@@ -1,6 +1,6 @@
 import os
 import logging
-from .connection import engine, engine_sync, async_session, AsyncSession, SessionLocal, Base, get_db, DATABASE_URL
+from .connection import engine, engine_sync, async_session, async_session_worker, AsyncSession, SessionLocal, Base, get_db, DATABASE_URL
 from .sync import create_database_if_not_exists, sync_database_schema
 from .seeds import seed_native_tools
 

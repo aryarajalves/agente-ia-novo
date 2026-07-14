@@ -458,7 +458,14 @@ const LeadsModal = ({
                         <button
                             disabled={page >= Math.ceil(total / pageSize) || loading}
                             onClick={() => onPageChange(page + 1)}
-                            style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)', color: '#fff', borderRadius: '8px', padding: '0.4rem 1rem', cursor: page >= Math.ceil(total / pageSize) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.75rem' }}
+                            style={{
+                                background: page >= Math.ceil(total / pageSize) ? '#1e293b' : 'rgba(99, 102, 241, 0.1)',
+                                border: page >= Math.ceil(total / pageSize) ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(99, 102, 241, 0.2)',
+                                color: page >= Math.ceil(total / pageSize) ? '#475569' : '#fff',
+                                borderRadius: '8px', padding: '0.4rem 1rem',
+                                cursor: page >= Math.ceil(total / pageSize) ? 'not-allowed' : 'pointer',
+                                fontWeight: 700, fontSize: '0.75rem'
+                            }}
                         >Próxima →</button>
                     </div>
                 </div>

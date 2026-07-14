@@ -169,7 +169,11 @@ export const useWebhookOperations = (fetchWebhooks, setSelectedWebhook, fetchCha
         setEditBlockedInput('');
         setEditDeleteInput('');
         if (fetchChatwootLabels) {
-            fetchChatwootLabels();
+            fetchChatwootLabels({
+                zapvoice_url: webhook.zapvoice_url,
+                zapvoice_api_token: webhook.zapvoice_api_token,
+                zapvoice_client_id: webhook.zapvoice_client_id
+            });
         }
     }, [fetchChatwootLabels]);
 

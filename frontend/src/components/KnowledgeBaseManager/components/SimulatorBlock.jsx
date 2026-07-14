@@ -53,12 +53,15 @@ const SimulatorBlock = () => {
                 relevance_threshold: (simRelevanceThreshold || 0) / 100,
                 limit: 5
             });
+            const data = await response.json().catch(() => ({}));
             if (response.ok) {
-                const data = await response.json();
                 setSimResults(data);
+            } else {
+                setSimResults({ error: data.detail || 'Erro ao consultar a base de conhecimento.' });
             }
         } catch (e) {
             console.error(e);
+            setSimResults({ error: 'Erro de conexão ao testar a busca. Verifique sua internet ou tente novamente.' });
         } finally {
             setSimLoading(false);
         }
@@ -171,6 +174,35 @@ const SimulatorBlock = () => {
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* Itens que a busca vetorial encontrou mas os filtros de IA descartaram —
+                                    ajuda a entender POR QUE algo esperado não apareceu nos resultados. */}
+                                {simResults.discarded_items && simResults.discarded_items.length > 0 && (
+                                    <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <h5 style={{ color: '#f59e0b', fontWeight: 700, margin: '0 0 0.75rem 0', fontSize: '0.85rem' }}>
+                                            ⚠️ ITENS DESCARTADOS PELOS FILTROS ({simResults.discarded_items.length}):
+                                        </h5>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                            {simResults.discarded_items.map((item, idx) => (
+                                                <div key={item.id ?? `discarded-${idx}`} className="kb-result-card" style={{ opacity: 0.75, borderColor: 'rgba(245, 158, 11, 0.2)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '0.4rem' }}>
+                                                        <span style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.85rem' }}>
+                                                            {item.question}
+                                                        </span>
+                                                        {typeof item.relevance_score === 'number' && (
+                                                            <span className="kb-score-badge">
+                                                                {Math.round(item.relevance_score * 100)}%
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ color: '#fbbf24', fontSize: '0.78rem', fontStyle: 'italic' }}>
+                                                        Motivo: {item.discard_reason || 'Não especificado.'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>

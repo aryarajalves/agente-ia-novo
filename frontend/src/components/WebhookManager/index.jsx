@@ -320,6 +320,7 @@ const WebhookManager = () => {
                         chatwootGlobal={chatwootGlobal}
                         chatwootLabels={chatwootLabels}
                         labelsLoading={labelsLoading}
+                        fetchChatwootLabels={fetchChatwootLabels}
                         setConfirmRemoveFU={setConfirmRemoveFU}
                         handleCreate={handleCreate}
                     />

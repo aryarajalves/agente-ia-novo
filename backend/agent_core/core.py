@@ -88,6 +88,7 @@ async def process_message(
     performed_tool_calls = performed_tool_calls if performed_tool_calls is not None else []
     
     pre_router_tokens = {"prompt": 0, "completion": 0, "model": None}
+    pre_router_result = {}
 
     # 0. Pre-Router (Saudação, Triagem e Datas)
     # Se não houver histórico, ou se for uma mensagem curta, rodamos o Pre-Router
@@ -98,8 +99,8 @@ async def process_message(
             # Por enquanto, focamos em Saudações e Datas
             pre_router_result = await run_pre_router_ai(message, history, config, context_variables=context_variables, db=db)
             
-            # Se for saudação, encerramos aqui com a resposta configurada
-            if pre_router_result.get("eh_saudacao") and pre_router_result.get("resposta_direta"):
+            # Se for saudação, encerramos aqui com a resposta configurada (exceto se on_step for fornecido para pipeline logs)
+            if pre_router_result.get("eh_saudacao") and pre_router_result.get("resposta_direta") and not on_step:
                 usage = pre_router_result.get("_usage", {})
                 return {
                     "content": pre_router_result.get("resposta_direta"),
@@ -124,7 +125,12 @@ async def process_message(
             
             # Usar a pergunta limpa/extraída se disponível
             if pre_router_result.get("perguntas_extraidas"):
+                original_msg = message
                 message = pre_router_result["perguntas_extraidas"]
+                
+                # Se a mensagem foi alterada (Enriquecida ou Limpa pelo Pre-Router)
+                if original_msg != message and on_step:
+                    on_step("🧹 Melhoria de Mensagem (Pre-Router)", f"Mensagem do usuário enriquecida/limpa pelo Pre-Router baseado no contexto.\nAntes: \"{original_msg}\"\nDepois: \"{message}\"")
                 
         except Exception as e_pr:
             import traceback
@@ -285,20 +291,89 @@ async def process_message(
     main_prompt_tokens = 0
     main_completion_tokens = 0
     
+    # Decisão do Pre-Router sobre RAG (se pre-router rodou, respeitamos sua decisão)
+    is_rag_bypassed = False
+    if pre_router_result and "precisa_rag" in pre_router_result:
+        is_rag_bypassed = not pre_router_result.get("precisa_rag")
+    elif not pre_executed_rag_context:
+        # Se não há bases ou RAG pré-executado, tratamos como bypassado por default
+        kb_ids = [kb.id for kb in getattr(config, 'knowledge_bases', [])] or ([config.knowledge_base_id] if getattr(config, 'knowledge_base_id', None) else [])
+        if not kb_ids:
+            is_rag_bypassed = True
+    
     if pre_executed_rag_context:
         rag_context = pre_executed_rag_context
         messages[0]["content"] += rag_context
+        if on_step:
+            on_step("📚 Consulta à Base de Conhecimento (RAG)", f"RAG pré-executado pelo Pre-Router integrado ao prompt principal.")
+    elif is_rag_bypassed:
+        if on_step:
+            on_step("📚 Consulta à Base de Conhecimento (RAG)", "Busca pulada pelo Pre-Router ou sem bases vinculadas ao agente.")
     else:
-        kb_ids = getattr(config, 'knowledge_base_ids', []) or ([config.knowledge_base_id] if getattr(config, 'knowledge_base_id', None) else [])
+        kb_ids = [kb.id for kb in getattr(config, 'knowledge_bases', [])] or ([config.knowledge_base_id] if getattr(config, 'knowledge_base_id', None) else [])
         if db and kb_ids:
+            perguntas_list = pre_router_result.get("lista_perguntas_extraidas") if pre_router_result else None
+            if not perguntas_list or not isinstance(perguntas_list, list):
+                perguntas_list = [message]
+                
+            all_relevant = []
             from rag_service import search_knowledge_base
-            relevant_items, rag_usage = await search_knowledge_base(db=db, query=message, kb_ids=kb_ids, limit=getattr(config, 'rag_retrieval_count', 5), similarity_threshold=getattr(config, 'rag_relevance_threshold', 0.0) or 0.0)
-            if rag_usage:
-                mini_prompt_tokens += rag_usage.prompt_tokens
-                mini_completion_tokens += rag_usage.completion_tokens
-            if relevant_items:
-                rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in relevant_items])
+            
+            for q_idx, query_item in enumerate(perguntas_list, 1):
+                if on_step:
+                    on_step("📚 Consulta à Base de Conhecimento (RAG)", f"Pergunta {q_idx}: Iniciando busca semântica para: \"{query_item}\"")
+                
+                rag_res = await search_knowledge_base(db=db, query=query_item, kb_ids=kb_ids, limit=getattr(config, 'rag_retrieval_count', 3), similarity_threshold=getattr(config, 'rag_relevance_threshold', 0.0) or 0.0)
+                
+                relevant_items = []
+                discarded_items = []
+                rag_usage = None
+                if isinstance(rag_res, tuple) and len(rag_res) == 3:
+                    relevant_items, discarded_items, rag_usage = rag_res
+                elif isinstance(rag_res, tuple) and len(rag_res) == 2:
+                    relevant_items, rag_usage = rag_res
+                else:
+                    relevant_items = rag_res or []
+                    
+                if rag_usage:
+                    mini_prompt_tokens += getattr(rag_usage, 'prompt_tokens', 0)
+                    mini_completion_tokens += getattr(rag_usage, 'completion_tokens', 0)
+                    
+                all_relevant.extend(relevant_items)
+                
+                if on_step:
+                    if relevant_items:
+                        items_detail = ""
+                        for idx, item in enumerate(relevant_items, 1):
+                            rel_score = item.get("relevance_score", 0.0)
+                            pct_rel = f"{round(rel_score * 100, 1)}%" if rel_score else "N/A"
+                            items_detail += f"\n--- Item {idx} (Relevância: {pct_rel}) ---\nPerg: {item['question']}\nResp: {item['answer']}\n"
+                        
+                        discarded_detail = ""
+                        if discarded_items:
+                            discarded_detail = "\n\n❌ Itens Descartados:\n" + "\n".join([f"- Perg: \"{d['question']}\"\n  Motivo: {d.get('discard_reason', 'Baixa similaridade semântica.')}" for d in discarded_items])
+                        
+                        on_step("📚 Consulta à Base de Conhecimento (RAG)", f"Sucesso! Encontrados {len(relevant_items)} itens para a Pergunta {q_idx}:\n{items_detail}{discarded_detail}")
+                    else:
+                        discarded_detail = ""
+                        if discarded_items:
+                            discarded_detail = "\n\n❌ Itens Descartados:\n" + "\n".join([f"- Perg: \"{d['question']}\"\n  Motivo: {d.get('discard_reason', 'Baixa similaridade semântica.')}" for d in discarded_items])
+                        on_step("📚 Consulta à Base de Conhecimento (RAG)", f"Nenhum conhecimento relevante encontrado para a Pergunta {q_idx}. Módulos aplicados: {getattr(rag_usage, 'applied_modules', {}) if rag_usage else {}}{discarded_detail}")
+            
+            if all_relevant:
+                # Deduplicar
+                seen = set()
+                unique_relevant = []
+                for it in all_relevant:
+                    if it["id"] not in seen:
+                        unique_relevant.append(it)
+                        seen.add(it["id"])
+                
+                rag_context = "\n\n# CONTEXTO RAG:\n" + "\n".join([f"Perg: {i['question']}\nResp: {i['answer']}" for i in unique_relevant])
                 messages[0]["content"] += rag_context
+        else:
+            if on_step:
+                on_step("📚 Consulta à Base de Conhecimento (RAG)", "Busca pulada pelo Pre-Router ou sem bases vinculadas ao agente.")
 
     messages.extend(history)
     messages.append({"role": "user", "content": message})
@@ -382,6 +457,26 @@ async def process_message(
                 }
             }
         })
+
+    # Filtro de ferramentas do Pre-Router
+    if pre_router_result.get("precisa_ferramenta") is False:
+        if pre_router_result.get("precisa_rag") is True:
+            # Se precisa de RAG mas não de ferramentas do usuário, mantemos apenas o fallback de dúvidas não respondidas
+            openai_tools = [t for t in openai_tools if t["function"]["name"] == "registrar_duvida_sem_resposta"]
+        else:
+            # Se não precisa nem de ferramentas e nem de RAG (ex: saudação ou resposta direta do Pre-Router), removemos totalmente as ferramentas
+            openai_tools = []
+    else:
+        # Se ferramentas estão ativas, mas o Pre-Router não identificou chamada de suporte humano na triagem inicial,
+        # nós a removemos de openai_tools para garantir que o agente principal (ex: gpt-5.2) não a acione indevidamente.
+        has_pre_executed_handoff = False
+        if pre_router_result.get("chamada_ferramenta"):
+            tc_name = pre_router_result["chamada_ferramenta"].get("nome")
+            if tc_name in ["transferir_atendimento", "transferir_suporte_humano"]:
+                has_pre_executed_handoff = True
+        
+        if not has_pre_executed_handoff:
+            openai_tools = [t for t in openai_tools if t["function"]["name"] not in ["transferir_atendimento", "transferir_suporte_humano"]]
 
     # 6. Loop de Execução (Turnos de Ferramentas)
     total_usage = UsageLog(0, 0, 0, 0)
@@ -511,7 +606,8 @@ async def process_message(
                         handoff_data["summary"] = summary
                         
                         # Sincroniza etiquetas no Chatwoot imediatamente
-                        handoff_result = await handle_chatwoot_handoff(db, context_variables, None, True, tool_args, history, config.id)
+                        t_tool = next((t for t in tools if t.name == tool_name), None) if tools else None
+                        handoff_result = await handle_chatwoot_handoff(db, context_variables, t_tool, True, tool_args, history, config.id)
                         
                         tool_result = handoff_result
                         messages.append({"tool_call_id": tool_call.id, "role": "tool", "name": tool_name, "content": tool_result})

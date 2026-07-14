@@ -190,17 +190,38 @@ async def propose_kb_merge(kb_id: int, request: MergeItemsRequest, db: AsyncSess
 
 @router.post("/knowledge-bases/{kb_id}/simulate-rag")
 async def simulate_rag(kb_id: int, request: RAGSimulationRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):
-    items, usage = await search_knowledge_base(
-        db=db, query=request.query, kb_id=kb_id, limit=request.limit,
-        model="gpt-4o-mini", fallback_model="gpt-4o-mini",
-        force_translation=request.translation_enabled,
-        force_multi_query=request.multi_query_enabled,
-        force_rerank=request.rerank_enabled,
-        force_agentic_eval=request.agentic_eval_enabled,
-        force_parent_expansion=request.parent_expansion_enabled,
-        similarity_threshold=request.relevance_threshold or 0.0
-    )
-    return {"items": items, "usage": {"prompt_tokens": usage.prompt_tokens if usage else 0, "completion_tokens": usage.completion_tokens if usage else 0}}
+    try:
+        result = await search_knowledge_base(
+            db=db, query=request.query, kb_id=kb_id, limit=request.limit,
+            model="gpt-4o-mini", fallback_model="gpt-4o-mini",
+            force_translation=request.translation_enabled,
+            force_multi_query=request.multi_query_enabled,
+            force_rerank=request.rerank_enabled,
+            force_agentic_eval=request.agentic_eval_enabled,
+            force_parent_expansion=request.parent_expansion_enabled,
+            similarity_threshold=request.relevance_threshold or 0.0
+        )
+        # search_knowledge_base pode retornar (items, usage) nos early-returns (ex: sem
+        # itens/base inválida) ou (items, discarded_items, usage) no caminho normal com
+        # resultado. Desempacotar de forma defensiva evita o ValueError ("too many values
+        # to unpack") que fazia o simulador quebrar silenciosamente sempre que a busca
+        # de fato encontrava itens candidatos (justamente o caso que deveria funcionar).
+        discarded_items = []
+        if isinstance(result, tuple) and len(result) == 3:
+            items, discarded_items, usage = result
+        elif isinstance(result, tuple) and len(result) == 2:
+            items, usage = result
+        else:
+            items, usage = result or [], None
+
+        return {
+            "items": items or [],
+            "discarded_items": discarded_items or [],
+            "usage": {"prompt_tokens": usage.prompt_tokens if usage else 0, "completion_tokens": usage.completion_tokens if usage else 0}
+        }
+    except Exception as e:
+        logger.error(f"Erro no simulador de RAG (kb_id={kb_id}, query='{request.query}'): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao simular a busca RAG: {str(e)}")
 
 @router.post("/knowledge-bases/{kb_id}/coverage")
 async def check_coverage(kb_id: int, payload: CoverageCheckRequest, db: AsyncSession = Depends(get_db), _: None = Depends(verify_api_key)):

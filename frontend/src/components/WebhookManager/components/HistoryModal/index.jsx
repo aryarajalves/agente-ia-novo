@@ -208,10 +208,17 @@ const HistoryModal = ({
                             onClick={() => setHistoryPage(prev => Math.max(1, prev - 1))}
                             style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: historyPage <= 1 ? '#475569' : '#fff', borderRadius: '10px', padding: '0.65rem 1.5rem', cursor: historyPage <= 1 ? 'not-allowed' : 'pointer', fontWeight: 600 }}
                         >← Anterior</button>
-                        <button 
+                        <button
                             disabled={historyPage >= Math.ceil(historyTotal / historyLimit) || eventsLoading}
                             onClick={() => setHistoryPage(prev => prev + 1)}
-                            style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)', color: '#fff', borderRadius: '10px', padding: '0.65rem 1.5rem', cursor: historyPage >= Math.ceil(historyTotal / historyLimit) ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                            style={{
+                                background: historyPage >= Math.ceil(historyTotal / historyLimit) ? '#1e293b' : 'rgba(99, 102, 241, 0.1)',
+                                border: historyPage >= Math.ceil(historyTotal / historyLimit) ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(99, 102, 241, 0.2)',
+                                color: historyPage >= Math.ceil(historyTotal / historyLimit) ? '#475569' : '#fff',
+                                borderRadius: '10px', padding: '0.65rem 1.5rem',
+                                cursor: historyPage >= Math.ceil(historyTotal / historyLimit) ? 'not-allowed' : 'pointer',
+                                fontWeight: 700
+                            }}
                         >Próxima →</button>
                     </div>
                 </div>

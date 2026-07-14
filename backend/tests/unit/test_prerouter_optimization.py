@@ -271,10 +271,10 @@ async def test_process_message_logs_empty_rag_in_pipeline():
         )
 
         # Filtrar as chamadas do on_step que correspondem ao RAG
-        rag_calls = [call for call in mock_on_step.call_args_list if call[0][0] == "📚 Consulta à Base de Conhecimento (RAG)"]
+        rag_calls = [call[0][1] for call in mock_on_step.call_args_list if call[0][0] == "📚 Consulta à Base de Conhecimento (RAG)"]
         assert len(rag_calls) > 0
-        assert "Nenhum conhecimento relevante" in rag_calls[0][0][1]
-        assert "Módulo de Teste" in rag_calls[0][0][1]
+        assert any("Nenhum conhecimento relevante" in content for content in rag_calls)
+        assert any("Módulo de Teste" in content for content in rag_calls)
 
 
 @pytest.mark.asyncio
@@ -319,6 +319,6 @@ async def test_process_message_logs_bypassed_rag_in_pipeline():
         )
 
         # Filtrar as chamadas do on_step que correspondem ao RAG
-        rag_calls = [call for call in mock_on_step.call_args_list if call[0][0] == "📚 Consulta à Base de Conhecimento (RAG)"]
+        rag_calls = [call[0][1] for call in mock_on_step.call_args_list if call[0][0] == "📚 Consulta à Base de Conhecimento (RAG)"]
         assert len(rag_calls) > 0
-        assert "pulada pelo Pre-Router" in rag_calls[0][0][1]
+        assert any("pulada pelo Pre-Router" in content for content in rag_calls)

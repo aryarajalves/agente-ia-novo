@@ -44,10 +44,15 @@ export const useWebhooks = (showToast) => {
         }
     }, []);
 
-    const fetchChatwootLabels = useCallback(async () => {
+    const fetchChatwootLabels = useCallback(async (params = {}) => {
         setLabelsLoading(true);
         try {
-            const res = await api.get('/chatwoot/labels');
+            const queryParams = new URLSearchParams();
+            if (params.zapvoice_url) queryParams.append('zapvoice_url', params.zapvoice_url);
+            if (params.zapvoice_api_token) queryParams.append('zapvoice_api_token', params.zapvoice_api_token);
+            if (params.zapvoice_client_id) queryParams.append('zapvoice_client_id', params.zapvoice_client_id);
+            
+            const res = await api.get(`/chatwoot/labels?${queryParams.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 setChatwootLabels(Array.isArray(data) ? data : []);

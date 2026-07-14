@@ -10,7 +10,7 @@ para manter a compatibilidade com o código existente.
 """
 
 from database.connection import (
-    DATABASE_URL, engine, engine_sync, async_session, 
+    DATABASE_URL, engine, engine_sync, async_session, async_session_worker,
     SessionLocal, Base, get_db
 )
 from database import init_db

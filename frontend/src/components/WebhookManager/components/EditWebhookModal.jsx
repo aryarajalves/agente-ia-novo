@@ -35,6 +35,7 @@ const EditWebhookModal = ({
     chatwootGlobal,
     chatwootLabels = [],
     labelsLoading,
+    fetchChatwootLabels,
     setConfirmRemoveFU,
     handleCreate
 }) => {
@@ -45,6 +46,7 @@ const EditWebhookModal = ({
     const [cwWebhooksError, setCwWebhooksError] = useState('');
     const [creatingCwWebhook, setCreatingCwWebhook] = useState(false);
     const [cwWebhookToDelete, setCwWebhookToDelete] = useState(null);
+    const [showToken, setShowToken] = useState(false);
 
     const fetchCwWebhooks = useCallback(async () => {
         if (isCreateMode || !editingWebhook?.id) return;
@@ -468,6 +470,55 @@ const EditWebhookModal = ({
                                         </div>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             <div className="form-group-premium">
+                                                <label className="premium-label">URL do ZapVoice</label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Ex: https://api.zapvoice.com" 
+                                                    value={safeEditForm.zapvoice_url || ''} 
+                                                    onChange={e => setEditForm({ ...safeEditForm, zapvoice_url: e.target.value })} 
+                                                    className="premium-input" 
+                                                />
+                                                <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                    URL da API da sua instância do ZapVoice.
+                                                </p>
+                                            </div>
+                                             <div className="form-group-premium">
+                                                 <label className="premium-label">API Token / Token de Acesso</label>
+                                                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                                     <input 
+                                                         type={showToken ? "text" : "password"} 
+                                                         placeholder="Token do ZapVoice" 
+                                                         value={safeEditForm.zapvoice_api_token || ''} 
+                                                         onChange={e => setEditForm({ ...safeEditForm, zapvoice_api_token: e.target.value })} 
+                                                         className="premium-input" 
+                                                         style={{ paddingRight: '2.5rem', width: '100%' }}
+                                                     />
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => setShowToken(!showToken)}
+                                                         style={{
+                                                             position: 'absolute',
+                                                             right: '0.75rem',
+                                                             background: 'none',
+                                                             border: 'none',
+                                                             color: '#64748b',
+                                                             cursor: 'pointer',
+                                                             fontSize: '1rem',
+                                                             padding: 0,
+                                                             display: 'flex',
+                                                             alignItems: 'center',
+                                                             justifyContent: 'center'
+                                                         }}
+                                                         title={showToken ? "Ocultar Token" : "Mostrar Token"}
+                                                     >
+                                                         {showToken ? "👁️" : "🙈"}
+                                                     </button>
+                                                 </div>
+                                                 <p className="premium-help-text" style={{ marginTop: '0.25rem', fontSize: '0.7rem' }}>
+                                                     Token secreto de autenticação da API.
+                                                 </p>
+                                             </div>
+                                            <div className="form-group-premium">
                                                 <label className="premium-label">ID do Cliente (Client ID)</label>
                                                 <input 
                                                     type="text" 
@@ -485,7 +536,23 @@ const EditWebhookModal = ({
 
                                     {/* Configuração de Etiquetas */}
                                     <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--wh-border)', borderRadius: '16px', padding: '1.25rem' }}>
-                                        <label className="premium-label">🏷️ Etiquetas Automáticas</label>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <label className="premium-label" style={{ margin: 0 }}>🏷️ Etiquetas Automáticas</label>
+                                            {fetchChatwootLabels && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fetchChatwootLabels({
+                                                        zapvoice_url: safeEditForm.zapvoice_url,
+                                                        zapvoice_api_token: safeEditForm.zapvoice_api_token,
+                                                        zapvoice_client_id: safeEditForm.zapvoice_client_id
+                                                    })}
+                                                    className="btn-new-webhook"
+                                                    style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', background: 'rgba(52, 211, 153, 0.1)', border: '1px solid #34d399', color: '#34d399' }}
+                                                >
+                                                    🔄 Sincronizar Etiquetas
+                                                </button>
+                                            )}
+                                        </div>
                                         {labelsLoading ? (
                                             <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '1rem' }}>⏳ Carregando etiquetas do ZapVoice...</p>
                                         ) : labelsList.length > 0 ? (
@@ -535,7 +602,7 @@ const EditWebhookModal = ({
                                             </div>
                                         ) : safeEditForm.zapvoice_client_id ? (
                                             <p style={{ fontSize: '0.8rem', color: '#f59e0b', marginTop: '1rem' }}>
-                                                ⚠️ Nenhuma etiqueta encontrada nas conversas do ZapVoice (ID: {safeEditForm.zapvoice_client_id}). Adicione etiquetas nas suas conversas do ZapVoice para que elas apareçam aqui.
+                                                ⚠️ Nenhuma etiqueta encontrada nas conversas do ZapVoice (ID: {safeEditForm.zapvoice_client_id}). Adicione etiquetas nas suas conversas do ZapVoice ou clique em "Sincronizar Etiquetas" após preencher a URL e o Token acima.
                                             </p>
                                         ) : (
                                             <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '1rem' }}>

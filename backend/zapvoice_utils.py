@@ -30,7 +30,7 @@ async def sync_conversation_labels(zapvoice_url: str, client_id: str, conversati
     }
     
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, verify=False) as client:
             cur_resp = await client.get(conversas_url, headers=headers)
             current_labels = []
             if cur_resp.status_code == 200:
@@ -91,7 +91,7 @@ async def is_conversation_paused(zapvoice_url: str, client_id: str, conversation
         "Content-Type": "application/json"
     }
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, verify=False) as client:
             resp = await client.get(conversas_url, headers=headers)
             if resp.status_code == 200:
                 convs = resp.json()
@@ -122,7 +122,7 @@ async def send_zapvoice_message(zapvoice_url: str, client_id: str, conversation_
         "Content-Type": "application/json"
     }
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, verify=False) as client:
             resp = await client.post(url, json={"content": content, "is_private": is_private}, headers=headers)
             return resp.status_code in (200, 201)
     except Exception as e:
@@ -142,7 +142,7 @@ def get_conversation_labels_sync(zapvoice_url: str, client_id: str, conversation
         "X-Client-ID": str(client_id)
     }
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=10, verify=False) as client:
             resp = client.get(url, headers=headers)
             if resp.status_code == 200:
                 convs = resp.json()

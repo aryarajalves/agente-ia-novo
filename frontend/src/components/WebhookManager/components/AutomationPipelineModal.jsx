@@ -3,6 +3,7 @@ import { API_URL } from '../../../config';
 import PipelineCountdown from './Common/PipelineCountdown';
 import RaioXViewerModal from './RaioXViewerModal';
 import PreRouterViewerModal from './PreRouterViewerModal';
+import RagViewerModal from './RagViewerModal';
 
 const AutomationPipelineModal = ({
     event: initialEvent,
@@ -174,9 +175,15 @@ const AutomationPipelineModal = ({
                                     return;
                                 }
                                 setLoading(true);
+                                // Duração mínima artificial do spinner: quando a resposta do backend é muito
+                                // rápida (rede local, cache, etc.), o giro de 0.8s do ícone mal chega a
+                                // renderizar um frame antes de "loading" voltar a false, dando a impressão
+                                // de que a animação nunca aconteceu. Forçamos pelo menos 550ms visíveis.
+                                const minSpinDelay = new Promise(resolve => setTimeout(resolve, 550));
                                 try {
                                     const baseUrl = API_URL.replace(/\/$/, '');
-                                    const res = await fetch(`${baseUrl}/webhooks/${webhookConfigId}/events/${event.id}`);
+                                    const fetchPromise = fetch(`${baseUrl}/webhooks/${webhookConfigId}/events/${event.id}`);
+                                    const [res] = await Promise.all([fetchPromise, minSpinDelay]);
                                     if (res.ok) {
                                         const data = await res.json();
                                         setEvent(prev => ({ ...prev, ...data }));
@@ -184,6 +191,7 @@ const AutomationPipelineModal = ({
                                         console.error('Erro no refresh manual do pipeline: resposta não OK', res.status);
                                     }
                                 } catch (e) {
+                                    await minSpinDelay;
                                     console.error('Erro no refresh manual do pipeline:', e);
                                 } finally {
                                     setLoading(false);
@@ -450,9 +458,14 @@ const AutomationPipelineModal = ({
                             onClose={() => setMaximizedStep(null)} 
                         />
                     ) : maximizedStep.title.includes('Raio-X') ? (
-                        <RaioXViewerModal 
-                            data={maximizedStep.content} 
-                            onClose={() => setMaximizedStep(null)} 
+                        <RaioXViewerModal
+                            data={maximizedStep.content}
+                            onClose={() => setMaximizedStep(null)}
+                        />
+                    ) : (maximizedStep.title.includes('RAG') || maximizedStep.title.includes('Base de Conhecimento')) ? (
+                        <RagViewerModal
+                            data={maximizedStep.content}
+                            onClose={() => setMaximizedStep(null)}
                         />
                     ) : (
                         <div 
