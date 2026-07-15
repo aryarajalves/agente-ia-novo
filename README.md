@@ -116,6 +116,14 @@ npm run test:backend
 npm run test:frontend
 ```
 
+## ✨ Novidades da Versão (v1.1.0)
+
+Esta versão traz melhorias críticas de desempenho e segurança de contatos na automação de webhooks:
+- **Filtro Real de Contatos Permitidos (Whitelist) e Mensagens Bloqueadas (Blacklist)**: Ativação e processamento estrito das regras de autorização de contatos no backend. Se "Contatos Permitidos" estiver ativo no painel, apenas os números listados (validando os últimos 8 dígitos) ou nomes correspondentes são respondidos, bloqueando todos os outros automaticamente. A lista de bloqueios também impede o processamento de conversas indesejadas.
+- **Otimização de Desempenho e Velocidade da Lista de Contatos**: Remoção de subqueries aninhadas e lentas de dentro do SQL principal que faziam Full Table Scan. O cálculo de disparos e filtros de leads agora é computado de forma extremamente rápida em lote na memória (Python) para a página atual de leads, derrubando o tempo de carregamento da listagem de contatos de segundos para milissegundos.
+- **Ordenação por Interações Recentes**: Contatos agora são exibidos na lista ordenados pela data da última mensagem (`ultima_mensagem_em DESC`), trazendo as conversas ativas no momento para o topo de forma dinâmica.
+- **Suíte de Testes 100% Homologada**: Correção de tipagens de data no PostgreSQL (`datetime` em substituição de strings de mock) e URLs de endpoints de testes, garantindo que toda a suíte de testes de webhooks passe perfeitamente.
+
 ## ✨ Novidades da Versão (v2.4.0)
 
 Esta versão introduz a separação do prompt de instruções do sistema do agente em duas partes (Estático e Dinâmico), otimizando custos e latência por meio de **Prompt Caching**:
@@ -310,12 +318,12 @@ Esta versão traz melhorias no encerramento de conversas após o registro de dú
 *(Aviso: Conforme as regras do projeto, nunca gerar ou dar push em tags `latest` no Docker Hub; use sempre tags de versão estritas.)*
 
 ### Backend
-1. **Build:** `docker build -t aryarajalves/configurar-agentes-ia:backend-1.8.6 ./backend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:backend-1.8.6`
+1. **Build:** `docker build -t aryalvesfernandes/configuraagente:backend-1.1.0 ./backend`
+2. **Push:** `docker push aryalvesfernandes/configuraagente:backend-1.1.0`
 
 ### Frontend
-1. **Build:** `docker build --target production -t aryarajalves/configurar-agentes-ia:frontend-1.8.6 ./frontend`
-2. **Push:** `docker push aryarajalves/configurar-agentes-ia:frontend-1.8.6`
+1. **Build:** `docker build --target production -t aryalvesfernandes/configuraagente:frontend-1.1.0 ./frontend`
+2. **Push:** `docker push aryalvesfernandes/configuraagente:frontend-1.1.0`
 
 
 
