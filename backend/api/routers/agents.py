@@ -145,6 +145,8 @@ async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db), _: None =
         date_awareness_past_days=a.date_awareness_past_days,
         date_awareness_future_days=a.date_awareness_future_days,
         system_prompt=a.system_prompt,
+        dynamic_prompt=a.dynamic_prompt,
+        pre_router_prompt=a.pre_router_prompt,
         context_window=a.context_window,
         knowledge_base=json.loads(a.knowledge_base) if a.knowledge_base else [],
         knowledge_base_id=a.knowledge_base_id,

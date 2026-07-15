@@ -378,11 +378,13 @@ def process_webhook_automation(self, event_id: int):
                     db=db
                 )
                 
-                # Se for mensagem automática, salva o estado no banco de dados do evento
+                # Se for mensagem automática, salva o estado no banco de dados do evento e ignora
                 if pre_router_result.get("eh_mensagem_automatica"):
                     event.is_automatic = True
-                    _add_step(db, event_id, "🤖 Mensagem Automática do Contato", "A IA identificou esta mensagem como um envio automático/ausência comercial do contato. Esta mensagem será isolada de históricos futuros.")
+                    event.status = "ignored"
+                    _add_step(db, event_id, "🤖 Mensagem Automática do Contato", "A IA identificou esta mensagem como um envio automático/ausência comercial do contato. A automação foi encerrada e nenhuma resposta foi enviada para evitar loops.")
                     db.commit()
+                    return {"ignored_automatic": True}
                 
                 # Log visual de anúncio na pipeline (apenas se for a primeira mensagem)
                 is_first_msg = not history or len(history) == 0
@@ -832,6 +834,24 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
                 logger.info(f"🧹 Limpeza de debounce concluída após Bot Defense para {phone}")
             except Exception as redis_err:
                 logger.error(f"Erro ao limpar redis no Bot Defense: {redis_err}")
+            return
+
+        # Se foi ignorado por ser mensagem automática, encerramos a pipeline aqui
+        if isinstance(result, dict) and result.get("ignored_automatic"):
+            event.status = "ignored"
+            db.commit()
+            
+            # Limpar debounce no redis
+            try:
+                import redis as redis_lib
+                _redis_local = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
+                phone = event.telefone
+                wid = config.id
+                _redis_local.delete(f"webhook:debounce:id:{wid}:{phone}")
+                _redis_local.delete(f"webhook:debounce:text:{wid}:{phone}")
+                logger.info(f"🧹 Limpeza de debounce concluída após Mensagem Automática para {phone}")
+            except Exception as redis_err:
+                logger.error(f"Erro ao limpar redis no Mensagem Automática: {redis_err}")
             return
 
         # Se foi ignorado por ser Mensagem de Anúncio, encerramos a pipeline aqui

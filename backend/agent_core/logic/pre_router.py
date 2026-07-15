@@ -86,8 +86,8 @@ Sua função é séxtupla:
 2. Identificar se a mensagem atual do usuário é uma MENSAGEM AUTOMÁTICA de boas-vindas, saudação comercial ou de AUSÊNCIA enviada pelo outro lado (por exemplo, mensagens automáticas de catálogo, mensagens rápidas do WhatsApp Business do contato, saudações automáticas de consultórios/lojas, mensagens de ausência informando horário de atendimento, etc. Exemplos: "Olá, seja bem-vindo ao Jessika Albuquerque Beauty...", "Olá! No momento não posso atender...", "Aqui quem cuida de você é...", "Obrigado por sua mensagem. Entraremos em contato...").
    Se você identificar que a mensagem do usuário é uma mensagem automática/ausência/saudação do outro lado:
    - Defina 'eh_mensagem_automatica' como true.
-   - Defina 'eh_saudacao' as true.
-   - Defina 'resposta_direta' como a 'SAUDAÇÃO CONFIGURADA' (ou "Olá! Como posso te ajudar hoje?" se a configurada estiver vazia).
+   - Defina 'eh_saudacao' as false.
+   - Defina 'resposta_direta' como null (não responderemos nada para evitar loops).
    - Defina 'perguntas_extraidas' como null ou "".
 
 3. Se a mensagem contiver perguntas ou requisições (e não for automática), você deve extrair APENAS a(s) pergunta(s)/requisição(ões) da mensagem (removendo saudações, áudios confusos, lixo). Combine tudo em 'perguntas_extraidas'. Se houver mais de uma pergunta, junte todas.
@@ -479,8 +479,8 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
                 if not result.get("resposta_direta") or str(result.get("resposta_direta")).strip().lower() in ["", "none", "null"]:
                     result["resposta_direta"] = "Por nada! Se precisar de mais alguma coisa, é só chamar."
             elif result.get("eh_mensagem_automatica"):
-                result["resposta_direta"] = initial_msg
-                result["eh_saudacao"] = True
+                result["resposta_direta"] = None
+                result["eh_saudacao"] = False
                 result["perguntas_extraidas"] = None
             else:
                 if is_first_msg:
