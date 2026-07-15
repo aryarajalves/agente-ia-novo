@@ -1,6 +1,6 @@
 import pytest
 import json
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from google_calendar import GoogleCalendarService, resolve_color_id
 
 @pytest.fixture
@@ -62,9 +62,17 @@ async def test_list_events(gcal_service):
         mock_service.events.return_value.list.return_value = mock_events_list
         mock_events_list.execute.return_value = {"items": [{"id": "evt1", "summary": "Event 1"}]}
         
-        events = await gcal_service.list_events()
+        events = await gcal_service.list_events(q="mentoria")
         assert len(events) == 1
         assert events[0]["summary"] == "Event 1"
+        mock_service.events.return_value.list.assert_called_with(
+            calendarId='primary',
+            timeMin=ANY,
+            maxResults=10,
+            singleEvents=True,
+            orderBy='startTime',
+            q="mentoria"
+        )
 
 @pytest.mark.asyncio
 async def test_create_event(gcal_service):

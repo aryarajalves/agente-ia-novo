@@ -166,6 +166,7 @@ class AgentConfig(BaseModel):
     handoff_enabled: bool = False
     response_translation_enabled: bool = False
     response_translation_fallback_lang: str = "portuguese"
+    tool_prompts: Optional[Dict[str, str]] = None
     model_config = ConfigDict(from_attributes=True)
 
 class MessageRequest(BaseModel):

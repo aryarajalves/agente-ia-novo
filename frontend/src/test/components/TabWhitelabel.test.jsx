@@ -48,6 +48,13 @@ import TabWhitelabel from '../../components/ConfigPanel/components/TabWhitelabel
 
 const renderComponent = () => render(<TabWhitelabel />);
 
+// A partir da introdução das sub-abas (Aparência/Instalação/Preview), o conteúdo de
+// cada seção só fica no DOM quando sua sub-aba está ativa — precisamos trocar para
+// "Instalação" antes de testar o snippet/botão de copiar.
+const goToInstallTab = () => {
+    fireEvent.click(screen.getByText(/Instalação/i));
+};
+
 // ────────────────────────────────────────────────────────────────────────────────
 // Testes
 // ────────────────────────────────────────────────────────────────────────────────
@@ -102,6 +109,7 @@ describe('TabWhitelabel — Copiar Snippet', () => {
 
     it('deve renderizar o botão de copiar código com a classe copy-btn-floating', () => {
         renderComponent();
+        goToInstallTab();
 
         const copyBtn = document.getElementById('whitelabel-copy-btn');
         expect(copyBtn).toBeInTheDocument();
@@ -110,6 +118,7 @@ describe('TabWhitelabel — Copiar Snippet', () => {
 
     it('deve copiar o snippet para a área de transferência ao clicar em Copiar', async () => {
         renderComponent();
+        goToInstallTab();
 
         const copyBtn = document.getElementById('whitelabel-copy-btn');
         await act(async () => {
@@ -124,6 +133,7 @@ describe('TabWhitelabel — Copiar Snippet', () => {
 
     it('deve disparar o evento app:toast com type=success ao copiar com sucesso', async () => {
         renderComponent();
+        goToInstallTab();
 
         const copyBtn = document.getElementById('whitelabel-copy-btn');
         await act(async () => {
@@ -143,6 +153,7 @@ describe('TabWhitelabel — Copiar Snippet', () => {
     it('deve disparar o evento app:toast com type=error quando a clipboard falha', async () => {
         clipboardSpy.mockRejectedValueOnce(new Error('Permission denied'));
         renderComponent();
+        goToInstallTab();
 
         const copyBtn = document.getElementById('whitelabel-copy-btn');
         await act(async () => {

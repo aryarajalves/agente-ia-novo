@@ -10,7 +10,7 @@ from models import GoogleTokensModel
 from database import AsyncSession
 
 # Escopos necessários para gerenciar eventos e calendário
-SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.readonly']
+SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.readonly']
 
 class GoogleCalendarService:
     def __init__(self, agent_id: int | None, db: AsyncSession):
@@ -141,7 +141,7 @@ class GoogleCalendarService:
 
     # --- Operações de Calendário ---
 
-    async def list_events(self, max_results=10, time_min=None, time_max=None):
+    async def list_events(self, max_results=10, time_min=None, time_max=None, q=None):
         """
         Lista eventos do calendário num intervalo de datas.
         time_min: ISO 8601 - início do intervalo (padrão: agora, para eventos futuros)
@@ -173,6 +173,8 @@ class GoogleCalendarService:
         }
         if time_max:
             params['timeMax'] = time_max
+        if q:
+            params['q'] = q
 
         events_result = service.events().list(**params).execute()
         return events_result.get('items', [])
@@ -198,12 +200,19 @@ class GoogleCalendarService:
             print("[GCAL DEBUG] create_event: service é None, abortando")
             return None
 
+        import datetime
         event = {
             'summary': summary,
             'description': description,
             'location': location,
             'start': {'dateTime': start_time, 'timeZone': 'America/Sao_Paulo'},
             'end': {'dateTime': end_time, 'timeZone': 'America/Sao_Paulo'},
+            'conferenceData': {
+                'createRequest': {
+                    'requestId': f"meet-{int(datetime.datetime.now().timestamp())}",
+                    'conferenceSolutionKey': {'type': 'hangoutMeeting'}
+                }
+            }
         }
 
         # Cor do evento no Google Calendar
@@ -227,15 +236,39 @@ class GoogleCalendarService:
         try:
             created = service.events().insert(
                 calendarId='primary', body=event,
-                sendUpdates='all'  # Notifica os convidados por e-mail
+                sendUpdates='all',  # Notifica os convidados por e-mail
+                conferenceDataVersion=1
             ).execute()
-            print(f"[GCAL DEBUG] create_event: evento criado! id={created.get('id')} | link={created.get('htmlLink')}")
+            print(f"[GCAL DEBUG] create_event: evento criado! id={created.get('id')} | link={created.get('htmlLink')} | meet={created.get('hangoutLink')}")
             return created
         except Exception as e:
-            import traceback
-            print(f"[GCAL ERROR] create_event falhou: {type(e).__name__}: {e}")
-            print(traceback.format_exc())
-            raise
+            # Fallback caso a criação de conferência (Meet) ou notificações de email falhem devido a restrições do tipo de conta Google
+            if 'conferenceData' in event:
+                print(f"[GCAL WARNING] Falha ao criar evento com Meet, tentando criar sem Meet... Erro: {e}")
+                del event['conferenceData']
+                try:
+                    created = service.events().insert(
+                        calendarId='primary', body=event,
+                        sendUpdates='all'
+                    ).execute()
+                    print(f"[GCAL DEBUG] create_event: evento criado com sucesso sem Meet (fallback)! id={created.get('id')}")
+                    return created
+                except Exception as inner_e:
+                    # Tenta criar em último caso sem enviar notificações
+                    print(f"[GCAL WARNING] Falha ao criar sem Meet com atualizações, tentando criar puramente o evento... Erro: {inner_e}")
+                    try:
+                        created = service.events().insert(
+                            calendarId='primary', body=event
+                        ).execute()
+                        return created
+                    except Exception as last_e:
+                        print(f"[GCAL ERROR] create_event falhou totalmente: {last_e}")
+                        raise last_e
+            else:
+                import traceback
+                print(f"[GCAL ERROR] create_event falhou: {type(e).__name__}: {e}")
+                print(traceback.format_exc())
+                raise
 
     async def update_event(self, event_id, summary=None, start_time=None, end_time=None,
                            description=None, location=None, attendees=None, recurrence=None, color=None):

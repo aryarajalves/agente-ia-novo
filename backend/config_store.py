@@ -375,6 +375,7 @@ class AgentConfig(BaseModel):
     inbox_capture_enabled: bool = True
     response_translation_enabled: bool = False
     response_translation_fallback_lang: str = "portuguese"
+    tool_prompts: dict | None = None
     qualification_questions: Optional[str] = None
     qualification_labels: Optional[str] = None
     qualification_criteria: Optional[str] = None

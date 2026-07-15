@@ -683,7 +683,7 @@ async def process_message(
                             )
                     
                     if on_step:
-                        on_step(f"✅ Ferramenta {tool_name} finalizada", f"Retorno: {tool_result[:500]}...")
+                        on_step(f"✅ Ferramenta {tool_name} finalizada", f"Retorno: {tool_result}")
                     
                     messages.append({"tool_call_id": tool_call.id, "role": "tool", "name": tool_name, "content": tool_result})
                     

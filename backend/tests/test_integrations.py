@@ -35,3 +35,17 @@ async def test_google_callback_public(client: AsyncClient):
     # It might redirect or error out depending on Google API mock, 
     # but the point is it shouldn't return 403 Forbidden due to missing API Key.
     assert response.status_code != 403
+
+@pytest.mark.asyncio
+async def test_get_google_config_authenticated(client: AsyncClient):
+    response = await client.get("/integrations/google/config")
+    assert response.status_code == 200
+    data = response.json()
+    assert "default_event_color" in data
+    assert "add_user_email" in data
+
+@pytest.mark.asyncio
+async def test_update_google_config_unauthorized():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/integrations/google/config", json={"default_event_color": "azul", "add_user_email": True})
+        assert response.status_code == 403

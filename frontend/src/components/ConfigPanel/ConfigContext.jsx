@@ -67,6 +67,7 @@ export const ConfigProvider = ({ children }) => {
     const [ragParentExpansionEnabled, setRagParentExpansionEnabled] = useState(true);
     const [ragRelevanceThreshold, setRagRelevanceThreshold] = useState(0); // Percentual (0-100) exibido na UI
     const [inboxCaptureEnabled, setInboxCaptureEnabled] = useState(true);
+    const [toolPrompts, setToolPrompts] = useState({});
 
     // Messages
     const [initialMessage, setInitialMessage] = useState('');
@@ -162,6 +163,7 @@ export const ConfigProvider = ({ children }) => {
         ragParentExpansionEnabled, setRagParentExpansionEnabled,
         ragRelevanceThreshold, setRagRelevanceThreshold,
         inboxCaptureEnabled, setInboxCaptureEnabled,
+        toolPrompts, setToolPrompts,
         initialMessage, setInitialMessage,
         initialQuestionMessage, setInitialQuestionMessage,
         initialIgnoreMessage, setInitialIgnoreMessage,

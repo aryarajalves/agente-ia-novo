@@ -14,6 +14,7 @@ export const useConfigData = () => {
         setDateAwarenessPastDays, setDateAwarenessFutureDays,
         setSimulatedTime,
         setSystemPrompt, setDynamicPrompt, setPreRouterPrompt, setContextWindow, setKnowledgeBaseIds, setSelectedTools,
+        setToolPrompts,
         setRagRetrievalCount, setRagTranslationEnabled, setRagMultiQueryEnabled,
         setRagRerankEnabled, setRagAgenticEvalEnabled, setRagParentExpansionEnabled,
         setRagRelevanceThreshold,
@@ -118,6 +119,7 @@ export const useConfigData = () => {
                         setRagRelevanceThreshold(Math.round(((configData.rag_relevance_threshold ?? 0) * 100)));
                         setInboxCaptureEnabled(configData.inbox_capture_enabled ?? true);
                         setSelectedTools(configData.tool_ids || []);
+                        setToolPrompts(configData.tool_prompts || {});
                         setSimulatedTime(configData.simulated_time || '');
                         setInitialMessage(configData.initial_message || '');
                         setInitialQuestionMessage(configData.initial_question_message || '');

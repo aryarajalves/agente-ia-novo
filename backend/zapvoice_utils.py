@@ -159,3 +159,35 @@ def get_conversation_labels_sync(zapvoice_url: str, client_id: str, conversation
     except Exception as e:
         logger.error(f"Exceção ao obter etiquetas do ZapVoice síncronamente: {e}")
         return None
+
+async def update_zapvoice_lead_public(zapvoice_url: str, phone: str, token: str, data: dict):
+    """
+    Atualiza um contato no ZapVoice através do endpoint público de contatos.
+    Rota: POST /api/leads/public/{phone}/update
+    """
+    if not zapvoice_url or not phone or not token:
+        logger.warning("Dados insuficientes para atualizar contato público no ZapVoice")
+        return False
+
+    zapvoice_url = zapvoice_url.rstrip("/")
+    if zapvoice_url.endswith("/api"):
+        zapvoice_url = zapvoice_url[:-4]
+        
+    url = f"{zapvoice_url}/api/leads/public/{phone}/update"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10, verify=False) as client:
+            resp = await client.post(url, json=data, headers=headers)
+            if resp.status_code in (200, 201):
+                logger.info(f"✅ Contato {phone} atualizado com sucesso no ZapVoice público.")
+                return True
+            else:
+                logger.error(f"❌ Erro ao atualizar contato público no ZapVoice: {resp.status_code} - {resp.text}")
+                return False
+    except Exception as e:
+        logger.error(f"⚠️ Exceção ao atualizar contato público no ZapVoice: {e}")
+        return False

@@ -66,5 +66,6 @@ def db_to_pydantic_agent(a: AgentConfigModel) -> AgentConfig:
         router_complex_model=a.router_complex_model,
         handoff_enabled=a.handoff_enabled,
         response_translation_enabled=a.response_translation_enabled,
-        response_translation_fallback_lang=a.response_translation_fallback_lang or "portuguese"
+        response_translation_fallback_lang=a.response_translation_fallback_lang or "portuguese",
+        tool_prompts=a.tool_prompts or {}
     )

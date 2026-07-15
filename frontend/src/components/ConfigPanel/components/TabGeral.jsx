@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useConfig } from '../ConfigContext';
 import { ModelOptions, PriceDisplay } from './Shared/ModelControls';
 import GeralGuideModal from './Modals/GeralGuideModal';
 
 const TabGeral = () => {
+    const [activeSubTab, setActiveSubTab] = useState('identity');
+
+    const subTabs = [
+        { id: 'identity', label: '🪪 Identificação', desc: 'Nome e descrição do agente' },
+        { id: 'models', label: '🚦 Modelos & Roteamento', desc: 'Cost Router e parâmetros avançados' },
+        { id: 'memory', label: '🧠 Memória', desc: 'Janela de contexto da conversa' }
+    ];
+
     const {
         name, setName,
         description, setDescription,
@@ -41,109 +49,124 @@ const TabGeral = () => {
 
     return (
         <div className="fade-in">
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
-                <button type="button" onClick={() => setShowGeralGuide(true)} className="guide-btn">
+            {/* Header da aba com Sub-abas e Guia */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    {subTabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveSubTab(tab.id)}
+                            className={`toggle-option ${activeSubTab === tab.id ? 'active' : ''}`}
+                            style={{
+                                padding: '0.5rem 1.25rem',
+                                borderRadius: '12px',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-start',
+                                gap: '2px',
+                                background: activeSubTab === tab.id ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.02)',
+                                border: activeSubTab === tab.id ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid var(--wh-border)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease-in-out'
+                            }}
+                        >
+                            <span style={{ color: activeSubTab === tab.id ? '#fff' : 'var(--wh-text-secondary)' }}>{tab.label}</span>
+                            <span style={{ fontSize: '0.65rem', opacity: 0.6, fontWeight: 500, color: activeSubTab === tab.id ? 'rgba(255,255,255,0.8)' : 'var(--wh-text-secondary)' }}>{tab.desc}</span>
+                        </button>
+                    ))}
+                </div>
+
+                <button type="button" onClick={() => setShowGeralGuide(true)} className="guide-btn" style={{ margin: 0 }}>
                     <span>📖</span><span>Guia das Configurações</span>
                 </button>
             </div>
 
             <GeralGuideModal isOpen={showGeralGuide} onClose={() => setShowGeralGuide(false)} />
 
-            <div className="form-section">
-                <span className="section-label">Identificação</span>
-                <div className="form-group">
-                    <label>Nome do Agente</label>
-                    <input
-                        type="text"
-                        placeholder="Ex: Assistente de Vendas"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                    />
-                </div>
-                <div className="form-group">
-                    <label>Descrição (Opcional)</label>
-                    <textarea
-                        placeholder="Descreva o propósito deste agente..."
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        style={{ minHeight: '80px' }}
-                    />
-                </div>
-            </div>
-
-            <div className="form-section">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                    <div>
-                        <span className="section-label" style={{ margin: 0 }}>
-                            🚦 Roteamento de Modelos (Cost Router)
-                        </span>
-                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
-                            Economize até 90% desviando perguntas simples para modelos mais baratos.
-                        </p>
+            {activeSubTab === 'identity' && (
+                <div className="form-section fade-in">
+                    <span className="section-label">Identificação</span>
+                    <div className="form-group">
+                        <label>Nome do Agente</label>
+                        <input
+                            type="text"
+                            placeholder="Ex: Assistente de Vendas"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Descrição (Opcional)</label>
+                        <textarea
+                            placeholder="Descreva o propósito deste agente..."
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            style={{ minHeight: '80px' }}
+                        />
                     </div>
                 </div>
+            )}
 
-                <div className="router-grid fade-in">
-                    <div className="router-col">
-                        <div className="form-group">
-                            <label style={{ color: '#6ee7b7' }}>⚡ Modelo para Perguntas Simples</label>
-                            <select value={routerSimpleModel || ''} onChange={(e) => setRouterSimpleModel(e.target.value || null)}>
-                                <option value="">— Nenhum —</option>
-                                <ModelOptions />
-                            </select>
-                            <PriceDisplay modelId={routerSimpleModel} />
+            {activeSubTab === 'models' && (
+                <>
+                    <div className="form-section fade-in">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                            <div>
+                                <span className="section-label" style={{ margin: 0 }}>
+                                    🚦 Roteamento de Modelos (Cost Router)
+                                </span>
+                                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
+                                    Economize até 90% desviando perguntas simples para modelos mais baratos.
+                                </p>
+                            </div>
                         </div>
-                        <div className="form-group">
-                            <label style={{ color: '#6ee7b7', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Simples)</label>
-                            <select value={routerSimpleFallbackModel} onChange={(e) => setRouterSimpleFallbackModel(e.target.value)}>
-                                <option value="">Sem fallback</option>
-                                <ModelOptions />
-                            </select>
-                            {routerSimpleFallbackModel && <PriceDisplay modelId={routerSimpleFallbackModel} />}
+
+                        <div className="router-grid fade-in">
+                            <div className="router-col">
+                                <div className="form-group">
+                                    <label style={{ color: '#6ee7b7' }}>⚡ Modelo para Perguntas Simples</label>
+                                    <select value={routerSimpleModel || ''} onChange={(e) => setRouterSimpleModel(e.target.value || null)}>
+                                        <option value="">— Nenhum —</option>
+                                        <ModelOptions />
+                                    </select>
+                                    <PriceDisplay modelId={routerSimpleModel} />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ color: '#6ee7b7', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Simples)</label>
+                                    <select value={routerSimpleFallbackModel} onChange={(e) => setRouterSimpleFallbackModel(e.target.value)}>
+                                        <option value="">Sem fallback</option>
+                                        <ModelOptions />
+                                    </select>
+                                    {routerSimpleFallbackModel && <PriceDisplay modelId={routerSimpleFallbackModel} />}
+                                </div>
+                            </div>
+
+                            <div className="router-col">
+                                <div className="form-group">
+                                    <label style={{ color: '#10b981' }}>🧠 Modelo para Perguntas Complexas</label>
+                                    <select value={routerComplexModel || ''} onChange={(e) => setRouterComplexModel(e.target.value || null)}>
+                                        <option value="">— Nenhum —</option>
+                                        <ModelOptions />
+                                    </select>
+                                    <PriceDisplay modelId={routerComplexModel} />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ color: '#10b981', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Complexas)</label>
+                                    <select value={routerComplexFallbackModel} onChange={(e) => setRouterComplexFallbackModel(e.target.value)}>
+                                        <option value="">Sem fallback</option>
+                                        <ModelOptions />
+                                    </select>
+                                    {routerComplexFallbackModel && <PriceDisplay modelId={routerComplexFallbackModel} />}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="router-col">
-                        <div className="form-group">
-                            <label style={{ color: '#10b981' }}>🧠 Modelo para Perguntas Complexas</label>
-                            <select value={routerComplexModel || ''} onChange={(e) => setRouterComplexModel(e.target.value || null)}>
-                                <option value="">— Nenhum —</option>
-                                <ModelOptions />
-                            </select>
-                            <PriceDisplay modelId={routerComplexModel} />
-                        </div>
-                        <div className="form-group">
-                            <label style={{ color: '#10b981', fontSize: '0.75rem', opacity: 0.8 }}>🔄 Fallback (Complexas)</label>
-                            <select value={routerComplexFallbackModel} onChange={(e) => setRouterComplexFallbackModel(e.target.value)}>
-                                <option value="">Sem fallback</option>
-                                <ModelOptions />
-                            </select>
-                            {routerComplexFallbackModel && <PriceDisplay modelId={routerComplexFallbackModel} />}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="form-section" style={{ marginTop: '2rem' }}>
-                <span className="section-label">Configurações de Memória</span>
-                <div className="form-group">
-                    <label>Janela de Contexto <span className="label-value">{contextWindow} mensagens</span></label>
-                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.8rem' }}>
-                        Define quantas mensagens recentes o robô deve "lembrar" durante a conversa.
-                    </p>
-                    <input 
-                        type="number" 
-                        min="1" max="100" 
-                        value={contextWindow} 
-                        onChange={(e) => setContextWindow(parseInt(e.target.value) || 1)} 
-                        className="premium-input"
-                        style={{ width: '100px' }}
-                    />
-                </div>
-            </div>
-
-            {/* Advanced Model Config */}
-            <div className="advanced-config-section">
+                    {/* Advanced Model Config */}
+                    <div className="advanced-config-section">
                 <div className="advanced-header">
                     <span className="section-label" style={{ color: '#818cf8', fontWeight: 600, margin: 0 }}>⚙️ Configurações Avançadas do Modelo</span>
                     <div className="role-selector">
@@ -257,7 +280,29 @@ const TabGeral = () => {
                         </div>
                     );
                 })()}
-            </div>
+                    </div>
+                </>
+            )}
+
+            {activeSubTab === 'memory' && (
+                <div className="form-section fade-in">
+                    <span className="section-label">Configurações de Memória</span>
+                    <div className="form-group">
+                        <label>Janela de Contexto <span className="label-value">{contextWindow} mensagens</span></label>
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.8rem' }}>
+                            Define quantas mensagens recentes o robô deve "lembrar" durante a conversa.
+                        </p>
+                        <input
+                            type="number"
+                            min="1" max="100"
+                            value={contextWindow}
+                            onChange={(e) => setContextWindow(parseInt(e.target.value) || 1)}
+                            className="premium-input"
+                            style={{ width: '100px' }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

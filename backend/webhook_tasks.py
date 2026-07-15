@@ -322,7 +322,7 @@ def process_webhook_automation(self, event_id: int):
         _add_step(db, event_id, "🤖 Conectando ao agente", f"Agente: {db_agent.name}")
 
         mensagem = event.mensagem or ""
-        if event.legenda:
+        if event.legenda and not event.legenda.startswith("❌ Erro técnico:"):
             mensagem = f"[Legenda do Usuário]: {event.legenda}\n\n[Análise/Resumo da Mídia]: {mensagem}"
 
         raw_phone = event.telefone or ""
@@ -662,16 +662,23 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
                             
                             relevant_items = []
                             discarded_items = []
+                            rag_usage = None
                             if isinstance(rag_res, tuple) and len(rag_res) == 3:
-                                relevant_items, discarded_items, _ = rag_res
+                                relevant_items, discarded_items, rag_usage = rag_res
                             elif isinstance(rag_res, tuple) and len(rag_res) == 2:
-                                relevant_items, _ = rag_res
+                                relevant_items, rag_usage = rag_res
                             else:
                                 relevant_items = rag_res or []
                                 
                             all_relevant_items.extend(relevant_items)
                             
                             # Log individual da pergunta
+                            # Serializa applied_modules se disponível (para exibir no RagViewerModal)
+                            _modules_block = ""
+                            if rag_usage and hasattr(rag_usage, 'applied_modules') and rag_usage.applied_modules:
+                                import json as _json_mod
+                                _modules_block = f"\n\n===MODULES_JSON===\n{_json_mod.dumps(rag_usage.applied_modules, ensure_ascii=False)}\n===END_MODULES==="
+
                             if relevant_items:
                                 items_detail = ""
                                 for idx, item in enumerate(relevant_items, 1):
@@ -683,12 +690,12 @@ Use essas informações para responder com precisão e clareza. Caso o usuário 
                                 if discarded_items:
                                     discarded_detail = "\n\n❌ **Itens Descartados:**\n" + "\n".join([f"- **Perg:** \"{d['question']}\"\n  **Motivo:** {d.get('discard_reason', 'Relevância insuficiente.')}" for d in discarded_items])
                                     
-                                _add_step(db, event_id, f"✅ RAG Resultados - Pergunta {q_idx}", f"Pergunta consultada: \"{query_item}\"\nRetornados {len(relevant_items)} itens relevantes:\n{items_detail}{discarded_detail}")
+                                _add_step(db, event_id, f"✅ RAG Resultados - Pergunta {q_idx}", f"Pergunta consultada: \"{query_item}\"\nRetornados {len(relevant_items)} itens relevantes:\n{items_detail}{discarded_detail}{_modules_block}")
                             else:
                                 discarded_detail = ""
                                 if discarded_items:
                                     discarded_detail = "\n\n❌ **Itens Descartados:**\n" + "\n".join([f"- **Perg:** \"{d['question']}\"\n  **Motivo:** {d.get('discard_reason', 'Relevância insuficiente.')}" for d in discarded_items])
-                                _add_step(db, event_id, f"ℹ️ RAG Sem Resultados - Pergunta {q_idx}", f"A busca para a pergunta \"{query_item}\" retornou 0 itens relevantes.{discarded_detail}")
+                                _add_step(db, event_id, f"ℹ️ RAG Sem Resultados - Pergunta {q_idx}", f"A busca para a pergunta \"{query_item}\" retornou 0 itens relevantes.{discarded_detail}{_modules_block}")
                                 
                         if all_relevant_items:
                             # Remover duplicados da lista unificada

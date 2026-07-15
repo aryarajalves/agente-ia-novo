@@ -13,6 +13,7 @@ const AutomationPipelineModal = ({
     const [event, setEvent] = useState(initialEvent);
     const [maximizedStep, setMaximizedStep] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isTimeout, setIsTimeout] = useState(false);
 
     // Fallback defensivo: alguns fluxos (telas de leads/histórico) montam este modal com um
     // "event" que não traz webhook_config_id (depende do endpoint de origem). Sem isso, o
@@ -78,6 +79,25 @@ const AutomationPipelineModal = ({
             if (ws) ws.close();
         };
     }, [event.id, pollEvent]);
+
+    // Detectar timeout de processamento longo no frontend
+    useEffect(() => {
+        setIsTimeout(false);
+        if (!['processing', 'received', 'pending'].includes(event.status)) return;
+
+        const checkTimeout = () => {
+            const createdTime = parseDate(event.created_at || event.updated_at).getTime();
+            const now = Date.now();
+            // Timeout de 45 segundos
+            if (now - createdTime > 45000) {
+                setIsTimeout(true);
+            }
+        };
+
+        checkTimeout();
+        const interval = setInterval(checkTimeout, 2000);
+        return () => clearInterval(interval);
+    }, [event.status, event.created_at, event.updated_at]);
 
     // Bloquear scroll
     useEffect(() => {
@@ -311,7 +331,8 @@ const AutomationPipelineModal = ({
                                         <div style={{ 
                                             background: 'rgba(15, 23, 42, 0.4)', borderRadius: '16px', padding: '1.25rem',
                                             color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.6', fontFamily: 'monospace',
-                                            whiteSpace: 'pre-wrap', position: 'relative', border: '1px solid rgba(255,255,255,0.02)'
+                                            whiteSpace: 'pre-wrap', position: 'relative', border: '1px solid rgba(255,255,255,0.02)',
+                                            wordBreak: 'break-all', overflowWrap: 'break-word'
                                         }}>
                                              {step.title?.includes("Variáveis Extraídas") && step.metadata ? (
                                                  <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -422,30 +443,54 @@ const AutomationPipelineModal = ({
 
                         {/* Indicador de Automação em Andamento (Premium) */}
                         {['processing', 'received', 'pending'].includes(event.status) && (
-                            <div style={{ position: 'relative' }}>
-                                {/* Ponto da Timeline Animado */}
-                                <div style={{ 
-                                    position: 'absolute', left: '-36px', top: '10px', width: '12px', height: '12px', 
-                                    borderRadius: '50%', background: '#6366f1', border: '4px solid #0f172a',
-                                    boxShadow: '0 0 12px #6366f1', zIndex: 1,
-                                    animation: 'pulse 1.5s infinite'
-                                }} />
-                                
-                                <div style={{ 
-                                    background: 'rgba(99, 102, 241, 0.05)', border: '1px dashed rgba(99, 102, 241, 0.2)', 
-                                    borderRadius: '20px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem',
-                                    animation: 'pulseCard 2s infinite'
-                                }}>
-                                    {/* Spinner Animado em CSS */}
-                                    <div className="pipeline-spinner" />
-                                    <div>
-                                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#a5b4fc' }}>⚙️ Processando Automação...</h3>
-                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6366f1', fontWeight: 600 }}>
-                                            Executando fluxos subsequentes. Aguarde a conclusão da automação.
-                                        </p>
+                            isTimeout ? (
+                                <div style={{ position: 'relative' }}>
+                                    {/* Ponto da Timeline Vermelho */}
+                                    <div style={{ 
+                                        position: 'absolute', left: '-36px', top: '10px', width: '12px', height: '12px', 
+                                        borderRadius: '50%', background: '#ef4444', border: '4px solid #0f172a',
+                                        boxShadow: '0 0 12px #ef4444', zIndex: 1
+                                    }} />
+                                    
+                                    <div style={{ 
+                                        background: 'rgba(239, 68, 68, 0.05)', border: '1px dashed rgba(239, 68, 68, 0.2)', 
+                                        borderRadius: '20px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.5rem'
+                                    }}>
+                                        <div style={{ fontSize: '1.8rem', animation: 'pulse 1s infinite' }}>⚠️</div>
+                                        <div>
+                                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fca5a5' }}>Falha no Processamento (Timeout)</h3>
+                                            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#f87171', fontWeight: 600, lineHeight: 1.4 }}>
+                                                A automação excedeu o tempo limite de 45 segundos sem resposta. Isso ocorre quando há lentidão extrema na API do LLM, falhas na conexão do calendário ou caso a fila de tarefas em background tenha sido interrompida.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div style={{ position: 'relative' }}>
+                                    {/* Ponto da Timeline Animado */}
+                                    <div style={{ 
+                                        position: 'absolute', left: '-36px', top: '10px', width: '12px', height: '12px', 
+                                        borderRadius: '50%', background: '#6366f1', border: '4px solid #0f172a',
+                                        boxShadow: '0 0 12px #6366f1', zIndex: 1,
+                                        animation: 'pulse 1.5s infinite'
+                                    }} />
+                                    
+                                    <div style={{ 
+                                        background: 'rgba(99, 102, 241, 0.05)', border: '1px dashed rgba(99, 102, 241, 0.2)', 
+                                        borderRadius: '20px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem',
+                                        animation: 'pulseCard 2s infinite'
+                                    }}>
+                                        {/* Spinner Animado em CSS */}
+                                        <div className="pipeline-spinner" />
+                                        <div>
+                                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#a5b4fc' }}>⚙️ Processando Automação...</h3>
+                                            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6366f1', fontWeight: 600 }}>
+                                                Executando fluxos subsequentes. Aguarde a conclusão da automação.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
                         )}
                     </div>
                 </div>

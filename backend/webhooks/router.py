@@ -913,6 +913,8 @@ async def retry_webhook_event_endpoint(webhook_id: int, event_id: int, db: Async
     # Resetar o status do evento no banco de dados
     event.status = "processing"
     event.agent_response = None
+    if event.legenda and event.legenda.startswith("❌ Erro técnico:"):
+        event.legenda = None
     
     # Registrar passo inicial de retentativa
     now_br = get_now_br()

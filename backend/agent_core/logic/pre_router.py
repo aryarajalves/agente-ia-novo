@@ -413,21 +413,31 @@ async def run_pre_router_ai(message: str, history: list, main_agent, secondary_a
         import re
         main_system_prompt_cleaned = re.sub(r'(?m)^[ \t]*#+[ \t]*', '', main_system_prompt_cleaned)
     tools_list = getattr(main_agent, "tools", None) or []
+    agent_tool_prompts = getattr(main_agent, "tool_prompts", None) or {}
     tools_desc = ""
     for t in tools_list:
         p_schema = t.parameters_schema
         if isinstance(p_schema, bytes):
             p_schema = p_schema.decode('utf-8')
-        tools_desc += f"- {t.name}: {t.description}. Parâmetros/Schema: {p_schema}\n"
+        
+        custom_hint = agent_tool_prompts.get(str(t.id))
+        desc_to_use = custom_hint.strip() if custom_hint and custom_hint.strip() else t.description
+        tools_desc += f"- {t.name}: {desc_to_use}. Parâmetros/Schema: {p_schema}\n"
 
     # Adicionar ferramentas internas e condicionais
     if getattr(main_agent, "handoff_enabled", False):
-        tools_desc += "- transferir_suporte_humano: Transfere o atendimento para um atendente humano. Parâmetros/Schema: {\"type\": \"object\", \"properties\": {\"motivo\": {\"type\": \"string\", \"description\": \"Motivo solicitado pelo usuário\"}}, \"required\": [\"motivo\"]}\n"
+        custom_handoff = agent_tool_prompts.get("transferir_suporte_humano")
+        desc_handoff = custom_handoff.strip() if custom_handoff and custom_handoff.strip() else "Transfere o atendimento para um atendente humano."
+        tools_desc += f"- transferir_suporte_humano: {desc_handoff} Parâmetros/Schema: " + '{"type": "object", "properties": {"motivo": {"type": "string", "description": "Motivo solicitado pelo usuário"}}, "required": ["motivo"]}\n'
     
-    tools_desc += "- registrar_duvida_sem_resposta: Registra dúvidas que não constam no prompt de sistema ou RAG. Parâmetros/Schema: {\"type\": \"object\", \"properties\": {\"pergunta\": {\"type\": \"string\", \"description\": \"A pergunta exata do usuário\"}}, \"required\": [\"pergunta\"]}\n"
+    custom_duvida = agent_tool_prompts.get("registrar_duvida_sem_resposta")
+    desc_duvida = custom_duvida.strip() if custom_duvida and custom_duvida.strip() else "Registra dúvidas que não constam no prompt de sistema ou RAG."
+    tools_desc += f"- registrar_duvida_sem_resposta: {desc_duvida} Parâmetros/Schema: " + '{"type": "object", "properties": {"pergunta": {"type": "string", "description": "A pergunta exata do usuário"}}, "required": ["pergunta"]}\n'
 
     if getattr(main_agent, "qualification_questions", None):
-        tools_desc += "- lead_qualificado: Registra que o lead respondeu todas as perguntas de qualificação. Parâmetros/Schema: {\"type\": \"object\", \"properties\": {\"respostas\": {\"type\": \"object\", \"description\": \"Objeto contendo as respostas para cada pergunta\"}}, \"required\": [\"respostas\"]}\n"
+        custom_qual = agent_tool_prompts.get("lead_qualificado")
+        desc_qual = custom_qual.strip() if custom_qual and custom_qual.strip() else "Registra que o lead respondeu todas as perguntas de qualificação."
+        tools_desc += f"- lead_qualificado: {desc_qual} Parâmetros/Schema: " + '{"type": "object", "properties": {"respostas": {"type": "object", "description": "Objeto contendo as respostas para cada pergunta"}}, "required": ["respostas"]}\n'
 
     template_vars = dict(
         initial_msg=initial_msg,

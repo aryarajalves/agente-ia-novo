@@ -92,7 +92,8 @@ async def create_agent(config: AgentConfig, db: AsyncSession = Depends(get_db), 
         router_complex_model=config.router_complex_model,
         handoff_enabled=config.handoff_enabled,
         response_translation_enabled=config.response_translation_enabled,
-        response_translation_fallback_lang=config.response_translation_fallback_lang or "portuguese"
+        response_translation_fallback_lang=config.response_translation_fallback_lang or "portuguese",
+        tool_prompts=config.tool_prompts
     )
 
     if config.tool_ids:
@@ -257,6 +258,7 @@ async def update_agent(agent_id: int, config: AgentConfig, db: AsyncSession = De
     db_config.handoff_enabled = config.handoff_enabled
     db_config.response_translation_enabled = config.response_translation_enabled
     db_config.response_translation_fallback_lang = config.response_translation_fallback_lang or "portuguese"
+    db_config.tool_prompts = config.tool_prompts
 
     # Sync Tools
     if config.tool_ids is not None:

@@ -91,6 +91,7 @@ async def search_knowledge_base(
 
         # 2. Query Transformation
         detected_lang = "portuguese"
+        _translated_query = None  # Rastreamento do módulo Translation
         if rag_translation_enabled:
             detected_lang, u_lang = await detect_language(query, model=model, fallback=fallback_model)
             add_usage(u_lang)
@@ -110,6 +111,8 @@ async def search_knowledge_base(
             if rag_translation_enabled and detected_lang != "portuguese" and detected_lang != "simple":
                 search_q, u_trans = await translate_to_portuguese(q_var, model=model, fallback=fallback_model)
                 add_usage(u_trans)
+                if _translated_query is None:
+                    _translated_query = search_q  # Guarda a primeira tradução realizada
                 
             q_embedding, u_emb = await get_embedding(search_q)
             add_usage(u_emb)
@@ -181,14 +184,21 @@ async def search_knowledge_base(
             if kb:
                 q_label, a_label, m_label = kb.question_label or "Pergunta", kb.answer_label or "Resposta", kb.metadata_label or "Metadado"
 
+        # Salva ordem antes do Rerank para rastreamento
+        _before_rerank = [i.get("question", "")[:80] for i in final_items[:6]]
+
         if rag_rerank_enabled:
             reranked_items, u_rerank = await rerank_results(main_search_q, final_items, model=model, fallback=fallback_model, q_label=q_label, a_label=a_label, m_label=m_label)
             add_usage(u_rerank)
         else:
             reranked_items = final_items
-            
+
+        _after_rerank = [i.get("question", "")[:80] for i in reranked_items[:6]]
+        _rerank_changed = rag_rerank_enabled and (_before_rerank != _after_rerank)
+
         # 7. Parent Document Retrieval
         expanded_items = []
+        _items_expanded = 0
         if rag_parent_expansion_enabled:
             for res_item in reranked_items[:limit]:
                 item_id = res_item.get("id")
@@ -202,6 +212,7 @@ async def search_knowledge_base(
                     parent_item = parent_res.scalars().first()
                     
                     if parent_item:
+                        _items_expanded += 1
                         expanded_items.append({
                             "id": parent_item.id, "question": parent_item.question, "answer": parent_item.answer,
                             "metadata_val": parent_item.metadata_val, "category": parent_item.category,
@@ -218,11 +229,15 @@ async def search_knowledge_base(
         # 8. Agentic Selection
         final_filtered_items = expanded_items[:limit]
         discarded_items = []
+        _agentic_kept = 0
+        _agentic_discarded = 0
         if rag_agentic_eval_enabled:
             eval_input = expanded_items[:limit]
             final_filtered_items, discarded_eval, u_eval = await evaluate_rag_relevance(main_search_q, eval_input, model=model, fallback=fallback_model, q_label=q_label, a_label=a_label, m_label=m_label)
             add_usage(u_eval)
             discarded_items.extend(discarded_eval)
+            _agentic_kept = len(final_filtered_items)
+            _agentic_discarded = len(discarded_eval)
             
             if not final_filtered_items and eval_input:
                 best = eval_input[0]
@@ -230,6 +245,8 @@ async def search_knowledge_base(
                 if best_dist is not None and best_dist < 0.65:
                     final_filtered_items = [best]
                     discarded_items = [x for x in discarded_items if x["id"] != best["id"]]
+                    _agentic_kept = 1
+                    _agentic_discarded = max(0, _agentic_discarded - 1)
 
         # Coletar itens que não entraram na seleção (fora do limit) como descartados por ranking
         for item in expanded_items[limit:]:
@@ -238,8 +255,6 @@ async def search_knowledge_base(
             discarded_items.append(item_copy)
 
         # 9. Filtro de Relevância Mínima
-        # Descarta itens cuja relevance_score fique abaixo do limiar configurado,
-        # garantindo que só o que realmente atinge o % mínimo seja enviado ao RAG.
         if similarity_threshold and similarity_threshold > 0:
             threshold_filtered = []
             for item in final_filtered_items:
@@ -251,13 +266,42 @@ async def search_knowledge_base(
                     discarded_items.append(item_copy)
             final_filtered_items = threshold_filtered
 
+        # 10. Empacotar rastreamento dos módulos utilizados
+        applied_modules = {
+            "translation": {
+                "ativo": rag_translation_enabled,
+                "idioma_detectado": detected_lang if rag_translation_enabled else None,
+                "query_traduzida": _translated_query if (rag_translation_enabled and detected_lang not in ("portuguese", "simple")) else None
+            },
+            "multi_query": {
+                "ativo": rag_multi_query_enabled,
+                "variacoes": query_variations if rag_multi_query_enabled else []
+            },
+            "rerank": {
+                "ativo": rag_rerank_enabled,
+                "reordenou": _rerank_changed,
+                "ordem_antes": _before_rerank,
+                "ordem_depois": _after_rerank
+            },
+            "parent_expansion": {
+                "ativo": rag_parent_expansion_enabled,
+                "itens_expandidos": _items_expanded
+            },
+            "agentic_eval": {
+                "ativo": rag_agentic_eval_enabled,
+                "itens_mantidos": _agentic_kept if rag_agentic_eval_enabled else len(final_filtered_items),
+                "itens_descartados": _agentic_discarded
+            }
+        }
+
         class RAGUsage:
-            def __init__(self, p, c, model):
+            def __init__(self, p, c, model, applied_modules=None):
                 self.prompt_tokens = p
                 self.completion_tokens = c
                 self.model = model
+                self.applied_modules = applied_modules or {}
 
-        return final_filtered_items, discarded_items, RAGUsage(total_prompt_tokens, total_completion_tokens, model)
+        return final_filtered_items, discarded_items, RAGUsage(total_prompt_tokens, total_completion_tokens, model, applied_modules)
             
     except Exception as e:
         print(f"Hybrid search failed: {e}")

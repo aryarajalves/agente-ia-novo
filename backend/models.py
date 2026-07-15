@@ -124,6 +124,7 @@ class AgentConfigModel(Base):
     rag_agentic_eval_enabled = Column(Boolean, default=True)
     rag_parent_expansion_enabled = Column(Boolean, default=True)
     rag_relevance_threshold = Column(Float, default=0.0)  # Relevância mínima (0-1) para um item ser enviado ao contexto do RAG. 0 = sem filtro.
+    tool_prompts = Column(JSON, nullable=True)  # Prompts customizados por ferramenta. Ex: { "tool_id": "prompt" }
 
     # Security Guardrails
     security_competitor_blacklist = Column(Text, nullable=True) # Ex: "Coca-Cola, Pepsi"
@@ -268,6 +269,8 @@ class GoogleTokensModel(Base):
     client_secret = Column(String, nullable=True)
     scopes = Column(Text, nullable=True)
     expiry = Column(DateTime(timezone=True), nullable=True)
+    default_event_color = Column(String, nullable=True)
+    add_user_email = Column(Boolean, default=False, nullable=True)
     
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -592,6 +595,18 @@ class SaleModel(Base):
     telefone = Column(String, index=True, nullable=True)
     valor = Column(Float, default=0.0)
     plataforma = Column(String, nullable=True) # Hotmart, Kiwify, etc.
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class CalendarEventModel(Base):
+    __tablename__ = "calendar_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String, index=True, unique=True, nullable=False)
+    telefone = Column(String, index=True, nullable=True)
+    email = Column(String, index=True, nullable=True)
+    titulo = Column(String, nullable=True)
+    data_horario = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

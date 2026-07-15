@@ -1,6 +1,49 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { api } from '../../../api/client';
 
 const GoogleCalendarCard = ({ googleConnected, onConnect, onProvision }) => {
+    const [defaultColor, setDefaultColor] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        if (!googleConnected) return;
+        const fetchConfig = async () => {
+            try {
+                const res = await api.get('/integrations/google/config');
+                const data = await res.json();
+                setDefaultColor(data.default_event_color || '');
+            } catch (err) {
+                console.error("Erro ao buscar configurações do Google Agenda:", err);
+            }
+        };
+        fetchConfig();
+    }, [googleConnected]);
+
+    const handleSaveConfig = async () => {
+        setIsSaving(true);
+        try {
+            const res = await api.post('/integrations/google/config', {
+                default_event_color: defaultColor || null
+            });
+            if (res.ok) {
+                window.dispatchEvent(new CustomEvent('app:toast', {
+                    detail: { message: "Preferências do Google Agenda salvas com sucesso!", type: 'success' }
+                }));
+            } else {
+                const errData = await res.json();
+                window.dispatchEvent(new CustomEvent('app:toast', {
+                    detail: { message: errData.detail || "Erro ao salvar preferências.", type: 'error' }
+                }));
+            }
+        } catch (err) {
+            window.dispatchEvent(new CustomEvent('app:toast', {
+                detail: { message: "Erro de rede ao salvar preferências.", type: 'error' }
+            }));
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     return (
         <div className="form-section">
             <span className="section-label">Produtividade & Agendas</span>
@@ -84,6 +127,71 @@ const GoogleCalendarCard = ({ googleConnected, onConnect, onProvision }) => {
                     💡 <strong>Dica:</strong> Uma vez conectado aqui, todos os seus agentes poderão usar as ferramentas do Google Calendar.
                 </p>
             </div>
+
+            {googleConnected && (
+                <div style={{
+                    marginTop: '1.5rem',
+                    padding: '1.5rem',
+                    background: 'rgba(255,255,255,0.01)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: '12px'
+                }}>
+                    <h5 style={{ margin: '0 0 1rem 0', color: 'white', fontSize: '0.95rem', fontWeight: 600 }}>⚙️ Configurações do Agendamento</h5>
+                    
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.8rem', marginBottom: '6px' }}>Cor padrão dos eventos:</label>
+                        <select 
+                            value={defaultColor} 
+                            onChange={(e) => setDefaultColor(e.target.value)}
+                            style={{
+                                width: '100%',
+                                background: '#0f172a',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'white',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                outline: 'none',
+                                fontSize: '0.85rem'
+                            }}
+                        >
+                            <option value="">Nenhuma (Padrão do Calendário)</option>
+                            <option value="azul">Azul</option>
+                            <option value="vermelho">Vermelho</option>
+                            <option value="verde">Verde</option>
+                            <option value="amarelo">Amarelo</option>
+                            <option value="roxo">Roxo</option>
+                            <option value="rosa">Rosa</option>
+                            <option value="laranja">Laranja</option>
+                            <option value="lavanda">Lavanda</option>
+                        </select>
+                    </div>
+
+
+
+                    <button
+                        onClick={handleSaveConfig}
+                        disabled={isSaving}
+                        className="tab-btn"
+                        style={{
+                            width: '100%',
+                            padding: '10px',
+                            background: 'white',
+                            color: '#0f172a',
+                            border: 'none',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            fontSize: '0.85rem'
+                        }}
+                    >
+                        {isSaving ? <div className="spinner" style={{ width: '16px', height: '16px', margin: 0 }}></div> : 'Salvar Preferências'}
+                    </button>
+                </div>
+            )}
 
             {googleConnected && (
                 <div style={{ marginTop: '1.5rem' }}>

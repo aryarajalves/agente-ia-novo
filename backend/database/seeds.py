@@ -12,25 +12,26 @@ async def seed_native_tools():
     NATIVE_TOOLS = [
         {
             "name": "google_calendar_manager",
-            "description": "Ferramenta centralizada para gerenciar o Google Calendar. Permite criar eventos (agendar), listar próximos eventos (ver agenda), atualizar detalhes e cancelar/deletar compromissos. SEMPRE peça o ID do evento para atualizar ou cancelar.",
+            "description": "Ferramenta para gerenciar o Google Calendar. Ações: criar (agendar), listar (vagas livres), listar_ativos (ver agendamentos ativos), atualizar e cancelar. REGRA DE CRIAÇÃO: Toda vez que você criar/agendar um novo evento com sucesso, você deve incluir obrigatoriamente na mensagem de confirmação ao usuário o ID do evento criado (retornado pela ferramenta como 'ID do evento') e o link da video chamada/reunião. REGRA RÍGIDA DE CANCELAMENTO: 1. Quando o usuário pedir para cancelar, primeiro liste os ativos com a ação 'listar_ativos' para encontrar o evento correto. 2. Mostre os detalhes do evento encontrado ao usuário (Nome, Data, Hora e obrigatoriamente informe o ID do evento na mensagem) e pergunte explicitamente: 'Você confirma o cancelamento deste compromisso?'. 3. APENAS execute a ação 'cancelar' após o usuário responder confirmando explicitamente (ex: 'sim', 'confirmo'). Você tem autoridade total para fazer a exclusão direta após o sim do usuário, não precisa envolver humanos ou equipe.",
             "parameters_schema": json.dumps({
                 "type": "object",
                 "properties": {
                     "acao": {
                         "type": "string",
-                        "enum": ["criar", "listar", "atualizar", "cancelar"],
-                        "description": "Ação a ser realizada: 'criar' para novo agendamento, 'listar' para ver agenda, 'atualizar' para editar, 'cancelar' para excluir."
+                        "enum": ["criar", "listar", "atualizar", "cancelar", "listar_ativos", "listar_compromissos"],
+                        "description": "Ação a ser realizada: 'criar' para agendar, 'listar' para buscar vagas livres/slots disponíveis, 'listar_ativos' ou 'listar_compromissos' para listar mentorias já agendadas e marcadas, 'atualizar' para editar, 'cancelar' para excluir."
                     },
-                    "titulo": {"type": "string", "description": "Título ou resumo do evento (ex: Reunião de Alinhamento)"},
+                    "titulo": {"type": "string", "description": "Título do evento. Formato OBRIGATÓRIO: [qual evento] - [Dono do evento] - [Pessoa que vai participar]. NUNCA coloque 'a confirmar' no título. Exemplo: 'Mentoria - Tarcira Martins - Aryaraj Alves'"},
                     "inicio": {"type": "string", "description": "Data/hora de início no formato ISO 8601 (ex: 2024-10-25T14:30:00-03:00)"},
                     "fim": {"type": "string", "description": "Data/hora de fim no formato ISO 8601 (opcional)"},
                     "descricao": {"type": "string", "description": "Notas, pauta ou detalhes do evento (opcional)"},
                     "local": {"type": "string", "description": "Localização ou link da reunião (opcional)"},
                     "convidados": {"type": "string", "description": "Lista de e-mails separados por vírgula (opcional)"},
                     "cor": {"type": "string", "description": "Cor: vermelho, azul, verde, amarelo, roxo, rosa, laranja (opcional)"},
-                    "event_id": {"type": "string", "description": "ID único do evento (OBRIGATÓRIO para atualizar ou cancelar)"},
+                    "event_id": {"type": "string", "description": "ID único do evento (OBRIGATÓRIO para atualizar ou cancelar). REGRA RÍGIDA: Você deve obter este ID rodando primeiro a ação 'listar_ativos'."},
                     "max_resultados": {"type": "integer", "description": "Quantidade máxima de eventos ao listar (padrão 10)"},
-                    "busca": {"type": "string", "description": "Termo de busca para filtrar eventos ao listar (opcional)"}
+                    "busca": {"type": "string", "description": "Termo de busca para filtrar eventos ao listar (opcional)"},
+                    "duracao_minutos": {"type": "integer", "description": "Duração do slot de mentoria em minutos ao listar (padrão 60, ex: 30, 90)"}
                 },
                 "required": ["acao"]
             })

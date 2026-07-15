@@ -260,7 +260,7 @@ const LeadsModal = ({
                                             {l.contato_nome ? l.contato_nome[0].toUpperCase() : '👤'}
                                         </div>
                                         <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', rowGap: '0.4rem' }}>
                                                 <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc' }}>{l.contato_nome || '—'}</span>
                                                 <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 10px', borderRadius: '20px', background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                                     ● Ativa
@@ -291,28 +291,30 @@ const LeadsModal = ({
                                                     ▼
                                                 </span>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '2px', flexWrap: 'wrap' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.6rem' }}>
                                                 <div style={{ fontSize: '0.9rem', color: '#6366f1', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{l.telefone}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap', rowGap: '0.4rem' }}>
                                                 {parseLabels(l.labels).map((label, idx) => (
-                                                    <span 
+                                                    <span
                                                         key={idx} 
                                                         style={{
                                                             fontSize: '0.65rem', 
                                                             fontWeight: 700, 
-                                                            padding: '1px 8px', 
+                                                            padding: '3px 10px',
                                                             borderRadius: '12px',
                                                             background: 'rgba(99, 102, 241, 0.15)', 
                                                             color: '#a5b4fc', 
                                                             border: '1px solid rgba(99, 102, 241, 0.25)', 
                                                             display: 'inline-flex',
                                                             alignItems: 'center',
-                                                            gap: '3px',
+                                                            gap: '4px',
                                                             backdropFilter: 'blur(4px)'
                                                         }}
                                                     >
                                                         🏷️ {label}
                                                     </span>
                                                 ))}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

@@ -57,3 +57,44 @@ async def get_google_status(
     result = await db.execute(select(GoogleTokensModel).where(GoogleTokensModel.agent_id == agent_id))
     token = result.scalars().first()
     return {"connected": token is not None}
+
+
+from pydantic import BaseModel
+
+class GoogleConfigSchema(BaseModel):
+    default_event_color: Optional[str] = None
+    add_user_email: Optional[bool] = False
+
+@router.get("/integrations/google/config")
+async def get_google_config(
+    agent_id: Optional[int] = None, 
+    db: AsyncSession = Depends(get_db), 
+    _: None = Depends(verify_api_key)
+):
+    """Busca as configurações adicionais do Google Calendar."""
+    result = await db.execute(select(GoogleTokensModel).where(GoogleTokensModel.agent_id == agent_id))
+    token = result.scalars().first()
+    if not token:
+        return {"default_event_color": None, "add_user_email": False}
+    return {
+        "default_event_color": token.default_event_color,
+        "add_user_email": bool(token.add_user_email)
+    }
+
+@router.post("/integrations/google/config")
+async def update_google_config(
+    payload: GoogleConfigSchema,
+    agent_id: Optional[int] = None, 
+    db: AsyncSession = Depends(get_db), 
+    _: None = Depends(verify_api_key)
+):
+    """Atualiza as configurações adicionais do Google Calendar."""
+    result = await db.execute(select(GoogleTokensModel).where(GoogleTokensModel.agent_id == agent_id))
+    token = result.scalars().first()
+    if not token:
+        raise HTTPException(status_code=404, detail="Token do Google Agenda não encontrado. Conecte primeiro.")
+        
+    token.default_event_color = payload.default_event_color
+    token.add_user_email = payload.add_user_email
+    await db.commit()
+    return {"ok": True, "message": "Configurações do Google Agenda atualizadas."}

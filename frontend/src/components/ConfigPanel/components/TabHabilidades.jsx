@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useConfig } from '../ConfigContext';
 import HabilidadesGuideModal from './Modals/HabilidadesGuideModal';
@@ -14,10 +15,12 @@ const TabHabilidades = () => {
         ragAgenticEvalEnabled, setRagAgenticEvalEnabled,
         ragRelevanceThreshold, setRagRelevanceThreshold,
         toolsList, selectedTools, setSelectedTools,
+        toolPrompts, setToolPrompts,
         googleConnected, showHabilidadesGuide, setShowHabilidadesGuide
     } = useConfig();
 
     const [activeSubTab, setActiveSubTab] = useState('rag');
+    const [maximizedToolId, setMaximizedToolId] = useState(null);
 
     const subTabs = [
         { id: 'rag', label: '📚 Conhecimento (RAG)', desc: 'Bases semânticas de dados' },
@@ -219,6 +222,175 @@ const TabHabilidades = () => {
                                 })}
                         </div>
                     </div>
+
+                    {/* Prompts Customizados das Ferramentas Ativas */}
+                    {selectedTools.filter(toolId => {
+                        const tool = toolsList.find(t => t.id === toolId);
+                        return tool?.name !== 'transferir_robo';
+                    }).length > 0 && (
+                        <div className="advanced-rag-box" style={{ marginTop: '2rem' }}>
+                            <label className="box-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                ⚙️ Prompts das Ferramentas no Pre-Router
+                            </label>
+                            <p className="empty-msg" style={{ margin: '0.25rem 0 1.25rem' }}>
+                                Personalize como o Pre-Router AI deve identificar quando acionar cada habilidade ativa. Por padrão, ele usa a descrição original da ferramenta.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                {selectedTools
+                                    .filter(toolId => {
+                                        const tool = toolsList.find(t => t.id === toolId);
+                                        return tool?.name !== 'transferir_robo';
+                                    })
+                                    .map(toolId => {
+                                        const tool = toolsList.find(t => t.id === toolId);
+                                        if (!tool) return null;
+                                        // Valor padrão: se for undefined ou null, usa a descrição original da ferramenta como valor inicial
+                                        const customVal = toolPrompts[tool.id] !== undefined ? toolPrompts[tool.id] : (toolPrompts[String(tool.id)] !== undefined ? toolPrompts[String(tool.id)] : (tool.description || ''));
+                                        const isMaximized = maximizedToolId === tool.id;
+                                        
+                                        return (
+                                            <div key={toolId} style={{ display: 'flex', flexDirection: 'column', gap: '6px', position: 'relative' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                                                        <span>{tool.webhook_url ? '🔗' : '📅'}</span>
+                                                        <span>{tool.name}</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setMaximizedToolId(tool.id)}
+                                                        style={{
+                                                            background: 'rgba(255, 255, 255, 0.05)',
+                                                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                            color: '#818cf8',
+                                                            borderRadius: '6px',
+                                                            padding: '2px 8px',
+                                                            fontSize: '0.72rem',
+                                                            cursor: 'pointer',
+                                                            fontWeight: 600,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        🔍 Maximizar
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '80px',
+                                                        maxHeight: '80px',
+                                                        background: 'rgba(255, 255, 255, 0.02)',
+                                                        border: '1px solid var(--wh-border)',
+                                                        borderRadius: '8px',
+                                                        padding: '0.65rem 0.75rem',
+                                                        color: '#fff',
+                                                        fontSize: '0.8rem',
+                                                        lineHeight: 1.5,
+                                                        resize: 'none',
+                                                        fontFamily: 'inherit'
+                                                    }}
+                                                    placeholder="Descreva quando esta ferramenta deve ser chamada..."
+                                                    value={customVal}
+                                                    onChange={(e) => {
+                                                        setToolPrompts({
+                                                            ...toolPrompts,
+                                                            [tool.id]: e.target.value
+                                                        });
+                                                    }}
+                                                />
+
+                                                {/* Modal centralizado para edição maximizada da ferramenta.
+                                                    Renderizado via portal em document.body: assim o "position: fixed"
+                                                    fica relativo à janela inteira, e não a algum ancestral desta árvore
+                                                    (ex: painel com transform/filter em animações) que quebraria a
+                                                    centralização e faria o overlay cobrir só parte da tela. */}
+                                                {isMaximized && createPortal(
+                                                    <div
+                                                        style={{
+                                                            position: 'fixed',
+                                                            inset: 0,
+                                                            background: 'rgba(2, 6, 23, 0.85)',
+                                                            backdropFilter: 'blur(12px)',
+                                                            zIndex: 2000,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            padding: '2rem'
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <div
+                                                            style={{
+                                                                background: 'linear-gradient(145deg, #0f172a 0%, #1e293b 100%)',
+                                                                border: '1px solid rgba(99, 102, 241, 0.3)',
+                                                                borderRadius: '20px',
+                                                                width: '100%',
+                                                                maxWidth: '700px',
+                                                                display: 'flex',
+                                                                flexDirection: 'column',
+                                                                boxShadow: '0 50px 100px rgba(0,0,0,0.9), 0 0 50px rgba(99, 102, 241, 0.15)'
+                                                            }}
+                                                        >
+                                                            {/* Header do modal */}
+                                                            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span style={{ fontSize: '1.2rem' }}>{tool.webhook_url ? '🔗' : '📅'}</span>
+                                                                    <div style={{ fontWeight: 800, color: '#fff', fontSize: '0.95rem' }}>{tool.name}</div>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setMaximizedToolId(null)}
+                                                                    style={{
+                                                                        background: 'rgba(255, 255, 255, 0.05)',
+                                                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                                        color: '#94a3b8',
+                                                                        borderRadius: '10px',
+                                                                        width: '32px',
+                                                                        height: '32px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.9rem'
+                                                                    }}
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                            {/* Corpo com textarea grande */}
+                                                            <div style={{ padding: '1.5rem' }}>
+                                                                <textarea
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        height: '350px',
+                                                                        background: 'rgba(255, 255, 255, 0.01)',
+                                                                        border: '1px solid var(--wh-border)',
+                                                                        borderRadius: '12px',
+                                                                        padding: '1rem',
+                                                                        color: '#fff',
+                                                                        fontSize: '0.9rem',
+                                                                        lineHeight: 1.6,
+                                                                        resize: 'none',
+                                                                        fontFamily: 'inherit'
+                                                                    }}
+                                                                    placeholder="Descreva quando esta ferramenta deve ser chamada..."
+                                                                    value={customVal}
+                                                                    onChange={(e) => {
+                                                                        setToolPrompts({
+                                                                            ...toolPrompts,
+                                                                            [tool.id]: e.target.value
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>,
+                                                    document.body
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
