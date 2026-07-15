@@ -26,7 +26,7 @@ async def test_blocked_contacts_filter(client, db_session):
         name="Test Blocked Contacts",
         token=token,
         is_active=True,
-        blocked_contacts=json.dumps([blocked_phone, blocked_name]),
+        blocked_messages=json.dumps([blocked_phone, blocked_name]),
         allowed_contacts=json.dumps([allowed_phone, allowed_name]),
         leads_table="leads_test_blocked"
     )

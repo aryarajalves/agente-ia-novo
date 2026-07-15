@@ -485,6 +485,60 @@ async def receive_webhook(token: str, request: Request, db: AsyncSession = Depen
             logger.error(f"Erro ao inserir lead de saída: {e}")
         return {"ok": True, "status": "outgoing_ignored"}
 
+    # --- FILTRO DE CONTATOS PERMITIDOS E BLOQUEADOS ---
+    blocked_list = []
+    if config.blocked_messages:
+        try:
+            blocked_list = json.loads(config.blocked_messages)
+        except Exception:
+            blocked_list = []
+
+    allowed_list = []
+    if config.allowed_contacts:
+        try:
+            allowed_list = json.loads(config.allowed_contacts)
+        except Exception:
+            allowed_list = []
+
+    # Função helper para checar correspondência por telefone (últimos 8 dígitos) ou por nome (case-insensitive)
+    def match_contact(item_to_match: str, phone_num: str, name_str: str) -> bool:
+        item_str = str(item_to_match).strip().lower()
+        if not item_str:
+            return False
+            
+        # Se o item a comparar for numérico/telefone, comparamos os últimos dígitos
+        clean_item = "".join(c for c in item_str if c.isdigit())
+        if clean_item:
+            clean_phone = "".join(c for c in phone_num if c.isdigit())
+            # Match se os últimos 8 dígitos (ou tamanho mínimo disponível) coincidirem
+            match_len = min(8, len(clean_item), len(clean_phone))
+            if match_len >= 6:  # Evita match em strings muito curtas
+                return clean_phone[-match_len:] == clean_item[-match_len:]
+                
+        # Match por nome (case-insensitive)
+        if name_str and item_str in name_str.lower():
+            return True
+            
+        return False
+
+    # 1. Validar se o contato está na lista de bloqueados
+    for blocked_item in blocked_list:
+        if match_contact(blocked_item, phone, extracted.get("contato_nome", "")):
+            logger.info(f"🚫 Webhook bloqueado: Contato {phone} / {extracted.get('contato_nome')} está na lista de bloqueados.")
+            return {"ok": True, "status": "blocked", "reason": "contact is blocked"}
+
+    # 2. Validar se o contato está na lista de permitidos (caso a lista não esteja vazia)
+    if allowed_list:
+        is_allowed = False
+        for allowed_item in allowed_list:
+            if match_contact(allowed_item, phone, extracted.get("contato_nome", "")):
+                is_allowed = True
+                break
+        
+        if not is_allowed:
+            logger.info(f"🚫 Webhook bloqueado: Contato {phone} / {extracted.get('contato_nome')} não está na lista de permitidos.")
+            return {"ok": True, "status": "blocked", "reason": "contact not in allowed list"}
+
     # 1. Verificar se é uma palavra-chave de deleção (resetar) antes de checar a tag de ignorar
     is_delete_keyword = False
     msg_limpa = extracted["mensagem"].lower().strip()
@@ -819,6 +873,19 @@ async def get_lead_history(webhook_id: int, phone: str, page: int = 1, page_size
     if not config: raise HTTPException(status_code=404, detail="Webhook não encontrado")
     
     offset = (page - 1) * page_size
+    
+    # Contar o total de mensagens individuais (mensagem + agent_response) para paginação correta no frontend/testes
+    total_query = text("""
+        SELECT COALESCE(SUM(
+            (CASE WHEN mensagem IS NOT NULL AND mensagem != '' THEN 1 ELSE 0 END) +
+            (CASE WHEN agent_response IS NOT NULL AND agent_response != '' THEN 1 ELSE 0 END)
+        ), 0)
+        FROM webhook_events 
+        WHERE webhook_config_id = :wid AND telefone = :tel
+    """)
+    total_res = await db.execute(total_query, {"wid": webhook_id, "tel": phone})
+    total_messages = total_res.scalar() or 0
+
     query = text("SELECT id, contato_id, telefone, mensagem, dono, created_at, agent_response FROM webhook_events WHERE webhook_config_id = :wid AND telefone = :tel ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
     res = await db.execute(query, {"wid": webhook_id, "tel": phone, "limit": page_size, "offset": offset})
     rows = res.fetchall()
@@ -856,7 +923,7 @@ async def get_lead_history(webhook_id: int, phone: str, page: int = 1, page_size
         item.index = idx + offset + 1
     items.reverse()
     
-    return LeadHistoryResponse(total=len(items), page=page, page_size=page_size, items=items)
+    return LeadHistoryResponse(total=total_messages, page=page, page_size=page_size, items=items)
 
 @router.post("/{webhook_id}/events/bulk-delete", status_code=204)
 async def delete_events_bulk(webhook_id: int, req: BulkDeleteRequest, db: AsyncSession = Depends(get_db)):
@@ -1015,32 +1082,70 @@ async def list_webhook_leads(
     total_res = await db.execute(text(f"SELECT COUNT(*) FROM {config.leads_table} WHERE {where_str}"), params)
     total = total_res.scalar()
     
-    # Leads
+    # Leads (Query simplificada e veloz sem subqueries aninhadas)
     query = text(f"""
         SELECT *, 
                pode_enviar_mensagem AS pode_enviar,
-               (ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= {interval_expr}) AS janela_24h_aberta,
-               (SELECT COUNT(*) FROM webhook_events WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone) AND webhook_events.webhook_config_id = :wid) AS total_disparos,
-               (NOT EXISTS (
-                   SELECT 1 FROM webhook_events 
-                   WHERE (webhook_events.telefone = {config.leads_table}.telefone OR webhook_events.telefone = '+' || {config.leads_table}.telefone)
-                   AND webhook_events.webhook_config_id = :wid 
-                   AND webhook_events.dono = 'usuario'
-               )) AS sem_mensagem_usuario
+               (ultima_mensagem_em IS NOT NULL AND ultima_mensagem_em >= {interval_expr}) AS janela_24h_aberta
         FROM {config.leads_table} 
         WHERE {where_str} 
-        ORDER BY updated_at DESC 
+        ORDER BY ultima_mensagem_em DESC NULLS LAST, updated_at DESC
         LIMIT :limit OFFSET :offset
     """)
     logger.info(f"📊 Buscando leads para webhook {webhook_id} na tabela {config.leads_table} (Page: {page}, Size: {page_size}, Search: {q})")
     res = await db.execute(query, params)
     columns = res.keys()
     leads = []
+    telefones_para_buscar = set()
+    
     for row in res.fetchall():
         lead_dict = dict(zip(columns, row))
         lead_dict["janela_24h_aberta"] = bool(lead_dict.get("janela_24h_aberta"))
-        lead_dict["sem_mensagem_usuario"] = bool(lead_dict.get("sem_mensagem_usuario"))
+        # Fallbacks padrão que serão calculados a seguir
+        lead_dict["total_disparos"] = 0
+        lead_dict["sem_mensagem_usuario"] = True
+        
+        tel = lead_dict.get("telefone")
+        if tel:
+            telefones_para_buscar.add(tel)
+            telefones_para_buscar.add(f"+{tel}")
+            if tel.startswith("+"):
+                telefones_para_buscar.add(tel[1:])
+                
         leads.append(lead_dict)
+
+    # Buscar informações de disparos e mensagens do usuário em lote na memória (Performance Premium)
+    if leads and telefones_para_buscar:
+        tels_list = list(telefones_para_buscar)
+        placeholders = ", ".join(f":t{i}" for i in range(len(tels_list)))
+        events_query_str = f"""
+            SELECT telefone, dono
+            FROM webhook_events
+            WHERE webhook_config_id = :wid 
+            AND telefone IN ({placeholders})
+        """
+        query_params = {"wid": webhook_id}
+        for i, t in enumerate(tels_list):
+            query_params[f"t{i}"] = t
+            
+        events_res = await db.execute(text(events_query_str), query_params)
+        events_rows = events_res.fetchall()
+        
+        from collections import defaultdict
+        disparos_por_tel = defaultdict(int)
+        tem_msg_usuario_por_tel = defaultdict(bool)
+        
+        for e_tel, e_dono in events_rows:
+            if e_tel:
+                tel_key = e_tel.lstrip("+")
+                disparos_por_tel[tel_key] += 1
+                if e_dono == "usuario":
+                    tem_msg_usuario_por_tel[tel_key] = True
+                    
+        for l in leads:
+            tel = (l.get("telefone") or "").lstrip("+")
+            l["total_disparos"] = disparos_por_tel[tel]
+            l["sem_mensagem_usuario"] = not tem_msg_usuario_por_tel[tel]
     
     # Sincronizar etiquetas de forma transparente e em tempo real com o ZapVoice
     zv_url = (config.zapvoice_url or os.getenv("ZAPVOICE_URL", "")).rstrip("/")
@@ -1082,7 +1187,7 @@ async def list_webhook_leads(
                 asyncio.create_task(sync_lead_labels_bg(l["id"], c_id, conv_id))
     
     logger.info(f"✅ Encontrados {len(leads)} leads de um total de {total}.")
-    return {"total": total, "leads": leads}
+    return {"total": total, "leads": leads, "page": page, "page_size": page_size}
 
 
 @router.post("/{webhook_id}/leads/delete-batch", status_code=204)

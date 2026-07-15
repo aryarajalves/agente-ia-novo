@@ -123,7 +123,7 @@ async def test_get_lead_history_pagination(client, db_session):
     await db_session.commit()
 
     # Testar página 1 com 10 eventos (deve retornar 20 mensagens)
-    response = await client.get(f"/webhooks/{config.id}/leads/{tel}/history?page=1&page_size=10")
+    response = await client.get(f"/webhooks/{config.id}/leads-by-phone/{tel}/history?page=1&page_size=10")
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 30 # total de itens (mensagens)
@@ -131,7 +131,7 @@ async def test_get_lead_history_pagination(client, db_session):
     assert data["page"] == 1
     
     # Testar página 2 com 10 eventos (deve retornar 10 mensagens restantes)
-    response = await client.get(f"/webhooks/{config.id}/leads/{tel}/history?page=2&page_size=10")
+    response = await client.get(f"/webhooks/{config.id}/leads-by-phone/{tel}/history?page=2&page_size=10")
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) == 10

@@ -1,5 +1,6 @@
 import pytest
 import os
+from datetime import datetime
 from sqlalchemy import text
 from httpx import AsyncClient
 from webhooks.service import ensure_leads_table
@@ -33,7 +34,7 @@ async def test_lead(db_session, test_webhook):
         "telefone": "558596123586",
         "contato_nome": "Aryaraj Teste",
         "mensagem": "Olá, teste de lead",
-        "ultima_mensagem_em": "2026-05-10 11:53:24",
+        "ultima_mensagem_em": datetime(2026, 5, 10, 11, 53, 24),
         "pode_enviar": True,
         "conta_id": "1",
         "contato_id": "1079",
@@ -96,7 +97,7 @@ async def test_list_leads_filter_sem_mensagem(client: AsyncClient, admin_headers
         "telefone": "558599999999",
         "contato_nome": "Lead Com Msg",
         "mensagem": "Eu tenho mensagem!",
-        "ultima_mensagem_em": "2026-05-10 11:53:24",
+        "ultima_mensagem_em": datetime(2026, 5, 10, 11, 53, 24),
         "pode_enviar": True,
         "conta_id": "1",
         "contato_id": "1111",
