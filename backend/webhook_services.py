@@ -485,16 +485,26 @@ def _send_zapvoice_message(db, event_id, conversation_id, client_id, content, co
             time.sleep(1)
             payload = {"content": part, "is_private": False}
             
-            try:
-                with httpx.Client(timeout=20.0) as client:
-                    resp = client.post(full_url, json=payload, headers=headers)
-                    if resp.status_code not in (200, 201):
-                        error_detail = f"Status {resp.status_code}: {resp.text[:200]}\nURL: {full_url}"
-                        webhook_tasks._add_step(db, event_id, f"❌ Erro no envio ao ZapVoice (Parte {i+1})", error_detail)
-                        success = False
-                        break
-            except Exception as http_err:
-                webhook_tasks._add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Erro: {str(http_err)}")
+            part_success = False
+            last_err_msg = ""
+            for attempt in range(1, 4):
+                try:
+                    with httpx.Client(timeout=60.0) as client:
+                        resp = client.post(full_url, json=payload, headers=headers)
+                        if resp.status_code in (200, 201):
+                            part_success = True
+                            break
+                        else:
+                            last_err_msg = f"Status {resp.status_code}: {resp.text[:200]}"
+                except Exception as http_err:
+                    last_err_msg = str(http_err)
+                
+                # Se falhou e ainda restam tentativas, aguarda um tempo progressivo (2s, 4s) antes de tentar novamente
+                if not part_success and attempt < 3:
+                    time.sleep(2 * attempt)
+            
+            if not part_success:
+                webhook_tasks._add_step(db, event_id, f"❌ Falha de Conexão (Parte {i+1})", f"Tentativas esgotadas (60s timeout). Último erro: {last_err_msg}")
                 success = False
                 break
 
