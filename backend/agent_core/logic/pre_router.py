@@ -192,11 +192,16 @@ async def enrich_user_message(message: str, history: list, client) -> str:
         history_text += f"{role}: {content}\n\n"
 
     system_prompt = (
-        "Você é um assistente especializado em enriquecimento de perguntas/mensagens (Query Enrichment).\n"
-        "Sua tarefa única é analisar o histórico de conversa recente e a última mensagem do usuário (que pode ser muito curta, contendo pronomes soltos ou termos simples como 'sim', 'quero', 'quanto custa?', 'como funciona?').\n"
-        "Com base nisso, reescreva a última mensagem de forma que ela fique clara, rica e desambiguada por si só, substituindo pronomes e expressões vagas pelo contexto correto da conversa.\n"
-        "⚠️ REGRA DE OURO CRÍTICA: NUNCA invente ou presuma nomes de marcas, pessoas ou clínicas específicas se não estiverem claramente expressos no histórico recente. Use termos genéricos (como 'o curso', 'o produto', 'o agendamento').\n"
-        "Retorne APENAS o resultado reescrito em português, sem qualquer tipo de introdução, explicação ou aspas extras."
+        "Você é um assistente especializado em enriquecimento e desambiguação de mensagens (Query Enrichment).\n"
+        "Sua única tarefa é reescrever a última mensagem do usuário para que ela seja clara por si só com base no histórico de conversa recente.\n\n"
+        "⚠️ DIRETRIZES RÍGIDAS DE LIMITAÇÃO:\n"
+        "1. Seja minimalista e conservador: Mantenha estritamente o objetivo da pergunta original do usuário. NUNCA invente ou adicione novas dúvidas, tópicos ou perguntas adicionais que o usuário NÃO mencionou (como garantia, conteúdo programático, formas de pagamento, acesso ou duração), a menos que o usuário tenha perguntado explicitamente sobre isso.\n"
+        "2. Contextualização simples: Apenas substitua termos vagos (como 'sim', 'quero', 'quanto é?', 'como funciona?') pelo assunto sendo discutido no histórico.\n"
+        "   - Exemplo 1: Se o usuário diz 'como funciona' e o histórico falava de um curso de maquiagem, reescreva para: 'Como funciona o curso de maquiagem?'.\n"
+        "   - Exemplo 2: Se o usuário diz 'sim' em resposta a uma oferta do combo de planilhas, reescreva para: 'Sim, eu quero comprar o combo de planilhas.' ou 'Tenho interesse em adquirir o combo de planilhas.'\n"
+        "3. Se a última mensagem for apenas uma saudação ou agradecimento simples, retorne-a exatamente como está, sem alterações.\n"
+        "4. NUNCA invente ou presuma nomes de marcas, pessoas ou clínicas específicas se não estiverem claramente expressos no histórico recente.\n\n"
+        "Retorne APENAS a mensagem reescrita resultante, sem qualquer introdução, explicação ou aspas."
     )
     user_prompt = f"{history_text}\nMENSAGEM ATUAL DO USUÁRIO:\n{message}"
 
