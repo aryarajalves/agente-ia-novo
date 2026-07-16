@@ -261,6 +261,17 @@ Esta versão consolida grandes evoluções no sistema, incluindo o controle fina
 
 ---
 
+## ✨ Novidades da Versão (v1.9.0)
+
+Esta versão traz evoluções fundamentais de estabilidade e contextualização da IA para disparos em massa e campanhas:
+- **Priorização de template_content no Webhook**: O processamento do webhook agora prioriza o conteúdo real e textual da mensagem enviada (`template_content`) do ZapVoice ao invés do seu nome técnico nos disparos ativos, garantindo que o histórico reflita o texto exato recebido.
+- **Identificação de Mensagens de Campanha no Contexto**: As mensagens ativas enviadas pelo robô em outras plataformas (disparos/campanhas) agora são injetadas no histórico da IA com o prefixo explicativo `[Mensagem Ativa de Campanha]: <texto>` para a IA diferenciar facilmente interações espontâneas de saudações em lote.
+- **Ampliação do Limite de Varredura de Histórico**: O limite de leitura de registros recentes do banco de dados na memória de contexto do agente foi expandido para **100 mensagens** (antes limitado estritamente a 10). Isso garante que, mesmo sob forte volume de disparos sucessivos, as mensagens humanas reais e antigas não sejam ocultadas do contexto do LLM.
+- **Flexibilização do Timeout da Pipeline**: O limite de exibição do status de carregamento da pipeline antes de disparar o alerta de timeout no frontend foi estendido de **45 para 90 segundos**, acomodando períodos de maior lentidão do provedor de IA e de APIs parceiras.
+- **Resolução de Timezone no Celery**: Ajuste do import do módulo `timezone` em `tasks.py` para evitar quebras silenciosas no log das tarefas agendadas de backup do banco de dados.
+
+---
+
 ## ✨ Novidades da Versão (v1.8.6)
 
 Esta versão traz a nova ferramenta de meta-análise de respostas baseada em LLM no ChatPlayground:
