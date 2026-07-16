@@ -33,3 +33,4 @@ Este arquivo registra todas as alterações manuais de schema (ALTER TABLE) real
 | 2026-07-14 | agent_config | tool_prompts | add_tool_prompts_column.py | Coluna JSON para armazenar os prompts customizados por ferramenta do pre-router. |
 | 2026-07-15 | google_tokens | default_event_color, add_user_email | add_google_calendar_config_fields.py | Adição de colunas de configuração padrão de cor e convite de e-mail do usuário para eventos criados no Google Agenda. |
 | 2026-07-15 | calendar_events | TODAS | create_calendar_events_table.py | Criação da tabela para persistir localmente as informações dos agendamentos (event_id, telefone, email, titulo, data_horario). |
+| 2026-07-16 | leads, webhook_events | webhook_config_id, telefone, ultima_mensagem_em | add_leads_performance_indexes.py | Criação de índices de busca (BTree) para otimizar dramaticamente a performance de paginação e contagem no modal LeadsModal. |

@@ -23,7 +23,7 @@ class InteractionLog(Base):
     __tablename__ = "interaction_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="SET NULL"), nullable=True) # Link to agent
+    agent_id = Column(Integer, ForeignKey("agent_config.id", ondelete="SET NULL"), nullable=True, index=True) # Link to agent
     session_id = Column(String, index=True, nullable=True) # New: Identify memory scope
     user_message = Column(Text)
     agent_response = Column(Text)
@@ -35,7 +35,7 @@ class InteractionLog(Base):
     cost_brl = Column(Float)
     handoff_to = Column(String, nullable=True) # Ex: "suporte", "vendas", "humano"
     debug_info = Column(Text, nullable=True) # JSON stored as string
-    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
 class SessionSummary(Base):
     __tablename__ = "session_summaries"

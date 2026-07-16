@@ -84,6 +84,16 @@ async def ensure_leads_table(table_name: str):
                     await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
             else:
                 await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                
+        # Criar índices para otimização de performance das queries e listagem do LeadsModal
+        if is_sqlite:
+            await conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_webhook_config_id ON {table_name}(webhook_config_id)"))
+            await conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_telefone ON {table_name}(telefone)"))
+            await conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_ultima_msg ON {table_name}(ultima_mensagem_em)"))
+        else:
+            await conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_webhook_config_id ON {table_name}(webhook_config_id)"))
+            await conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_telefone ON {table_name}(telefone)"))
+            await conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_ultima_msg ON {table_name}(ultima_mensagem_em DESC NULLS LAST)"))
 
 async def upsert_lead(table_name: str, data: dict, webhook_config_id: int):
     """Insere ou atualiza lead considerando o telefone e sufixos."""
