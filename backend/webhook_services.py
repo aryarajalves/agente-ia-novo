@@ -325,7 +325,7 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                         WebhookEventModel.is_automatic.is_(None),
                         WebhookEventModel.is_automatic == False
                     )
-                ).order_by(WebhookEventModel.created_at.desc()).limit(db_agent.context_window * 2).all()
+                ).order_by(WebhookEventModel.created_at.desc()).limit(100).all()
 
                 past_events.reverse()
                 seen_msgs = set()
@@ -334,7 +334,8 @@ def retrieve_context_history(db, event, db_agent, raw_phone, clean_phone, event_
                         role = "assistant" if (pe.dono and pe.dono.lower() in ['agente', 'bot']) else "user"
                         msg_clean = pe.mensagem.strip()
                         if msg_clean not in seen_msgs:
-                            history.append({"role": role, "content": pe.mensagem})
+                            content = f"[Mensagem Ativa de Campanha]: {pe.mensagem}" if role == "assistant" else pe.mensagem
+                            history.append({"role": role, "content": content})
                             seen_msgs.add(msg_clean)
                     if pe.agent_response:
                         resp_clean = pe.agent_response.strip()

@@ -4,7 +4,7 @@ import logging
 import httpx
 import asyncio
 import anthropic
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import zoneinfo
 from celery_app import app
 from s3_service import s3_service

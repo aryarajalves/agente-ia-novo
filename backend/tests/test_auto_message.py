@@ -109,14 +109,14 @@ def test_retrieve_context_history_ignores_automatic_messages(mock_add_step):
     event_normal.id = 10
     event_normal.mensagem = "Quero saber o preço"
     event_normal.agent_response = "Custa R$ 100"
-    event_normal.dono = "agente"
+    event_normal.dono = "usuario"
     event_normal.is_automatic = False
     
     event_automatic = MagicMock(spec=WebhookEventModel)
     event_automatic.id = 11
     event_automatic.mensagem = "Olá, seja bem-vindo ao Jessica Beauty"
     event_automatic.agent_response = "Olá! Como posso ajudar?"
-    event_automatic.dono = "agente"
+    event_automatic.dono = "usuario"
     event_automatic.is_automatic = True
     
     # Configurar o mock de query para retornar apenas o evento normal

@@ -88,8 +88,8 @@ const AutomationPipelineModal = ({
         const checkTimeout = () => {
             const createdTime = parseDate(event.created_at || event.updated_at).getTime();
             const now = Date.now();
-            // Timeout de 45 segundos
-            if (now - createdTime > 45000) {
+            // Timeout de 90 segundos
+            if (now - createdTime > 90000) {
                 setIsTimeout(true);
             }
         };
@@ -460,7 +460,7 @@ const AutomationPipelineModal = ({
                                         <div>
                                             <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fca5a5' }}>Falha no Processamento (Timeout)</h3>
                                             <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#f87171', fontWeight: 600, lineHeight: 1.4 }}>
-                                                A automação excedeu o tempo limite de 45 segundos sem resposta. Isso ocorre quando há lentidão extrema na API do LLM, falhas na conexão do calendário ou caso a fila de tarefas em background tenha sido interrompida.
+                                                A automação excedeu o tempo limite de 90 segundos sem resposta. Isso ocorre quando há lentidão extrema na API do LLM, falhas na conexão do calendário ou caso a fila de tarefas em background tenha sido interrompida.
                                             </p>
                                         </div>
                                     </div>
