@@ -176,12 +176,63 @@ def _build_pre_router_system_prompt(main_agent, template_vars: dict) -> str:
     return base + PRE_ROUTER_JSON_FOOTER
 
 
+async def enrich_user_message(message: str, history: list, client) -> str:
+    """Enriquece a mensagem atual com base no histórico de conversas recente (Query Enrichment)."""
+    if not history or not message.strip():
+        return message
+
+    # Se a mensagem já for detalhada e longa, não precisamos reescrever
+    if len(message.strip()) > 150:
+        return message
+
+    history_text = ""
+    for h in history:
+        role = h.get('role', 'user').upper()
+        content = h.get('content', '')
+        history_text += f"{role}: {content}\n\n"
+
+    system_prompt = (
+        "Você é um assistente especializado em enriquecimento de perguntas/mensagens (Query Enrichment).\n"
+        "Sua tarefa única é analisar o histórico de conversa recente e a última mensagem do usuário (que pode ser muito curta, contendo pronomes soltos ou termos simples como 'sim', 'quero', 'quanto custa?', 'como funciona?').\n"
+        "Com base nisso, reescreva a última mensagem de forma que ela fique clara, rica e desambiguada por si só, substituindo pronomes e expressões vagas pelo contexto correto da conversa.\n"
+        "⚠️ REGRA DE OURO CRÍTICA: NUNCA invente ou presuma nomes de marcas, pessoas ou clínicas específicas se não estiverem claramente expressos no histórico recente. Use termos genéricos (como 'o curso', 'o produto', 'o agendamento').\n"
+        "Retorne APENAS o resultado reescrito em português, sem qualquer tipo de introdução, explicação ou aspas extras."
+    )
+    user_prompt = f"{history_text}\nMENSAGEM ATUAL DO USUÁRIO:\n{message}"
+
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.0,
+            max_tokens=200
+        )
+        enriched = response.choices[0].message.content.strip()
+        if enriched:
+            if enriched.startswith('"') and enriched.endswith('"'):
+                enriched = enriched[1:-1]
+            return enriched
+    except Exception as e:
+        logger.error(f"Erro ao enriquecer mensagem no pre-router: {e}")
+    return message
+
+
 async def run_pre_router_ai(message: str, history: list, main_agent, secondary_agents: list = None, context_variables: dict = None, db = None) -> dict:
     """
     Triagem inicial da mensagem para identificar saudações, extrair datas e rotear agentes.
     """
     secondary_agents = secondary_agents or []
     
+    # 0. Enriquecimento da Mensagem com IA baseado no Histórico no Início do Pre-Router
+    api_key = os.getenv("OPENAI_API_KEY")
+    client = openai.AsyncOpenAI(api_key=api_key) if api_key else None
+    
+    if client and history and len(message.strip()) < 150:
+        message = await enrich_user_message(message, history, client)
+        
     # --- ATALHO PROGRAMÁTICO PARA SAUDAÇÃO CURTA E ANÚNCIOS ---
     msg_clean = message.lower().strip()
     is_first_msg = not history or len(history) == 0
